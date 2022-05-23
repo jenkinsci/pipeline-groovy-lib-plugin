@@ -29,7 +29,7 @@
         <groupId>org.jenkins-ci.plugins</groupId>
         <artifactId>plugin</artifactId>
         <version>4.40</version>
-        <relativePath />
+        <relativePath/>
     </parent>
     <groupId>io.jenkins.plugins</groupId>
     <artifactId>pipeline-groovy-lib</artifactId>
@@ -47,8 +47,8 @@
         <connection>scm:git:git://github.com/${gitHubRepo}.git</connection>
         <developerConnection>scm:git:git@github.com:${gitHubRepo}.git</developerConnection>
         <url>https://github.com/${gitHubRepo}</url>
-      <tag>${scmTag}</tag>
-  </scm>
+        <tag>${scmTag}</tag>
+    </scm>
     <repositories>
         <repository>
             <id>repo.jenkins-ci.org</id>
