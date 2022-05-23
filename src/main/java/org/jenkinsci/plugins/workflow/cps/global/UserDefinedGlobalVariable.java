@@ -26,10 +26,6 @@ public class UserDefinedGlobalVariable extends GlobalVariable {
     private final File help;
     private final String name;
 
-    /*package*/ UserDefinedGlobalVariable(WorkflowLibRepository repo, String name) {
-        this(name, new File(repo.workspace, PREFIX + "/" + name + ".txt"));
-    }
-
     public UserDefinedGlobalVariable(String name, File help) {
         this.name = name;
         this.help = help;
@@ -96,5 +92,4 @@ public class UserDefinedGlobalVariable extends GlobalVariable {
         return name.hashCode();
     }
 
-    /*package*/ static final String PREFIX = "vars";
 }

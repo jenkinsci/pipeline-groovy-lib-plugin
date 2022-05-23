@@ -24,14 +24,21 @@
 
 package org.jenkinsci.plugins.workflow.cps.global;
 
+import hudson.FilePath;
 import hudson.model.Result;
+import hudson.model.Run;
+import hudson.model.TaskListener;
 import java.io.File;
-import javax.inject.Inject;
+import java.util.Arrays;
+import jenkins.model.Jenkins;
 import org.apache.commons.io.FileUtils;
 import org.jenkinsci.plugins.scriptsecurity.scripts.ScriptApproval;
 import org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition;
 import org.jenkinsci.plugins.workflow.job.WorkflowJob;
 import org.jenkinsci.plugins.workflow.job.WorkflowRun;
+import org.jenkinsci.plugins.workflow.libs.GlobalLibraries;
+import org.jenkinsci.plugins.workflow.libs.LibraryConfiguration;
+import org.jenkinsci.plugins.workflow.libs.LibraryRetriever;
 import org.jenkinsci.plugins.workflow.test.steps.SemaphoreStep;
 import org.junit.Test;
 import org.junit.ClassRule;
@@ -47,12 +54,11 @@ public class GrapeTest {
 
     @ClassRule public static BuildWatcher buildWatcher = new BuildWatcher();
     @Rule public RestartableJenkinsRule story = new RestartableJenkinsRule();
-    @Inject private WorkflowLibRepository repo;
 
     @Test public void useBinary() throws Exception {
         story.addStep(new Statement() {
             @Override public void evaluate() throws Throwable {
-                FileUtils.write(new File(repo.workspace, "src/pkg/Lists.groovy"),
+                FileUtils.write(new File(libroot(), "src/pkg/Lists.groovy"),
                     "package pkg\n" +
                     "@Grab('commons-primitives:commons-primitives:1.0')\n" +
                     "import org.apache.commons.collections.primitives.ArrayIntList\n" +
@@ -80,7 +86,7 @@ public class GrapeTest {
     @Test public void var() throws Exception {
         story.addStep(new Statement() {
             @Override public void evaluate() throws Throwable {
-                FileUtils.write(new File(repo.workspace, "vars/one.groovy"),
+                FileUtils.write(new File(libroot(), "vars/one.groovy"),
                     "@Grab('commons-primitives:commons-primitives:1.0')\n" +
                     "import org.apache.commons.collections.primitives.ArrayIntList\n" +
                     "def call() {\n" +
@@ -100,7 +106,7 @@ public class GrapeTest {
     @Test public void nonexistentLibrary() throws Exception {
         story.addStep(new Statement() {
             @Override public void evaluate() throws Throwable {
-                FileUtils.write(new File(repo.workspace, "src/pkg/X.groovy"),
+                FileUtils.write(new File(libroot(), "src/pkg/X.groovy"),
                     "package pkg\n" +
                     "@Grab('net.nowhere:nonexistent:99.9')\n" +
                     "static def run() {}");
@@ -114,7 +120,7 @@ public class GrapeTest {
     @Test public void nonexistentImport() throws Exception {
         story.addStep(new Statement() {
             @Override public void evaluate() throws Throwable {
-                FileUtils.write(new File(repo.workspace, "src/pkg/X.groovy"),
+                FileUtils.write(new File(libroot(), "src/pkg/X.groovy"),
                     "package pkg\n" +
                     "@Grab('commons-primitives:commons-primitives:1.0')\n" +
                     "import net.nowhere.Nonexistent\n" +
@@ -132,7 +138,7 @@ public class GrapeTest {
     @Test public void overrideCoreLibraries() throws Exception {
         story.addStep(new Statement() {
             @Override public void evaluate() throws Throwable {
-                FileUtils.write(new File(repo.workspace, "src/pkg/Strings.groovy"),
+                FileUtils.write(new File(libroot(), "src/pkg/Strings.groovy"),
                     "package pkg\n" +
                     "@Grab('com.google.guava:guava:19.0')\n" + // 11.0.1 from core has only WHITESPACE constant
                     "import com.google.common.base.CharMatcher\n" +
@@ -150,7 +156,7 @@ public class GrapeTest {
     @Test public void useSource() throws Exception {
         story.addStep(new Statement() {
             @Override public void evaluate() throws Throwable {
-                FileUtils.write(new File(repo.workspace, "src/pkg/Dokker.groovy"),
+                FileUtils.write(new File(libroot(), "src/pkg/Dokker.groovy"),
                     "package pkg\n" +
                     "@Grapes([@Grab('org.jenkins-ci.plugins:docker-workflow:1.7'), @Grab('org.jenkins-ci.plugins:docker-commons:1.3.1')])\n" +
                     "import org.jenkinsci.plugins.docker.workflow.Docker\n" +
@@ -172,6 +178,28 @@ public class GrapeTest {
                 story.j.assertLogContains("ran CPS-transformed", b);
             }
         });
+    }
+
+    private File libroot() throws Exception {
+        File lib = new File(Jenkins.get().getRootDir(), "somelib");
+        LibraryConfiguration cfg = new LibraryConfiguration("somelib", new LocalRetriever(lib));
+        cfg.setImplicit(true);
+        cfg.setDefaultVersion("fixed");
+        GlobalLibraries.get().setLibraries(Arrays.asList(cfg));
+        return lib;
+    }
+
+    private static final class LocalRetriever extends LibraryRetriever {
+        private final File lib;
+        LocalRetriever(File lib) {
+            this.lib = lib;
+        }
+        @Override public void retrieve(String name, String version, boolean changelog, FilePath target, Run<?, ?> run, TaskListener listener) throws Exception {
+            new FilePath(lib).copyRecursiveTo(target);
+        }
+        @Override public void retrieve(String name, String version, FilePath target, Run<?, ?> run, TaskListener listener) throws Exception {
+            retrieve(name, version, false, target, run, listener);
+        }
     }
 
     @Test public void outsideLibrary() throws Exception {

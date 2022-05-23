@@ -187,7 +187,7 @@ public class LibraryAdderTest {
         }
         sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something even more special'}");
         sampleRepo.git("add", "vars");
-        sampleRepo.git("commit", "--message=shared_library_commit");
+        sampleRepo.git("commit", "--message=library_commit");
         try (WorkspaceList.Lease lease = r.jenkins.toComputer().getWorkspaceList().acquire(base)) {
             WorkflowRun b = r.buildAndAssertSuccess(p);
             List<ChangeLogSet<? extends ChangeLogSet.Entry>> changeSets = b.getChangeSets();
@@ -197,7 +197,7 @@ public class LibraryAdderTest {
             assertEquals("git", changeSet.getKind());
             Iterator<? extends ChangeLogSet.Entry> iterator = changeSet.iterator();
             ChangeLogSet.Entry entry = iterator.next();
-            assertEquals("shared_library_commit", entry.getMsg() );
+            assertEquals("library_commit", entry.getMsg() );
             r.assertLogContains("something even more special", b);
         }
     }
@@ -219,7 +219,7 @@ public class LibraryAdderTest {
         }
         sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something even more special'}");
         sampleRepo.git("add", "vars");
-        sampleRepo.git("commit", "--message=shared_library_commit");
+        sampleRepo.git("commit", "--message=library_commit");
         try (WorkspaceList.Lease lease = r.jenkins.toComputer().getWorkspaceList().acquire(base)) {
             WorkflowRun b = r.buildAndAssertSuccess(p);
             List<ChangeLogSet<? extends ChangeLogSet.Entry>> changeSets = b.getChangeSets();

@@ -31,12 +31,12 @@
         <version>4.40</version>
         <relativePath />
     </parent>
-    <groupId>org.jenkins-ci.plugins.workflow</groupId>
-    <artifactId>workflow-cps-global-lib</artifactId>
+    <groupId>io.jenkins.plugins</groupId>
+    <artifactId>pipeline-groovy-lib</artifactId>
     <version>${changelist}</version>
     <packaging>hpi</packaging>
-    <name>Pipeline: Shared Groovy Libraries</name>
-    <url>https://github.com/jenkinsci/workflow-cps-global-lib-plugin</url>
+    <name>Pipeline: Groovy Libraries</name>
+    <url>https://github.com/jenkinsci/${project.artifactId}-plugin</url>
     <licenses>
         <license>
             <name>MIT License</name>
@@ -64,7 +64,6 @@
     <properties>
         <changelist>999999-SNAPSHOT</changelist>
         <jenkins.version>2.303.1</jenkins.version>
-        <java.level>8</java.level>
         <gitHubRepo>jenkinsci/${project.artifactId}-plugin</gitHubRepo>
     </properties>
     <dependencyManagement>
@@ -93,15 +92,19 @@
         </dependency>
         <dependency>
             <groupId>org.jenkins-ci.plugins.workflow</groupId>
+            <artifactId>workflow-scm-step</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.jenkins-ci.plugins</groupId>
+            <artifactId>structs</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.jenkins-ci.plugins.workflow</groupId>
             <artifactId>workflow-cps</artifactId>
         </dependency>
         <dependency>
             <groupId>org.jenkins-ci.plugins.workflow</groupId>
             <artifactId>workflow-step-api</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.jenkins-ci.plugins</groupId>
-            <artifactId>git-server</artifactId>
         </dependency>
         <dependency>
             <groupId>org.jenkins-ci.plugins</groupId>
@@ -114,14 +117,6 @@
         <dependency>
             <groupId>org.jenkins-ci.plugins</groupId>
             <artifactId>script-security</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.jenkins-ci.plugins</groupId>
-            <artifactId>credentials</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.jenkins-ci.plugins.workflow</groupId>
-            <artifactId>workflow-support</artifactId>
         </dependency>
 
         <dependency>
