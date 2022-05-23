@@ -19,7 +19,6 @@ import jenkins.model.Jenkins;
  * Global variable backed by user-supplied script.
  *
  * @author Kohsuke Kawaguchi
- * @see UserDefinedGlobalVariableList
  */
 // not @Extension because these are instantiated programmatically
 public class UserDefinedGlobalVariable extends GlobalVariable {
