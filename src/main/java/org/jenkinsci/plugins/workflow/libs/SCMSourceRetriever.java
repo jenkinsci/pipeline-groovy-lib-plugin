@@ -208,7 +208,7 @@ public class SCMSourceRetriever extends LibraryRetriever {
             }
             String excludes = INCLUDE_SRC_TEST_IN_LIBRARIES ? null : "src/test/";
             if (lease.path.child(libraryPath).child("src/test").exists()) {
-                listener.getLogger().println("Excluding src/test/ from checkout of " + scm.getKey() + " so that shared library test code cannot be accessed by Pipelines.");
+                listener.getLogger().println("Excluding src/test/ from checkout of " + scm.getKey() + " so that library test code cannot be accessed by Pipelines.");
                 listener.getLogger().println("To remove this log message, move the test code outside of src/. To restore the previous behavior that allowed access to files in src/test/, pass -D" + SCMSourceRetriever.class.getName() + ".INCLUDE_SRC_TEST_IN_LIBRARIES=true to the java command used to start Jenkins.");
             }
             // Cannot add WorkspaceActionImpl to private CpsFlowExecution.flowStartNodeActions; do we care?
@@ -335,14 +335,14 @@ public class SCMSourceRetriever extends LibraryRetriever {
                         if (dir.isDirectory()) {
                             LOGGER.log(
                                     Level.INFO,
-                                    () -> "Deleting obsolete shared library workspace " + dir);
+                                    () -> "Deleting obsolete library workspace " + dir);
                             dir.deleteRecursive();
                         }
                     } catch (IOException | InterruptedException e) {
                         LOGGER.log(
                                 Level.WARNING,
                                 e,
-                                () -> "Could not delete obsolete shared library workspace " + dir);
+                                () -> "Could not delete obsolete library workspace " + dir);
                     }
                 }
             }

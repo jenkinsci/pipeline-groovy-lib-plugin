@@ -1,4 +1,4 @@
 <?jelly escape-by-default='true'?>
 <div>
-  Shared libraries for Pipeline scripts.
+  Libraries for Pipeline scripts allowing logic to be shared across jobs.
 </div>

@@ -126,7 +126,7 @@ public class LibraryStep extends AbstractStepImpl {
         }
 
         @Override public String getDisplayName() {
-            return "Load a shared library on the fly";
+            return "Load a library on the fly";
         }
 
         @Restricted(DoNotUse.class) // Jelly

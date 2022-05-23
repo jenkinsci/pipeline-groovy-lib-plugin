@@ -35,7 +35,7 @@
     <artifactId>pipeline-groovy-lib</artifactId>
     <version>${changelist}</version>
     <packaging>hpi</packaging>
-    <name>Pipeline: Shared Groovy Libraries</name>
+    <name>Pipeline: Groovy Libraries</name>
     <url>https://github.com/jenkinsci/${project.artifactId}-plugin</url>
     <licenses>
         <license>

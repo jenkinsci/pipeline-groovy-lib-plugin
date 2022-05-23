@@ -74,7 +74,7 @@ public class ResourceStep extends AbstractStepImpl {
         }
 
         @Override public String getDisplayName() {
-            return "Load a resource file from a shared library";
+            return "Load a resource file from a library";
         }
 
         @Override public String getFunctionName() {
