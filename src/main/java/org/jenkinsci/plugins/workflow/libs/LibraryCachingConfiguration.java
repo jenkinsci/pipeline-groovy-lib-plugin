@@ -89,45 +89,60 @@ public final class LibraryCachingConfiguration extends AbstractDescribableImpl<L
     }
 
     @Extension public static class DescriptorImpl extends Descriptor<LibraryCachingConfiguration> {
-        public FormValidation doClearCache(@QueryParameter String name, @QueryParameter boolean forceDelete) throws InterruptedException {
+        public FormValidation doClearCache(@QueryParameter String name, @QueryParameter String cachedLibraryRef, @QueryParameter boolean forceDelete) throws InterruptedException {
             Jenkins.get().checkPermission(Jenkins.ADMINISTER);
-
+            String cacheDirName = null;
             try {
                 if (LibraryCachingConfiguration.getGlobalLibrariesCacheDir().exists()) {
-                    for (FilePath libraryNamePath : LibraryCachingConfiguration.getGlobalLibrariesCacheDir().list("*-name.txt")) {
-                        // Libraries configured in distinct locations may have the same name. Since only admins are allowed here, this is not a huge issue, but it is probably unexpected.
-                        String cacheName;
-                        try (InputStream stream = libraryNamePath.read()) {
-                            cacheName = IOUtils.toString(stream, StandardCharsets.UTF_8);
-                        }
-                        if (cacheName.equals(name)) {
-                            FilePath libraryCachePath = LibraryCachingConfiguration.getGlobalLibrariesCacheDir()
-                                    .child(libraryNamePath.getName().replace("-name.txt", ""));
-                            if (forceDelete) {
-                                LOGGER.log(Level.FINER, "Force deleting cache for {0}", name);
-                                libraryCachePath.deleteRecursive();
-                                libraryNamePath.delete();
-                            } else {
-                                LOGGER.log(Level.FINER, "Safe deleting cache for {0}", name);
-                                ReentrantReadWriteLock retrieveLock = LibraryAdder.getReadWriteLockFor(libraryCachePath.getName());
-                                if (retrieveLock.writeLock().tryLock(10, TimeUnit.SECONDS)) {
-                                    try {
-                                        libraryCachePath.deleteRecursive();
-                                        libraryNamePath.delete();
-                                    } finally {
-                                        retrieveLock.writeLock().unlock();
+                   outer: for (FilePath libraryCache : LibraryCachingConfiguration.getGlobalLibrariesCacheDir().listDirectories()) {
+                        for (FilePath libraryNamePath : libraryCache.list("*-name.txt")) {
+                            if (libraryNamePath.readToString().startsWith(name + "@")) {
+                                FilePath libraryCachePath = libraryNamePath.getParent();
+                                if (libraryCachePath != null) {
+                                    FilePath versionCachePath = new FilePath(libraryCachePath, libraryNamePath.getName().replace("-name.txt", ""));
+                                    LOGGER.log(Level.FINER, "Safe deleting cache for {0}", name);
+                                    ReentrantReadWriteLock retrieveLock = LibraryAdder.getReadWriteLockFor(libraryCachePath.getName());
+                                    if (forceDelete || retrieveLock.writeLock().tryLock(10, TimeUnit.SECONDS)) {
+                                        if (forceDelete) {
+                                            LOGGER.log(Level.FINER, "Force deleting cache for {0}", name);
+                                        } else {
+                                            LOGGER.log(Level.FINER, "Safe deleting cache for {0}", name);
+                                        }
+                                        try {
+                                            if (StringUtils.isNotEmpty(cachedLibraryRef)) {
+                                                if (libraryNamePath.readToString().equals(name + "@" + cachedLibraryRef)) {
+                                                    cacheDirName = name + "@" + cachedLibraryRef;
+                                                    libraryNamePath.delete();
+                                                    versionCachePath.deleteRecursive();
+                                                    break outer;
+                                                }
+                                            } else {
+                                                cacheDirName = name;
+                                                libraryCachePath.deleteRecursive();
+                                                break outer;
+                                            }
+                                        } finally {
+                                            if (!forceDelete) {
+                                                retrieveLock.writeLock().unlock();
+                                            }
+                                        }
+                                    } else {
+                                        return FormValidation.error("The cache dir could not be deleted because it is currently being used by another thread. Please try again.");
                                     }
-                                } else {
-                                    return FormValidation.error("The cache dir could not be deleted because it is currently being used by another thread. Please try again.");
                                 }
                             }
                         }
                     }
                 }
             } catch (IOException ex) {
-                return FormValidation.error(ex, "The cache dir was not deleted successfully");
+                return FormValidation.error(ex, String.format("The cache dir %s was not deleted successfully", cacheDirName));
             }
-            return FormValidation.ok("The cache dir was deleted successfully.");
+            
+            if (cacheDirName == null) {
+                return FormValidation.ok(String.format("The version %s was not found for library %s.", cachedLibraryRef, name));
+            } else {
+                return FormValidation.ok(String.format("The cache dir %s was deleted successfully.", cacheDirName));
+            }
         }
 
     }

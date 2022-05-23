@@ -27,6 +27,8 @@ package org.jenkinsci.plugins.workflow.libs;
 import hudson.ExtensionList;
 import hudson.FilePath;
 import java.io.File;
+import java.util.Arrays;
+import java.util.List;
 import jenkins.plugins.git.GitSCMSource;
 import jenkins.plugins.git.GitSampleRepoRule;
 import org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition;
@@ -157,29 +159,68 @@ public class LibraryCachingConfigurationTest {
 
     @Test
     public void clearCache() throws Exception {
+        List<FilePath> caches = setupLibraryCaches();
+        FilePath cache = caches.get(0);
+        FilePath cache2 = caches.get(1);
+        assertThat("Must be different paths", cache, not(equalTo(cache2)));
+        assertThat(new File(cache.getParent().getRemote()), anExistingDirectory());
+        assertThat(new File(cache.getRemote()), anExistingDirectory());
+        assertThat(new File(cache2.getRemote()), anExistingDirectory());
+        assertThat(new File(cache.withSuffix("-name.txt").getRemote()), anExistingFile());
+        assertThat(cache.withSuffix("-name.txt").readToString(), equalTo("library@master"));
+        assertThat(cache2.withSuffix("-name.txt").readToString(), equalTo("library@feature/something"));
+        // Clear the cache. TODO: Would be more realistic to set up security and use WebClient.
+        ExtensionList.lookupSingleton(LibraryCachingConfiguration.DescriptorImpl.class).doClearCache("library", "", false);
+        assertThat(new File(cache.getParent().getRemote()), not(anExistingDirectory()));
+        assertThat(new File(cache.withSuffix("-name.txt").getRemote()), not(anExistingFile()));
+    }
+    
+    @Test
+    public void clearCacheVersion() throws Exception {
+       
+        List<FilePath> caches = setupLibraryCaches();
+        FilePath cache = caches.get(0);
+        FilePath cache2 = caches.get(1);
+        assertThat(new File(cache.getRemote()), anExistingDirectory());
+        // Clear the cache. TODO: Would be more realistic to set up security and use WebClient.
+        ExtensionList.lookupSingleton(LibraryCachingConfiguration.DescriptorImpl.class).doClearCache("library", "master", false);
+        assertThat(new File(cache.getParent().getRemote()), anExistingDirectory());
+        assertThat(new File(cache.getRemote()), not(anExistingDirectory()));
+        assertThat(new File(cache.withSuffix("-name.txt").getRemote()), not(anExistingFile()));
+        //Other cache has not been touched
+        assertThat(new File(cache2.getRemote()), anExistingDirectory());
+        assertThat(new File(cache2.withSuffix("-name.txt").getRemote()), anExistingFile());
+    }
+
+    
+    private List<FilePath> setupLibraryCaches() throws Exception {
         sampleRepo.init();
         sampleRepo.write("vars/foo.groovy", "def call() { echo 'foo' }");
         sampleRepo.git("add", "vars");
         sampleRepo.git("commit", "--message=init");
+        sampleRepo.git("branch", "feature/something");
         LibraryConfiguration config = new LibraryConfiguration("library",
                 new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true)));
         config.setDefaultVersion("master");
-        config.setImplicit(true);
+        config.setImplicit(false);
         config.setCachingConfiguration(new LibraryCachingConfiguration(30, null));
+        config.setAllowVersionOverride(true);
         GlobalLibraries.get().getLibraries().add(config);
         // Run build and check that cache gets created.
         WorkflowJob p = r.createProject(WorkflowJob.class);
-        p.setDefinition(new CpsFlowDefinition("foo()", true));
+        p.setDefinition(new CpsFlowDefinition("library identifier: 'library', changelog:false\n\nfoo()", true));
         WorkflowRun b = r.buildAndAssertSuccess(p);
+        WorkflowJob p2 = r.createProject(WorkflowJob.class);
+        p2.setDefinition(new CpsFlowDefinition("library identifier: 'library@feature/something', changelog:false\n\nfoo()", true));
+        WorkflowRun b2 = r.buildAndAssertSuccess(p2);
         LibrariesAction action = b.getAction(LibrariesAction.class);
         LibraryRecord record = action.getLibraries().get(0);
+        LibrariesAction action2 = b2.getAction(LibrariesAction.class);
+        LibraryRecord record2 = action2.getLibraries().get(0);
+        
         FilePath cache = LibraryCachingConfiguration.getGlobalLibrariesCacheDir().child(record.getDirectoryName());
-        assertThat(new File(cache.getRemote()), anExistingDirectory());
-        assertThat(new File(cache.withSuffix("-name.txt").getRemote()), anExistingFile());
-        // Clear the cache. TODO: Would be more realistic to set up security and use WebClient.
-        ExtensionList.lookupSingleton(LibraryCachingConfiguration.DescriptorImpl.class).doClearCache("library", false);
-        assertThat(new File(cache.getRemote()), not(anExistingDirectory()));
-        assertThat(new File(cache.withSuffix("-name.txt").getRemote()), not(anExistingFile()));
+        FilePath cache2 = LibraryCachingConfiguration.getGlobalLibrariesCacheDir().child(record2.getDirectoryName());
+        
+        return Arrays.asList(cache, cache2);
     }
-
 }

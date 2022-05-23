@@ -195,7 +195,7 @@ public class ResourceStepTest {
         Path resourcesDir = Paths.get(sampleRepo.getRoot().getPath(), "resources");
         Files.createDirectories(resourcesDir);
         Path symlinkPath = Paths.get(resourcesDir.toString(), "master.key");
-        Files.createSymbolicLink(symlinkPath, Paths.get("../../../../../../../secrets/master.key"));
+        Files.createSymbolicLink(symlinkPath, Paths.get("../../../../../../../../secrets/master.key"));
 
         sampleRepo.git("add", "src", "resources");
         sampleRepo.git("commit", "--message=init");
@@ -270,8 +270,9 @@ public class ResourceStepTest {
     }
 
     public void modifyCacheTimestamp(String name, String version, long timestamp) throws Exception {
-        String cacheDirName = LibraryRecord.directoryNameFor(name, version, String.valueOf(true), GlobalLibraries.ForJob.class.getName());
-        FilePath cacheDir = new FilePath(LibraryCachingConfiguration.getGlobalLibrariesCacheDir(), cacheDirName);
+        String cacheDirName = LibraryRecord.directoryNameFor(name, String.valueOf(true), GlobalLibraries.ForJob.class.getName());
+        FilePath libraryDir = new FilePath(LibraryCachingConfiguration.getGlobalLibrariesCacheDir(), cacheDirName);
+        FilePath cacheDir = new FilePath(libraryDir, LibraryRecord.directoryNameFor(version));
         if (cacheDir.exists()) {
             cacheDir.touch(timestamp);
         }
