@@ -9,13 +9,14 @@ import jenkins.model.Jenkins;
 import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.QueryParameter;
 
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang.StringUtils;
 
@@ -26,7 +27,6 @@ public final class LibraryCachingConfiguration extends AbstractDescribableImpl<L
     private static final String VERSIONS_SEPARATOR = " ";
     public static final String GLOBAL_LIBRARIES_DIR = "global-libraries-cache";
     public static final String LAST_READ_FILE = "last_read";
-    public static final String RETRIEVE_LOCK_FILE = "retrieve.lock";
 
     @DataBoundConstructor public LibraryCachingConfiguration(int refreshTimeMinutes, String excludedVersionsStr) {
         this.refreshTimeMinutes = refreshTimeMinutes;
@@ -97,8 +97,17 @@ public final class LibraryCachingConfiguration extends AbstractDescribableImpl<L
                         if (libraryNamePath.readToString().equals(name)) {
                             FilePath libraryCachePath = LibraryCachingConfiguration.getGlobalLibrariesCacheDir()
                                     .child(libraryNamePath.getName().replace("-name.txt", ""));
-                            libraryCachePath.deleteRecursive();
-                            libraryNamePath.delete();
+                            ReentrantReadWriteLock retrieveLock = LibraryAdder.getReadWriteLockFor(libraryCachePath.getName());
+                            if (retrieveLock.writeLock().tryLock(10, TimeUnit.SECONDS)) {
+                                try {
+                                    libraryCachePath.deleteRecursive();
+                                    libraryNamePath.delete();
+                                } finally {
+                                    retrieveLock.writeLock().unlock();
+                                }
+                            } else {
+                                return FormValidation.error("The cache dir is currently used by another thread, so deletion was not possibly. Please try again");
+                            }
                         }
                     }
                 }
