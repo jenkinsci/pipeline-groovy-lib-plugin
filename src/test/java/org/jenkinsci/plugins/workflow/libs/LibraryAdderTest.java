@@ -28,6 +28,7 @@ import com.cloudbees.hudson.plugins.folder.Folder;
 import hudson.FilePath;
 import hudson.model.Job;
 import hudson.model.Result;
+import hudson.model.queue.QueueTaskFuture;
 import hudson.plugins.git.BranchSpec;
 import hudson.plugins.git.GitSCM;
 import hudson.plugins.git.SubmoduleConfig;
@@ -36,6 +37,8 @@ import hudson.plugins.git.extensions.GitSCMExtension;
 import hudson.slaves.WorkspaceList;
 import hudson.scm.SubversionSCM;
 import hudson.scm.ChangeLogSet;
+
+import java.time.ZonedDateTime;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Iterator;
@@ -472,4 +475,41 @@ public class LibraryAdderTest {
         r.assertLogContains("called Foo", b);
     }
 
+    @Issue("JENKINS-66898")
+    @Test
+    public void parallelBuildsDontInterfereWithExpiredCache() throws Throwable {
+        // Add a few files to the library so the deletion is not too fast
+        // Before fixing JENKINS-66898 this test was failing almost always
+        sampleRepo.init();
+        sampleRepo.write("vars/foo.groovy", "def call() { echo 'foo' }");
+        sampleRepo.write("vars/bar.groovy", "def call() { echo 'bar' }");
+        sampleRepo.write("vars/foo2.groovy", "def call() { echo 'foo2' }");
+        sampleRepo.write("vars/foo3.groovy", "def call() { echo 'foo3' }");
+        sampleRepo.write("vars/foo4.groovy", "def call() { echo 'foo4' }");
+        sampleRepo.git("add", "vars");
+        sampleRepo.git("commit", "--message=init");
+        LibraryConfiguration config = new LibraryConfiguration("library",
+                new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true)));
+        config.setDefaultVersion("master");
+        config.setImplicit(true);
+        config.setCachingConfiguration(new LibraryCachingConfiguration(30, null));
+        GlobalLibraries.get().getLibraries().add(config);
+        WorkflowJob p1 = r.createProject(WorkflowJob.class);
+        WorkflowJob p2 = r.createProject(WorkflowJob.class);
+        p1.setDefinition(new CpsFlowDefinition("foo()", true));
+        p2.setDefinition(new CpsFlowDefinition("foo()", true));
+        WorkflowRun b1 = r.buildAndAssertSuccess(p1);
+        LibrariesAction action = b1.getAction(LibrariesAction.class);
+        LibraryRecord record = action.getLibraries().get(0);
+        FilePath cache = LibraryCachingConfiguration.getGlobalLibrariesCacheDir().child(record.getDirectoryName());
+        //Expire the cache
+        long oldMillis = ZonedDateTime.now().minusMinutes(35).toInstant().toEpochMilli();
+        cache.touch(oldMillis);
+        QueueTaskFuture<WorkflowRun> f1 = p1.scheduleBuild2(0);
+        QueueTaskFuture<WorkflowRun> f2 = p2.scheduleBuild2(0);
+        WorkflowRun r1 = r.assertBuildStatus(Result.SUCCESS, f1);
+        WorkflowRun r2 = r.assertBuildStatus(Result.SUCCESS, f2);
+        r.assertLogContains("is due for a refresh after", r1);
+        r.assertLogContains("Library library@master is cached. Copying from home.", r2);
+    }
 }
