@@ -31,13 +31,10 @@ import hudson.model.Result;
 import hudson.model.queue.QueueTaskFuture;
 import hudson.plugins.git.BranchSpec;
 import hudson.plugins.git.GitSCM;
-import hudson.plugins.git.SubmoduleConfig;
 import hudson.plugins.git.UserRemoteConfig;
-import hudson.plugins.git.extensions.GitSCMExtension;
-import hudson.slaves.WorkspaceList;
-import hudson.scm.SubversionSCM;
 import hudson.scm.ChangeLogSet;
-
+import hudson.scm.SubversionSCM;
+import hudson.slaves.WorkspaceList;
 import java.time.ZonedDateTime;
 import java.util.Collection;
 import java.util.Collections;
@@ -48,6 +45,9 @@ import jenkins.plugins.git.GitSCMSource;
 import jenkins.plugins.git.GitSampleRepoRule;
 import jenkins.scm.impl.subversion.SubversionSCMSource;
 import jenkins.scm.impl.subversion.SubversionSampleRepoRule;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.nullValue;
 import org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition;
 import org.jenkinsci.plugins.workflow.cps.GlobalVariable;
 import org.jenkinsci.plugins.workflow.cps.global.GrapeTest;
@@ -55,17 +55,17 @@ import org.jenkinsci.plugins.workflow.cps.global.UserDefinedGlobalVariable;
 import org.jenkinsci.plugins.workflow.cps.replay.ReplayAction;
 import org.jenkinsci.plugins.workflow.job.WorkflowJob;
 import org.jenkinsci.plugins.workflow.job.WorkflowRun;
-import static org.junit.Assert.*;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertNotNull;
 import org.junit.ClassRule;
-import org.junit.Test;
 import org.junit.Rule;
+import org.junit.Test;
 import org.jvnet.hudson.test.BuildWatcher;
 import org.jvnet.hudson.test.Issue;
 import org.jvnet.hudson.test.JenkinsRule;
 import org.jvnet.hudson.test.TestExtension;
+import org.jvnet.hudson.test.WithoutJenkins;
 import org.jvnet.hudson.test.recipes.LocalData;
-
-import static org.hamcrest.Matchers.nullValue;
 
 public class LibraryAdderTest {
 
@@ -106,7 +106,7 @@ public class LibraryAdderTest {
             new SCMRetriever(
                     new GitSCM(Collections.singletonList(new UserRemoteConfig(sampleRepo.fileUrl(), null, null, null)),
                             Collections.singletonList(new BranchSpec("${library.stuff.version}")),
-                            false, Collections.<SubmoduleConfig>emptyList(), null, null, Collections.<GitSCMExtension>emptyList())));
+                            null, null, Collections.emptyList())));
         stuff.setDefaultVersion("master");
         stuff.setImplicit(true);
         GlobalLibraries.get().setLibraries(Collections.singletonList(stuff));
@@ -512,4 +512,13 @@ public class LibraryAdderTest {
         r.assertLogContains("is due for a refresh after", r1);
         r.assertLogContains("Library library@master is cached. Copying from home.", r2);
     }
+
+    @Issue("JENKINS-68544")
+    @WithoutJenkins
+    @Test public void className() {
+        assertThat(LibraryAdder.LoadedLibraries.className("/path/to/lib/src/some/pkg/Type.groovy", "/path/to/lib/src"), is("some.pkg.Type"));
+        assertThat(LibraryAdder.LoadedLibraries.className("C:\\path\\to\\lib\\src\\some\\pkg\\Type.groovy", "C:\\path\\to\\lib\\src"), is("some.pkg.Type"));
+        assertThat(LibraryAdder.LoadedLibraries.className("C:\\path\\to\\Extra\\lib\\src\\some\\pkg\\Type.groovy", "C:\\path\\to\\Extra\\lib\\src"), is("some.pkg.Type"));
+    }
+
 }

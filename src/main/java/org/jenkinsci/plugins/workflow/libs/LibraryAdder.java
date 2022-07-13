@@ -50,6 +50,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import edu.umd.cs.findbugs.annotations.CheckForNull;
 import edu.umd.cs.findbugs.annotations.NonNull;
+import java.util.regex.Pattern;
 import org.apache.commons.io.IOUtils;
 import org.jenkinsci.plugins.workflow.cps.CpsFlowExecution;
 import org.jenkinsci.plugins.workflow.cps.GlobalVariable;
@@ -377,7 +378,7 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
                                     continue;
                                 }
                                 for (FilePath groovy : root.list("**/*.groovy")) {
-                                    String clazz = groovy.getRemote().replaceFirst("^\\Q" + root.getRemote() + "\\E[/\\\\](.+)[.]groovy", "$1").replace('/', '.').replace('\\', '.');
+                                    String clazz = className(groovy.getRemote(), root.getRemote());
                                     scripts.put(clazz, groovy.readToString()); // TODO no idea what encoding the Groovy compiler uses
                                 }
                             }
@@ -388,6 +389,10 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
                 LOGGER.log(Level.WARNING, null, x);
             }
             return scripts;
+        }
+
+        static String className(String groovy, String root) {
+            return groovy.replaceFirst("^" + Pattern.quote(root) + "[/\\\\](.+)[.]groovy", "$1").replace('/', '.').replace('\\', '.');
         }
 
     }
