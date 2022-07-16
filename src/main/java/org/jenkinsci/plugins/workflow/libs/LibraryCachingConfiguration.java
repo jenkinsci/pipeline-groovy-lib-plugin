@@ -17,10 +17,16 @@ import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang.StringUtils;
 
 public final class LibraryCachingConfiguration extends AbstractDescribableImpl<LibraryCachingConfiguration> {
+    
+    private static final Logger LOGGER = Logger.getLogger(LibraryCachingConfiguration.class.getName());
+    
     private int refreshTimeMinutes;
     private String excludedVersionsStr;
 
@@ -83,7 +89,7 @@ public final class LibraryCachingConfiguration extends AbstractDescribableImpl<L
     }
 
     @Extension public static class DescriptorImpl extends Descriptor<LibraryCachingConfiguration> {
-        public FormValidation doClearCache(@QueryParameter String name) throws InterruptedException {
+        public FormValidation doClearCache(@QueryParameter String name, @QueryParameter boolean forceDelete) throws InterruptedException {
             Jenkins.get().checkPermission(Jenkins.ADMINISTER);
 
             try {
@@ -94,19 +100,26 @@ public final class LibraryCachingConfiguration extends AbstractDescribableImpl<L
                         try (InputStream stream = libraryNamePath.read()) {
                             cacheName = IOUtils.toString(stream, StandardCharsets.UTF_8);
                         }
-                        if (libraryNamePath.readToString().equals(name)) {
+                        if (cacheName.equals(name)) {
                             FilePath libraryCachePath = LibraryCachingConfiguration.getGlobalLibrariesCacheDir()
                                     .child(libraryNamePath.getName().replace("-name.txt", ""));
-                            ReentrantReadWriteLock retrieveLock = LibraryAdder.getReadWriteLockFor(libraryCachePath.getName());
-                            if (retrieveLock.writeLock().tryLock(10, TimeUnit.SECONDS)) {
-                                try {
-                                    libraryCachePath.deleteRecursive();
-                                    libraryNamePath.delete();
-                                } finally {
-                                    retrieveLock.writeLock().unlock();
-                                }
+                            if (forceDelete) {
+                                LOGGER.log(Level.FINER, "Force deleting cache for {0}", name);
+                                libraryCachePath.deleteRecursive();
+                                libraryNamePath.delete();
                             } else {
-                                return FormValidation.error("The cache dir is currently used by another thread, so deletion was not possibly. Please try again");
+                                LOGGER.log(Level.FINER, "Safe deleting cache for {0}", name);
+                                ReentrantReadWriteLock retrieveLock = LibraryAdder.getReadWriteLockFor(libraryCachePath.getName());
+                                if (retrieveLock.writeLock().tryLock(10, TimeUnit.SECONDS)) {
+                                    try {
+                                        libraryCachePath.deleteRecursive();
+                                        libraryNamePath.delete();
+                                    } finally {
+                                        retrieveLock.writeLock().unlock();
+                                    }
+                                } else {
+                                    return FormValidation.error("The cache dir could not be deleted because it is currently being used by another thread. Please try again.");
+                                }
                             }
                         }
                     }
