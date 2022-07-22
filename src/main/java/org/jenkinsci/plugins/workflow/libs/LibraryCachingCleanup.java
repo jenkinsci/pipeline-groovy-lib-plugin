@@ -8,6 +8,7 @@ import hudson.model.TaskListener;
 
 import java.io.IOException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.locks.ReentrantReadWriteLock;
 
 import jenkins.util.SystemProperties;
 
@@ -48,9 +49,16 @@ import jenkins.util.SystemProperties;
     private boolean removeIfExpiredCacheDirectory(FilePath library) throws IOException, InterruptedException {
         final FilePath lastReadFile = new FilePath(library, LibraryCachingConfiguration.LAST_READ_FILE);
         if (lastReadFile.exists()) {
-            if (System.currentTimeMillis() - lastReadFile.lastModified() > TimeUnit.DAYS.toMillis(EXPIRE_AFTER_READ_DAYS)) {
-                library.deleteRecursive();
-                library.withSuffix("-name.txt").delete();
+            ReentrantReadWriteLock retrieveLock = LibraryAdder.getReadWriteLockFor(library.getName());
+            retrieveLock.writeLock().lockInterruptibly();
+            try {
+                if (System.currentTimeMillis() - lastReadFile.lastModified() > TimeUnit.DAYS.toMillis(EXPIRE_AFTER_READ_DAYS)) {
+                
+                    library.deleteRecursive();
+                    library.withSuffix("-name.txt").delete();
+                }
+            } finally {
+                retrieveLock.writeLock().unlock();
             }
             return true;
         }
