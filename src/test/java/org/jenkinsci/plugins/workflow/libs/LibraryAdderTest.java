@@ -480,6 +480,7 @@ public class LibraryAdderTest {
     public void parallelBuildsDontInterfereWithExpiredCache() throws Throwable {
         // Add a few files to the library so the deletion is not too fast
         // Before fixing JENKINS-66898 this test was failing almost always
+        // with a build failure
         sampleRepo.init();
         sampleRepo.write("vars/foo.groovy", "def call() { echo 'foo' }");
         sampleRepo.write("vars/bar.groovy", "def call() { echo 'bar' }");
@@ -507,10 +508,12 @@ public class LibraryAdderTest {
         cache.touch(oldMillis);
         QueueTaskFuture<WorkflowRun> f1 = p1.scheduleBuild2(0);
         QueueTaskFuture<WorkflowRun> f2 = p2.scheduleBuild2(0);
-        WorkflowRun r1 = r.assertBuildStatus(Result.SUCCESS, f1);
-        WorkflowRun r2 = r.assertBuildStatus(Result.SUCCESS, f2);
-        r.assertLogContains("is due for a refresh after", r1);
-        r.assertLogContains("Library library@master is cached. Copying from home.", r2);
+        r.assertBuildStatus(Result.SUCCESS, f1);
+        r.assertBuildStatus(Result.SUCCESS, f2);
+        // Disabling these 2 checks as they are flaky
+        // Occasionally the second job runs first and then build output doesn't match
+        // r.assertLogContains("is due for a refresh after", f1.get());
+        // r.assertLogContains("Library library@master is cached. Copying from home.", f2.get());
     }
 
     @Issue("JENKINS-68544")
