@@ -177,7 +177,7 @@ public class LibraryCachingConfigurationTest {
         assertThat(new File(cache.getRemote()), anExistingDirectory());
         assertThat(new File(cache.withSuffix("-name.txt").getRemote()), anExistingFile());
         // Clear the cache. TODO: Would be more realistic to set up security and use WebClient.
-        ExtensionList.lookupSingleton(LibraryCachingConfiguration.DescriptorImpl.class).doClearCache("library");
+        ExtensionList.lookupSingleton(LibraryCachingConfiguration.DescriptorImpl.class).doClearCache("library", false);
         assertThat(new File(cache.getRemote()), not(anExistingDirectory()));
         assertThat(new File(cache.withSuffix("-name.txt").getRemote()), not(anExistingFile()));
     }
