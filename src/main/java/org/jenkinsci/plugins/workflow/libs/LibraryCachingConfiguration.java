@@ -29,15 +29,18 @@ public final class LibraryCachingConfiguration extends AbstractDescribableImpl<L
     
     private int refreshTimeMinutes;
     private String excludedVersionsStr;
+    private String includedVersionsStr;
 
     private static final String VERSIONS_SEPARATOR = " ";
     public static final String GLOBAL_LIBRARIES_DIR = "global-libraries-cache";
     public static final String LAST_READ_FILE = "last_read";
 
-    @DataBoundConstructor public LibraryCachingConfiguration(int refreshTimeMinutes, String excludedVersionsStr) {
+    @DataBoundConstructor public LibraryCachingConfiguration(int refreshTimeMinutes, String excludedVersionsStr, String includedVersionsStr) {
         this.refreshTimeMinutes = refreshTimeMinutes;
         this.excludedVersionsStr = excludedVersionsStr;
+        this.includedVersionsStr = includedVersionsStr;
     }
+
 
     public int getRefreshTimeMinutes() {
         return refreshTimeMinutes;
@@ -54,6 +57,8 @@ public final class LibraryCachingConfiguration extends AbstractDescribableImpl<L
     public String getExcludedVersionsStr() {
         return excludedVersionsStr;
     }
+    public String getIncludedVersionsStr() { return includedVersionsStr; }
+
 
     private List<String> getExcludedVersions() {
         if (excludedVersionsStr == null) {
@@ -62,12 +67,35 @@ public final class LibraryCachingConfiguration extends AbstractDescribableImpl<L
         return Arrays.asList(excludedVersionsStr.split(VERSIONS_SEPARATOR));
     }
 
+    private List<String> getIncludedVersions() {
+        if (includedVersionsStr == null) {
+            return Collections.emptyList();
+        }
+        return Arrays.asList(includedVersionsStr.split(VERSIONS_SEPARATOR));
+    }
+
     public Boolean isExcluded(String version) {
         // exit early if the version passed in is null or empty
         if (StringUtils.isBlank(version)) {
             return false;
         }
         for (String it : getExcludedVersions()) {
+            // confirm that the excluded versions aren't null or empty
+            // and if the version contains the exclusion thus it can be
+            // anywhere in the string.
+            if (StringUtils.isNotBlank(it) && version.contains(it)){
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public Boolean isIncluded(String version) {
+        // exit early if the version passed in is null or empty
+        if (StringUtils.isBlank(version)) {
+            return false;
+        }
+        for (String it : getIncludedVersions()) {
             // confirm that the excluded versions aren't null or empty
             // and if the version contains the exclusion thus it can be
             // anywhere in the string.
@@ -129,6 +157,38 @@ public final class LibraryCachingConfiguration extends AbstractDescribableImpl<L
             }
             return FormValidation.ok("The cache dir was deleted successfully.");
         }
+    }
 
+    /**
+     * Method can be called from an external source to delete cache of a particular version of the shared library
+     * Example: delete cache from through pipeline script once the build is successful
+     * @param jenkinsLibrary Name of the shared library
+     * @param version Name of the version to delete the cache
+     * @throws IOException
+     * @throws InterruptedException
+     */
+    public static void deleteLibraryCacheForBranch(String jenkinsLibrary, String version) throws IOException, InterruptedException {
+        if (LibraryCachingConfiguration.getGlobalLibrariesCacheDir().exists()) {
+            for (FilePath libraryNamePath : LibraryCachingConfiguration.getGlobalLibrariesCacheDir().list("*-name.txt")) {
+                String cacheName;
+                try (InputStream stream = libraryNamePath.read()) {
+                    cacheName = IOUtils.toString(stream, StandardCharsets.UTF_8);
+
+                    if (cacheName.equals(jenkinsLibrary)) {
+                        FilePath libraryCachePath = LibraryCachingConfiguration.getGlobalLibrariesCacheDir()
+                                .child(libraryNamePath.getName().replace("-name.txt", ""));
+                        ReentrantReadWriteLock retrieveLock = LibraryAdder.getReadWriteLockFor(libraryCachePath.getName());
+                        if (retrieveLock.writeLock().tryLock(10, TimeUnit.SECONDS)) {
+                            try {
+                                libraryCachePath.deleteRecursive();
+                                libraryNamePath.delete();
+                            } finally {
+                                retrieveLock.writeLock().unlock();
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }

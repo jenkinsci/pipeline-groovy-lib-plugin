@@ -420,7 +420,7 @@ public class LibraryAdderTest {
                 new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true)));
         globalLib.setDefaultVersion("master");
         globalLib.setImplicit(true);
-        globalLib.setCachingConfiguration(new LibraryCachingConfiguration(60, ""));
+        globalLib.setCachingConfiguration(new LibraryCachingConfiguration(60, "", ""));
         GlobalLibraries.get().setLibraries(Collections.singletonList(globalLib));
         // Create a folder library with the same name and which is also set up to enable caching.
         sampleRepo2.write("vars/folderLibVar.groovy", "def call() { jenkins.model.Jenkins.get().setSystemMessage('folder library') }");
@@ -430,7 +430,7 @@ public class LibraryAdderTest {
                 new SCMSourceRetriever(new GitSCMSource(null, sampleRepo2.toString(), "", "*", "", true)));
         folderLib.setDefaultVersion("master");
         folderLib.setImplicit(true);
-        folderLib.setCachingConfiguration(new LibraryCachingConfiguration(60, ""));
+        folderLib.setCachingConfiguration(new LibraryCachingConfiguration(60, "", ""));
         Folder f = r.jenkins.createProject(Folder.class, "folder1");
         f.getProperties().add(new FolderLibraries(Collections.singletonList(folderLib)));
         // Create a job that uses the folder library, which will take precedence over the global library, since they have the same name.
@@ -493,7 +493,7 @@ public class LibraryAdderTest {
                 new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true)));
         config.setDefaultVersion("master");
         config.setImplicit(true);
-        config.setCachingConfiguration(new LibraryCachingConfiguration(30, null));
+        config.setCachingConfiguration(new LibraryCachingConfiguration(30, null,null));
         GlobalLibraries.get().getLibraries().add(config);
         WorkflowJob p1 = r.createProject(WorkflowJob.class);
         WorkflowJob p2 = r.createProject(WorkflowJob.class);

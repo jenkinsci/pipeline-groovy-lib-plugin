@@ -210,7 +210,7 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
             shouldCache = false;
         }
 
-        if(shouldCache) {
+        if(shouldCache && cachingConfiguration.isIncluded(version)) {
             retrieveLock.readLock().lockInterruptibly();
             try {
                 CacheStatus cacheStatus = getCacheStatus(cachingConfiguration, versionCacheDir);
