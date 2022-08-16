@@ -33,8 +33,6 @@ import hudson.plugins.git.GitSCM;
 import hudson.plugins.git.SubmoduleConfig;
 import hudson.plugins.git.UserRemoteConfig;
 import hudson.plugins.git.extensions.GitSCMExtension;
-
-import java.io.File;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -101,15 +99,14 @@ public class LibraryStepTest {
         r.assertLogContains("ran library", b);
         LibrariesAction action = b.getAction(LibrariesAction.class);
         assertNotNull(action);
-        String directoryName = LibraryRecord.directoryNameFor("stuff", String.valueOf(true), GlobalLibraries.ForJob.class.getName()) + File.separator + LibraryRecord.directoryNameFor("master");
-
+        String directoryName = LibraryRecord.directoryNameFor("stuff", "master", String.valueOf(true), GlobalLibraries.ForJob.class.getName());
         assertEquals("[LibraryRecord{name=stuff, version=master, variables=[x], trusted=true, changelog=true, cachingConfiguration=null, directoryName=" + directoryName + "}]", action.getLibraries().toString());
         p.setDefinition(new CpsFlowDefinition("library identifier: 'otherstuff@master', retriever: modernSCM([$class: 'GitSCMSource', remote: $/" + sampleRepo + "/$, credentialsId: '']), changelog: false; x()", true));
         b = r.buildAndAssertSuccess(p);
         r.assertLogContains("ran library", b);
         action = b.getAction(LibrariesAction.class);
         assertNotNull(action);
-        directoryName = LibraryRecord.directoryNameFor("otherstuff", String.valueOf(false), LibraryStep.class.getName() + " " + b.getExternalizableId()) + File.separator + LibraryRecord.directoryNameFor("master");
+        directoryName = LibraryRecord.directoryNameFor("otherstuff", "master", String.valueOf(false), LibraryStep.class.getName() + " " + b.getExternalizableId());
         assertEquals("[LibraryRecord{name=otherstuff, version=master, variables=[x], trusted=false, changelog=false, cachingConfiguration=null, directoryName=" + directoryName + "}]", action.getLibraries().toString());
     }
 
