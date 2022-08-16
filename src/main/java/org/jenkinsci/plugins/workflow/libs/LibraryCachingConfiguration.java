@@ -158,37 +158,4 @@ public final class LibraryCachingConfiguration extends AbstractDescribableImpl<L
             return FormValidation.ok("The cache dir was deleted successfully.");
         }
     }
-
-    /**
-     * Method can be called from an external source to delete cache of a particular version of the shared library
-     * Example: delete cache from through pipeline script once the build is successful
-     * @param jenkinsLibrary Name of the shared library
-     * @param version Name of the version to delete the cache
-     * @throws IOException
-     * @throws InterruptedException
-     */
-    public static void deleteLibraryCacheForBranch(String jenkinsLibrary, String version) throws IOException, InterruptedException {
-        if (LibraryCachingConfiguration.getGlobalLibrariesCacheDir().exists()) {
-            for (FilePath libraryNamePath : LibraryCachingConfiguration.getGlobalLibrariesCacheDir().list("*-name.txt")) {
-                String cacheName;
-                try (InputStream stream = libraryNamePath.read()) {
-                    cacheName = IOUtils.toString(stream, StandardCharsets.UTF_8);
-
-                    if (cacheName.equals(jenkinsLibrary)) {
-                        FilePath libraryCachePath = LibraryCachingConfiguration.getGlobalLibrariesCacheDir()
-                                .child(libraryNamePath.getName().replace("-name.txt", ""));
-                        ReentrantReadWriteLock retrieveLock = LibraryAdder.getReadWriteLockFor(libraryCachePath.getName());
-                        if (retrieveLock.writeLock().tryLock(10, TimeUnit.SECONDS)) {
-                            try {
-                                libraryCachePath.deleteRecursive();
-                                libraryNamePath.delete();
-                            } finally {
-                                retrieveLock.writeLock().unlock();
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
 }

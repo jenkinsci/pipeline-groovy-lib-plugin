@@ -190,6 +190,7 @@ public class LibraryCachingConfigurationTest {
         assertFalse(substringVersionConfig.isExcluded(null));
     }
 
+    @Issue("JENKINS-69135") //"Versions to include" feature for caching
     @Test
     @WithoutJenkins
     public void isIncluded() {
@@ -204,6 +205,16 @@ public class LibraryCachingConfigurationTest {
 
         assertTrue(substringVersionConfig.isIncluded(SUBSTRING_INCLUDED_VERSIONS_1));
         assertTrue(substringVersionConfig.isIncluded(SUBSTRING_INCLUDED_VERSIONS_2));
+
+        assertFalse(nullVersionConfig.isIncluded(""));
+        assertFalse(oneVersionConfig.isIncluded(""));
+        assertFalse(multiVersionConfig.isIncluded(""));
+        assertFalse(substringVersionConfig.isIncluded(""));
+
+        assertFalse(nullVersionConfig.isIncluded(null));
+        assertFalse(oneVersionConfig.isIncluded(null));
+        assertFalse(multiVersionConfig.isIncluded(null));
+        assertFalse(substringVersionConfig.isIncluded(null));
 
     }
 
@@ -234,6 +245,9 @@ public class LibraryCachingConfigurationTest {
         assertThat(new File(cache.withSuffix("-name.txt").getRemote()), not(anExistingFile()));
     }
 
+    //Test similar substrings in "Versions to include" & "Versions to exclude"
+    //Exclusion takes precedence
+    @Issue("JENKINS-69135") //"Versions to include" feature for caching
     @Test
     public void clearCacheConflict() throws Exception {
         sampleRepo.init();
@@ -255,6 +269,7 @@ public class LibraryCachingConfigurationTest {
         LibrariesAction action = b.getAction(LibrariesAction.class);
         LibraryRecord record = action.getLibraries().get(0);
         FilePath cache = LibraryCachingConfiguration.getGlobalLibrariesCacheDir().child(record.getDirectoryName());
+        // Cache should not get created since the version is included in "Versions to exclude"
         assertThat(new File(cache.getRemote()), not(anExistingDirectory()));
         assertThat(new File(cache.withSuffix("-name.txt").getRemote()), not(anExistingFile()));
     }
