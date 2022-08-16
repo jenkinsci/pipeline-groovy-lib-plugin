@@ -32,15 +32,12 @@ THE SOFTWARE.
         <f:textbox />
     </f:entry>
      <f:entry title="${%Versions to include}" field="includedVersionsStr">
-       <f:textbox />
+        <f:textbox />
      </f:entry>
     <j:if test="${h.hasPermission(app.ADMINISTER)}">
-        <f:entry title="${%Clear cache for ref}" field="cachedLibraryRef">
-            <f:textbox />
-        </f:entry>
-	<f:entry title="${%Force clear cache}" field="forceDelete">
+        <f:entry title="${%Force clear cache}" field="forceDelete">
           <f:checkbox/>
         </f:entry>
-        <f:validateButton title="${%Clear cache}" progress="${%Clearing...}" method="clearCache" with="name,cachedLibraryRef,forceDelete" />
+        <f:validateButton title="${%Clear cache}" progress="${%Clearing...}" method="clearCache" with="name,forceDelete" />
     </j:if>
 </j:jelly>

@@ -493,7 +493,7 @@ public class LibraryAdderTest {
                 new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true)));
         config.setDefaultVersion("master");
         config.setImplicit(true);
-        config.setCachingConfiguration(new LibraryCachingConfiguration(30, null, null));
+        config.setCachingConfiguration(new LibraryCachingConfiguration(30, null,null));
         GlobalLibraries.get().getLibraries().add(config);
         WorkflowJob p1 = r.createProject(WorkflowJob.class);
         WorkflowJob p2 = r.createProject(WorkflowJob.class);

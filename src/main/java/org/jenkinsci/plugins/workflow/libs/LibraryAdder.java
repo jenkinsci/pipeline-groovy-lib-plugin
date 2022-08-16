@@ -202,7 +202,7 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
         FilePath libDir = new FilePath(execution.getOwner().getRootDir()).child("libs/" + record.getDirectoryName());
         Boolean shouldCache = cachingConfiguration != null;
         final FilePath versionCacheDir = new FilePath(LibraryCachingConfiguration.getGlobalLibrariesCacheDir(), record.getDirectoryName());
-        ReentrantReadWriteLock retrieveLock = getReadWriteLockFor(record.getName());
+        ReentrantReadWriteLock retrieveLock = getReadWriteLockFor(record.getDirectoryName());
         final FilePath lastReadFile = new FilePath(versionCacheDir, LibraryCachingConfiguration.LAST_READ_FILE);
 
         if(shouldCache && cachingConfiguration.isExcluded(version)) {
@@ -238,7 +238,7 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
                       }
                             
                         if (retrieve) {
-                            listener.getLogger().println("Caching library " + name + "@" + version);
+                            listener.getLogger().println("Caching library " + name + "@" + version);                            
                             versionCacheDir.mkdirs();
                             retriever.retrieve(name, version, changelog, versionCacheDir, run, listener);
                         }
@@ -251,7 +251,7 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
                 }
   
                 lastReadFile.touch(System.currentTimeMillis());
-                versionCacheDir.withSuffix("-name.txt").write(name + "@" + version, "UTF-8");
+                versionCacheDir.withSuffix("-name.txt").write(name, "UTF-8");
                 versionCacheDir.copyRecursiveTo(libDir);
             } finally {
               retrieveLock.readLock().unlock();
