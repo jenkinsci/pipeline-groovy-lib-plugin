@@ -27,6 +27,8 @@ package org.jenkinsci.plugins.workflow.libs;
 import hudson.ExtensionList;
 import hudson.FilePath;
 import java.io.File;
+import java.util.Arrays;
+import java.util.List;
 import jenkins.plugins.git.GitSCMSource;
 import jenkins.plugins.git.GitSampleRepoRule;
 import org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition;
@@ -61,19 +63,16 @@ public class LibraryCachingConfigurationTest {
     private static int NO_REFRESH_TIME_MINUTES = 0;
 
     private static String NULL_EXCLUDED_VERSION = null;
+
     private static String NULL_INCLUDED_VERSION = null;
 
     private static String ONE_EXCLUDED_VERSION = "branch-1";
-
-    private static String ONE_INCLUDED_VERSION = "branch-1i";
+    private static String ONE_INCLUDED_VERSION = "branch-1";
 
 
     private static String MULTIPLE_EXCLUDED_VERSIONS_1 = "main";
-
     private static String MULTIPLE_INCLUDED_VERSIONS_1 = "master";
-
     private static String MULTIPLE_EXCLUDED_VERSIONS_2 = "branch-2";
-
     private static String MULTIPLE_INCLUDED_VERSIONS_2 = "branch-2i";
 
     private static String MULTIPLE_EXCLUDED_VERSIONS_3 = "branch-3";
@@ -81,7 +80,6 @@ public class LibraryCachingConfigurationTest {
 
 
     private static String SUBSTRING_EXCLUDED_VERSIONS_1 = "feature/test-substring-exclude";
-
     private static String SUBSTRING_INCLUDED_VERSIONS_1 = "feature_include/test-substring";
 
     private static String SUBSTRING_EXCLUDED_VERSIONS_2 = "test-other-substring-exclude";
@@ -105,6 +103,7 @@ public class LibraryCachingConfigurationTest {
             "feature_include/ other-substring";
 
     private static String NEVER_EXCLUDED_VERSION = "never-excluded-version";
+    private static String NEVER_INCLUDED_VERSION = "never-included-version";
 
     @Before
     public void createCachingConfiguration() {
@@ -142,6 +141,7 @@ public class LibraryCachingConfigurationTest {
         assertFalse(oneVersionConfig.isRefreshEnabled());
     }
 
+
     @Test
     @WithoutJenkins
     public void getExcludedVersionsStr() {
@@ -151,6 +151,8 @@ public class LibraryCachingConfigurationTest {
         assertThat(substringVersionConfig.getExcludedVersionsStr(), is(SUBSTRING_EXCLUDED_VERSIONS));
     }
 
+
+    @Issue("JENKINS-69135") //"Versions to include" feature for caching
     @Test
     @WithoutJenkins
     public void getIncludedVersionsStr() {
@@ -159,6 +161,7 @@ public class LibraryCachingConfigurationTest {
         assertThat(multiVersionConfig.getIncludedVersionsStr(), is(MULTIPLE_INCLUDED_VERSIONS));
         assertThat(substringVersionConfig.getIncludedVersionsStr(), is(SUBSTRING_INCLUDED_VERSIONS));
     }
+
 
     @Test
     @WithoutJenkins
@@ -190,6 +193,7 @@ public class LibraryCachingConfigurationTest {
         assertFalse(substringVersionConfig.isExcluded(null));
     }
 
+    @Issue("JENKINS-69135") //"Versions to include" feature for caching
     @Test
     @WithoutJenkins
     public void isIncluded() {
@@ -205,35 +209,90 @@ public class LibraryCachingConfigurationTest {
         assertTrue(substringVersionConfig.isIncluded(SUBSTRING_INCLUDED_VERSIONS_1));
         assertTrue(substringVersionConfig.isIncluded(SUBSTRING_INCLUDED_VERSIONS_2));
 
+        assertFalse(nullVersionConfig.isIncluded(NEVER_EXCLUDED_VERSION));
+        assertFalse(oneVersionConfig.isIncluded(NEVER_EXCLUDED_VERSION));
+        assertFalse(multiVersionConfig.isIncluded(NEVER_EXCLUDED_VERSION));
+
+        assertFalse(nullVersionConfig.isIncluded(""));
+        assertFalse(oneVersionConfig.isIncluded(""));
+        assertFalse(multiVersionConfig.isIncluded(""));
+        assertFalse(substringVersionConfig.isIncluded(""));
+
+        assertFalse(nullVersionConfig.isIncluded(null));
+        assertFalse(oneVersionConfig.isIncluded(null));
+        assertFalse(multiVersionConfig.isIncluded(null));
+        assertFalse(substringVersionConfig.isIncluded(null));
     }
 
     @Test
     public void clearCache() throws Exception {
+        List<FilePath> caches = setupLibraryCaches();
+        FilePath cache = caches.get(0);
+        FilePath cache2 = caches.get(1);
+        assertThat("Must be different paths", cache, not(equalTo(cache2)));
+        assertThat(new File(cache.getParent().getRemote()), anExistingDirectory());
+        assertThat(new File(cache.getRemote()), anExistingDirectory());
+        assertThat(new File(cache2.getRemote()), anExistingDirectory());
+        assertThat(new File(cache.withSuffix("-name.txt").getRemote()), anExistingFile());
+        assertThat(cache.withSuffix("-name.txt").readToString(), equalTo("library@master"));
+        assertThat(cache2.withSuffix("-name.txt").readToString(), equalTo("library@feature/something"));
+        // Clear the cache. TODO: Would be more realistic to set up security and use WebClient.
+        ExtensionList.lookupSingleton(LibraryCachingConfiguration.DescriptorImpl.class).doClearCache("library", "", false);
+        assertThat(new File(cache.getParent().getRemote()), not(anExistingDirectory()));
+        assertThat(new File(cache.withSuffix("-name.txt").getRemote()), not(anExistingFile()));
+    }
+    
+    @Test
+    public void clearCacheVersion() throws Exception {
+       
+        List<FilePath> caches = setupLibraryCaches();
+        FilePath cache = caches.get(0);
+        FilePath cache2 = caches.get(1);
+        assertThat(new File(cache.getRemote()), anExistingDirectory());
+        // Clear the cache. TODO: Would be more realistic to set up security and use WebClient.
+        ExtensionList.lookupSingleton(LibraryCachingConfiguration.DescriptorImpl.class).doClearCache("library", "master", false);
+        assertThat(new File(cache.getParent().getRemote()), anExistingDirectory());
+        assertThat(new File(cache.getRemote()), not(anExistingDirectory()));
+        assertThat(new File(cache.withSuffix("-name.txt").getRemote()), not(anExistingFile()));
+        //Other cache has not been touched
+        assertThat(new File(cache2.getRemote()), anExistingDirectory());
+        assertThat(new File(cache2.withSuffix("-name.txt").getRemote()), anExistingFile());
+    }
+
+    
+    private List<FilePath> setupLibraryCaches() throws Exception {
         sampleRepo.init();
         sampleRepo.write("vars/foo.groovy", "def call() { echo 'foo' }");
         sampleRepo.git("add", "vars");
         sampleRepo.git("commit", "--message=init");
+        sampleRepo.git("branch", "feature/something");
         LibraryConfiguration config = new LibraryConfiguration("library",
                 new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true)));
         config.setDefaultVersion("master");
-        config.setImplicit(true);
-        config.setCachingConfiguration(new LibraryCachingConfiguration(30, null, "master"));
+        config.setImplicit(false);
+        config.setCachingConfiguration(new LibraryCachingConfiguration(30, null, "master feature/something"));
+        config.setAllowVersionOverride(true);
         GlobalLibraries.get().getLibraries().add(config);
         // Run build and check that cache gets created.
         WorkflowJob p = r.createProject(WorkflowJob.class);
-        p.setDefinition(new CpsFlowDefinition("foo()", true));
+        p.setDefinition(new CpsFlowDefinition("library identifier: 'library', changelog:false\n\nfoo()", true));
         WorkflowRun b = r.buildAndAssertSuccess(p);
+        WorkflowJob p2 = r.createProject(WorkflowJob.class);
+        p2.setDefinition(new CpsFlowDefinition("library identifier: 'library@feature/something', changelog:false\n\nfoo()", true));
+        WorkflowRun b2 = r.buildAndAssertSuccess(p2);
         LibrariesAction action = b.getAction(LibrariesAction.class);
         LibraryRecord record = action.getLibraries().get(0);
+        LibrariesAction action2 = b2.getAction(LibrariesAction.class);
+        LibraryRecord record2 = action2.getLibraries().get(0);
+        
         FilePath cache = LibraryCachingConfiguration.getGlobalLibrariesCacheDir().child(record.getDirectoryName());
-        assertThat(new File(cache.getRemote()), anExistingDirectory());
-        assertThat(new File(cache.withSuffix("-name.txt").getRemote()), anExistingFile());
-        // Clear the cache. TODO: Would be more realistic to set up security and use WebClient.
-        ExtensionList.lookupSingleton(LibraryCachingConfiguration.DescriptorImpl.class).doClearCache("library", false);
-        assertThat(new File(cache.getRemote()), not(anExistingDirectory()));
-        assertThat(new File(cache.withSuffix("-name.txt").getRemote()), not(anExistingFile()));
+        FilePath cache2 = LibraryCachingConfiguration.getGlobalLibrariesCacheDir().child(record2.getDirectoryName());
+        
+        return Arrays.asList(cache, cache2);
     }
 
+    //Test similar substrings in "Versions to include" & "Versions to exclude"
+    //Exclusion takes precedence
     @Test
     public void clearCacheConflict() throws Exception {
         sampleRepo.init();
@@ -255,8 +314,8 @@ public class LibraryCachingConfigurationTest {
         LibrariesAction action = b.getAction(LibrariesAction.class);
         LibraryRecord record = action.getLibraries().get(0);
         FilePath cache = LibraryCachingConfiguration.getGlobalLibrariesCacheDir().child(record.getDirectoryName());
+        // Cache should not get created since the version is included in "Versions to exclude"
         assertThat(new File(cache.getRemote()), not(anExistingDirectory()));
         assertThat(new File(cache.withSuffix("-name.txt").getRemote()), not(anExistingFile()));
     }
-
 }
