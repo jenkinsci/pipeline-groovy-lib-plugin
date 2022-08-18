@@ -52,6 +52,7 @@ import edu.umd.cs.findbugs.annotations.CheckForNull;
 import edu.umd.cs.findbugs.annotations.NonNull;
 import java.util.regex.Pattern;
 import org.apache.commons.io.IOUtils;
+import org.apache.commons.lang.StringUtils;
 import org.jenkinsci.plugins.workflow.cps.CpsFlowExecution;
 import org.jenkinsci.plugins.workflow.cps.GlobalVariable;
 import org.jenkinsci.plugins.workflow.cps.GlobalVariableSet;
@@ -210,7 +211,10 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
             shouldCache = false;
         }
 
-        if(shouldCache && cachingConfiguration.isIncluded(version)) {
+        //If the included versions is blank/null, cache irrespective
+        //else check if that version is included and then cache only that version
+
+        if((shouldCache && cachingConfiguration.isIncluded(version)) || (shouldCache && StringUtils.isBlank(cachingConfiguration.getIncludedVersionsStr()))) {
             retrieveLock.readLock().lockInterruptibly();
             try {
                 CacheStatus cacheStatus = getCacheStatus(cachingConfiguration, versionCacheDir);
@@ -220,8 +224,8 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
                     try {
                       boolean retrieve = false;
                       switch (getCacheStatus(cachingConfiguration, versionCacheDir)) {
-                          case VALID: 
-                              listener.getLogger().println("Library " + name + "@" + version + " is cached. Copying from home."); 
+                          case VALID:
+                              listener.getLogger().println("Library " + name + "@" + version + " is cached. Copying from home.");
                                 break;
                           case DOES_NOT_EXIST:
                               retrieve = true;
@@ -236,20 +240,20 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
                                 retrieve = true;
                                 break;
                       }
-                            
+
                         if (retrieve) {
-                            listener.getLogger().println("Caching library " + name + "@" + version);                            
+                            listener.getLogger().println("Caching library " + name + "@" + version);
                             versionCacheDir.mkdirs();
                             retriever.retrieve(name, version, changelog, versionCacheDir, run, listener);
                         }
                         retrieveLock.readLock().lock();
                     } finally {
-                        retrieveLock.writeLock().unlock(); 
+                        retrieveLock.writeLock().unlock();
                     }
                 } else {
-                    listener.getLogger().println("Library " + name + "@" + version + " is cached. Copying from home.");  
+                    listener.getLogger().println("Library " + name + "@" + version + " is cached. Copying from home.");
                 }
-  
+
                 lastReadFile.touch(System.currentTimeMillis());
                 versionCacheDir.withSuffix("-name.txt").write(name, "UTF-8");
                 versionCacheDir.copyRecursiveTo(libDir);

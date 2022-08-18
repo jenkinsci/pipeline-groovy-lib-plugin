@@ -57,7 +57,12 @@ public final class LibraryCachingConfiguration extends AbstractDescribableImpl<L
     public String getExcludedVersionsStr() {
         return excludedVersionsStr;
     }
-    public String getIncludedVersionsStr() { return includedVersionsStr; }
+    public String getIncludedVersionsStr() {
+        if(StringUtils.isBlank(includedVersionsStr)){
+            return null;
+        }
+            return includedVersionsStr;
+    }
 
 
     private List<String> getExcludedVersions() {

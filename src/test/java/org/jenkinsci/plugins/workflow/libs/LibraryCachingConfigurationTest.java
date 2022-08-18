@@ -206,16 +206,6 @@ public class LibraryCachingConfigurationTest {
         assertTrue(substringVersionConfig.isIncluded(SUBSTRING_INCLUDED_VERSIONS_1));
         assertTrue(substringVersionConfig.isIncluded(SUBSTRING_INCLUDED_VERSIONS_2));
 
-        assertFalse(nullVersionConfig.isIncluded(""));
-        assertFalse(oneVersionConfig.isIncluded(""));
-        assertFalse(multiVersionConfig.isIncluded(""));
-        assertFalse(substringVersionConfig.isIncluded(""));
-
-        assertFalse(nullVersionConfig.isIncluded(null));
-        assertFalse(oneVersionConfig.isIncluded(null));
-        assertFalse(multiVersionConfig.isIncluded(null));
-        assertFalse(substringVersionConfig.isIncluded(null));
-
     }
 
     @Test
@@ -228,7 +218,7 @@ public class LibraryCachingConfigurationTest {
                 new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true)));
         config.setDefaultVersion("master");
         config.setImplicit(true);
-        config.setCachingConfiguration(new LibraryCachingConfiguration(30, null, "master"));
+        config.setCachingConfiguration(new LibraryCachingConfiguration(30, null, null));
         GlobalLibraries.get().getLibraries().add(config);
         // Run build and check that cache gets created.
         WorkflowJob p = r.createProject(WorkflowJob.class);
@@ -272,6 +262,45 @@ public class LibraryCachingConfigurationTest {
         // Cache should not get created since the version is included in "Versions to exclude"
         assertThat(new File(cache.getRemote()), not(anExistingDirectory()));
         assertThat(new File(cache.withSuffix("-name.txt").getRemote()), not(anExistingFile()));
+    }
+
+    @Issue("JENKINS-69135") //"Versions to include" feature for caching
+    @Test
+    public void clearCacheIncludedVersion() throws Exception {
+        sampleRepo.init();
+        sampleRepo.write("vars/foo.groovy", "def call() { echo 'foo' }");
+        sampleRepo.git("add", "vars");
+        sampleRepo.git("commit", "--message=init");
+        sampleRepo.git("branch", "test/include");
+        LibraryConfiguration config = new LibraryConfiguration("library",
+                new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true)));
+        config.setDefaultVersion("master");
+        config.setAllowVersionOverride(true);
+        config.setImplicit(false);
+        config.setCachingConfiguration(new LibraryCachingConfiguration(30, "", "test/include"));
+        GlobalLibraries.get().getLibraries().add(config);
+        // Run build and check that cache gets created.
+        WorkflowJob p = r.createProject(WorkflowJob.class);
+        p.setDefinition(new CpsFlowDefinition("library identifier: 'library', changelog:false\n\nfoo()", true));
+        WorkflowRun b = r.buildAndAssertSuccess(p);
+        WorkflowJob p2 = r.createProject(WorkflowJob.class);
+        p2.setDefinition(new CpsFlowDefinition("library identifier: 'library@test/include', changelog:false\n\nfoo()", true));
+        WorkflowRun b2 = r.buildAndAssertSuccess(p2);
+        LibrariesAction action = b.getAction(LibrariesAction.class);
+        LibraryRecord record = action.getLibraries().get(0);
+        LibrariesAction action2 = b2.getAction(LibrariesAction.class);
+        LibraryRecord record2 = action2.getLibraries().get(0);
+        FilePath cache = LibraryCachingConfiguration.getGlobalLibrariesCacheDir().child(record.getDirectoryName());
+        FilePath cache2 = LibraryCachingConfiguration.getGlobalLibrariesCacheDir().child(record2.getDirectoryName());
+        assertThat(new File(cache.getRemote()), not(anExistingDirectory()));
+        assertThat(new File(cache.withSuffix("-name.txt").getRemote()), not(anExistingFile()));
+        assertThat(new File(cache2.getRemote()), anExistingDirectory());
+        assertThat(new File(cache2.withSuffix("-name.txt").getRemote()), anExistingFile());
+        // Clears cache for the entire library, until the "Delete specific cache version" feature in merged
+        // Clear the cache. TODO: Would be more realistic to set up security and use WebClient.
+        ExtensionList.lookupSingleton(LibraryCachingConfiguration.DescriptorImpl.class).doClearCache("library", false);
+        assertThat(new File(cache2.getRemote()), not(anExistingDirectory()));
+        assertThat(new File(cache2.withSuffix("-name.txt").getRemote()), not(anExistingFile()));
     }
 
 }
