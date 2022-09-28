@@ -218,6 +218,54 @@ public class SCMSourceRetrieverTest {
         assertThat("foo\\..\\bar", matchesPattern(PROHIBITED_DOUBLE_DOT));
     }
 
+    @Issue("JENKINS-69731")
+    @Test public void checkDefaultVersion() throws Exception {
+        sampleRepo.init();
+        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something special'}");
+        sampleRepo.git("add", "vars");
+        sampleRepo.git("commit", "--message=init");
+        sampleRepo.git("checkout", "-b", "feature");
+        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something very special'}");
+        sampleRepo.git("add", "vars");
+        sampleRepo.git("commit", "--message=init");
+        SCMSourceRetriever scm = new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true));
+        LibraryConfiguration lc = new LibraryConfiguration("branchylib", scm);
+        lc.setDefaultVersion("master");
+        lc.setIncludeInChangesets(false);
+        lc.setAllowBRANCH_NAME(true);
+        GlobalLibraries.get().setLibraries(Collections.singletonList(lc));
+
+        // Basename "libname" notation => use specified default branch
+        WorkflowJob p0 = r.jenkins.createProject(WorkflowJob.class, "p0");
+        p0.setDefinition(new CpsFlowDefinition("@Library('branchylib') import myecho; myecho()", true));
+        WorkflowRun b0 = r.buildAndAssertSuccess(p0);
+        r.assertLogContains("something special", b0);
+
+        // Use specified branch
+        WorkflowJob p1 = r.jenkins.createProject(WorkflowJob.class, "p1");
+        p1.setDefinition(new CpsFlowDefinition("@Library('branchylib@master') import myecho; myecho()", true));
+        WorkflowRun b1 = r.buildAndAssertSuccess(p1);
+        r.assertLogContains("something special", b1);
+
+        // Use another specified branch
+        WorkflowJob p2 = r.jenkins.createProject(WorkflowJob.class, "p2");
+        p2.setDefinition(new CpsFlowDefinition("@Library('branchylib@feature') import myecho; myecho()", true));
+        WorkflowRun b2 = r.buildAndAssertSuccess(p2);
+        r.assertLogContains("something very special", b2);
+
+        // Branch context for job not set - fall back to default
+        WorkflowJob p3 = r.jenkins.createProject(WorkflowJob.class, "p3");
+        p3.setDefinition(new CpsFlowDefinition("@Library('branchylib@${BRANCH_NAME}') import myecho; myecho()", true));
+        WorkflowRun b3 = r.buildAndAssertSuccess(p3);
+        r.assertLogContains("something special", b3);
+
+        // TODO: create a job instantiated from Git (or fooled into
+        // thinking it is - injecting BRANCH_NAME envvar via Java)
+        // and check behaviors with BRANCH_NAME="master",
+        // BRANCH_NAME="feature", BRANCH_NAME="bogus" and
+        // BRANCH_NAME=""
+    }
+
     @Issue("JENKINS-43802")
     @Test public void owner() throws Exception {
         GlobalLibraries.get().setLibraries(Collections.singletonList(
