@@ -259,6 +259,14 @@ public class SCMSourceRetrieverTest {
         WorkflowRun b3 = r.buildAndAssertSuccess(p3);
         r.assertLogContains("something special", b3);
 
+        // Use a specified but missing branch
+        WorkflowJob p4 = r.jenkins.createProject(WorkflowJob.class, "p4");
+        p4.setDefinition(new CpsFlowDefinition("@Library('branchylib@bogus') import myecho; myecho()", true));
+        WorkflowRun b4 = r.buildAndAssertStatus(Result.FAILURE, p4);
+        r.assertLogContains("ERROR: No version bogus found for library branchylib", b4);
+        r.assertLogContains("org.codehaus.groovy.control.MultipleCompilationErrorsException: startup failed:", b4);
+        r.assertLogContains("WorkflowScript: Loading libraries failed", b4);
+
         // TODO: create a job instantiated from Git (or fooled into
         // thinking it is - injecting BRANCH_NAME envvar via Java)
         // and check behaviors with BRANCH_NAME="master",
