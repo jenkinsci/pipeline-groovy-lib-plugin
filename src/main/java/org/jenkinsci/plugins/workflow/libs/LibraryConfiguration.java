@@ -32,6 +32,8 @@ import hudson.model.AbstractDescribableImpl;
 import hudson.model.Descriptor;
 import hudson.model.DescriptorVisibilityFilter;
 import hudson.model.Item;
+import hudson.model.Run;
+import hudson.model.TaskListener;
 import hudson.util.FormValidation;
 import jenkins.model.Jenkins;
 import org.kohsuke.accmod.Restricted;
@@ -58,6 +60,7 @@ public class LibraryConfiguration extends AbstractDescribableImpl<LibraryConfigu
     private String defaultVersion;
     private boolean implicit;
     private boolean allowVersionOverride = true;
+    private boolean allowBRANCH_NAME = false;
     private boolean includeInChangesets = true;
     private LibraryCachingConfiguration cachingConfiguration = null;
 
@@ -113,6 +116,20 @@ public class LibraryConfiguration extends AbstractDescribableImpl<LibraryConfigu
     }
 
     /**
+     * Whether jobs should be permitted to specify literally @Library('libname@${BRANCH_NAME}')
+     * in pipeline files (from SCM) to try using the same branch name of library as of the job
+     * definition. If such branch name does not exist, fall back to retrieve() defaultVersion.
+     */
+
+    public boolean isAllowBRANCH_NAME() {
+        return allowBRANCH_NAME;
+    }
+
+    @DataBoundSetter public void setAllowBRANCH_NAME(boolean allowBRANCH_NAME) {
+        this.allowBRANCH_NAME = allowBRANCH_NAME;
+    }
+
+    /**
      * Whether to include library changes in reported changes in a job {@link #getIncludeInChangesets}.
      */
     public boolean getIncludeInChangesets() {
@@ -140,14 +157,61 @@ public class LibraryConfiguration extends AbstractDescribableImpl<LibraryConfigu
     }
 
     @NonNull String defaultedVersion(@CheckForNull String version) throws AbortException {
+        return defaultedVersion(version, null, null);
+    }
+
+    @NonNull String defaultedVersion(@CheckForNull String version, Run<?, ?> run, TaskListener listener) throws AbortException {
         if (version == null) {
             if (defaultVersion == null) {
                 throw new AbortException("No version specified for library " + name);
             } else {
                 return defaultVersion;
             }
-        } else if (allowVersionOverride) {
+        } else if (allowVersionOverride && !"${BRANCH_NAME}".equals(version)) {
             return version;
+        } else if (allowBRANCH_NAME && "${BRANCH_NAME}".equals(version)) {
+            String runVersion = null;
+            Item runParent = null;
+            if (run != null && listener != null) {
+                try {
+                    runParent = run.getParent();
+                    runVersion = run.getEnvironment(listener).get("BRANCH_NAME", null);
+                } catch (Exception x) {
+                    // no-op, keep null
+                }
+            }
+
+            if (runParent == null || runVersion == null || "".equals(runVersion)) {
+                // Current build does not know a BRANCH_NAME envvar,
+                // or it's an empty string, or this request has null
+                // args for run/listener needed for validateVersion()
+                // below, or some other problem occurred.
+                // Fall back if we can:
+                if (defaultVersion == null) {
+                    throw new AbortException("No version specified for library " + name);
+                } else {
+                    return defaultVersion;
+                }
+            }
+
+            // Check if runVersion is resolvable by LibraryRetriever
+            // implementation (SCM, HTTP, etc.); fall back if not:
+            if (retriever != null) {
+                FormValidation fv = retriever.validateVersion(name, runVersion, runParent);
+
+                if (fv != null && fv.kind == FormValidation.Kind.OK) {
+                    return runVersion;
+                }
+            }
+
+            // No retriever, or its validateVersion() did not confirm
+            // usability of BRANCH_NAME string value as the version...
+            if (defaultVersion == null) {
+                throw new AbortException("BRANCH_NAME version " + runVersion +
+                    " was not found, and no default version specified, for library " + name);
+            } else {
+                return defaultVersion;
+            }
         } else {
             throw new AbortException("Version override not permitted for library " + name);
         }
@@ -172,16 +236,38 @@ public class LibraryConfiguration extends AbstractDescribableImpl<LibraryConfigu
         }
 
         @RequirePOST
-        public FormValidation doCheckDefaultVersion(@AncestorInPath Item context, @QueryParameter String defaultVersion, @QueryParameter boolean implicit, @QueryParameter boolean allowVersionOverride, @QueryParameter String name) {
+        public FormValidation doCheckDefaultVersion(@AncestorInPath Item context, @QueryParameter String defaultVersion, @QueryParameter boolean implicit, @QueryParameter boolean allowVersionOverride, @QueryParameter boolean allowBRANCH_NAME, @QueryParameter String name) {
             if (defaultVersion.isEmpty()) {
                 if (implicit) {
                     return FormValidation.error("If you load a library implicitly, you must specify a default version.");
+                }
+                if (allowBRANCH_NAME) {
+                    return FormValidation.error("If you allow use of literal '@${BRANCH_NAME}' for overriding a default version, you must define that version as fallback.");
                 }
                 if (!allowVersionOverride) {
                     return FormValidation.error("If you deny overriding a default version, you must define that version.");
                 }
                 return FormValidation.ok();
             } else {
+                if ("${BRANCH_NAME}".equals(defaultVersion)) {
+                    if (!allowBRANCH_NAME) {
+                        return FormValidation.error("Use of literal '@${BRANCH_NAME}' not allowed in this configuration.");
+                    }
+
+                    // The context is not a particular Run (might be a Job)
+                    // so we can't detect which BRANCH_NAME is relevant:
+                    String msg = "Cannot validate default version: " +
+                            "literal '@${BRANCH_NAME}' is reserved " +
+                            "for pipeline files from SCM";
+                    if (implicit) {
+                        // Someone might want to bind feature branches of
+                        // job definitions and implicit libs by default?..
+                        return FormValidation.warning(msg);
+                    } else {
+                        return FormValidation.error(msg);
+                    }
+                }
+
                 for (LibraryResolver resolver : ExtensionList.lookup(LibraryResolver.class)) {
                     for (LibraryConfiguration config : resolver.fromConfiguration(Stapler.getCurrentRequest())) {
                         if (config.getName().equals(name)) {

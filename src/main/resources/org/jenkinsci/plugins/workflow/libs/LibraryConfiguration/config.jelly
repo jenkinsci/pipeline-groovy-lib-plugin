@@ -37,6 +37,9 @@ THE SOFTWARE.
     <f:entry field="allowVersionOverride" title="${%Allow default version to be overridden}">
         <f:checkbox default="true"/>
     </f:entry>
+    <f:entry field="allowBRANCH_NAME" title="${%Allow literal use of @Library 'libname@$${BRANCH_NAME}' in pipeline scripts from SCM; falls back to default version if BRANCH_NAME is not available or not found}">
+        <f:checkbox default="false"/>
+    </f:entry>
     <f:entry field="includeInChangesets" title="${%Include @Library changes in job recent changes}">
         <f:checkbox default="true"/>
     </f:entry>
