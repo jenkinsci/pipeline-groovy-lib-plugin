@@ -26,9 +26,11 @@ package org.jenkinsci.plugins.workflow.libs;
 
 import java.util.Collections;
 
+import hudson.AbortException;
 import hudson.plugins.git.GitSCM;
 import org.hamcrest.Matchers;
 import org.junit.Test;
+import org.junit.Assert;
 import static org.junit.Assert.*;
 import org.junit.Rule;
 import org.jvnet.hudson.test.Issue;
@@ -92,6 +94,105 @@ public class LibraryConfigurationTest {
         assertNull(cfg.getDefaultVersion());
     }
 
+    @Issue("JENKINS-69731")
+    @Test public void nullPresentDefaultedVersion() {
+        String libraryName = "valid-name";
+        String defaultVersion = "master";
 
+        LibraryConfiguration cfg = new LibraryConfiguration(libraryName, new SCMRetriever(new GitSCM("https://phony.jenkins.io/bar.git")));
+        cfg.setDefaultVersion(defaultVersion);
+
+        assertEquals("master", cfg.getDefaultVersion());
+        try {
+            assertEquals("master", cfg.defaultedVersion(null));
+        } catch(AbortException ae) {
+            Assert.fail("LibraryConfiguration.defaultedVersion() threw an AbortException when it was not expected: " + ae.getMessage());
+        }
+    }
+
+    @Issue("JENKINS-69731")
+    @Test public void nullAbsentDefaultedVersion() {
+        String libraryName = "valid-name";
+
+        LibraryConfiguration cfg = new LibraryConfiguration(libraryName, new SCMRetriever(new GitSCM("https://phony.jenkins.io/bar.git")));
+
+        assertEquals(null, cfg.getDefaultVersion());
+        assertThrows(AbortException.class, () -> cfg.defaultedVersion(null));
+    }
+
+    @Issue("JENKINS-69731")
+    @Test public void forbiddenOverrideDefaultedVersion() {
+        String libraryName = "valid-name";
+
+        LibraryConfiguration cfg = new LibraryConfiguration(libraryName, new SCMRetriever(new GitSCM("https://phony.jenkins.io/bar.git")));
+        cfg.setAllowVersionOverride(false);
+
+        assertEquals(false, cfg.isAllowVersionOverride());
+        assertThrows(AbortException.class, () -> cfg.defaultedVersion("branchname"));
+    }
+
+    @Issue("JENKINS-69731")
+    @Test public void allowedOverrideDefaultedVersion() {
+        String libraryName = "valid-name";
+
+        LibraryConfiguration cfg = new LibraryConfiguration(libraryName, new SCMRetriever(new GitSCM("https://phony.jenkins.io/bar.git")));
+        cfg.setAllowVersionOverride(true);
+
+        assertEquals(true, cfg.isAllowVersionOverride());
+        try {
+            assertEquals("branchname", cfg.defaultedVersion("branchname"));
+        } catch(AbortException ae) {
+            Assert.fail("LibraryConfiguration.defaultedVersion() threw an AbortException when it was not expected: " + ae.getMessage());
+        }
+    }
+
+    @Issue("JENKINS-69731")
+    @Test public void notAllowedOverrideDefaultedVersionWhenBRANCH_NAME() {
+        String libraryName = "valid-name";
+
+        LibraryConfiguration cfg = new LibraryConfiguration(libraryName, new SCMRetriever(new GitSCM("https://phony.jenkins.io/bar.git")));
+        cfg.setAllowVersionOverride(true);
+        cfg.setAllowBRANCH_NAME(false);
+
+        assertEquals(true, cfg.isAllowVersionOverride());
+        assertEquals(false, cfg.isAllowBRANCH_NAME());
+        assertThrows(AbortException.class, () -> cfg.defaultedVersion("${BRANCH_NAME}"));
+        /* This SHOULD NOT return a version string that literally remains '${BRANCH_NAME}'! */
+    }
+
+    @Issue("JENKINS-69731")
+    @Test public void allowedBRANCH_NAMEnoRunPresentDefaultedVersion() {
+        String libraryName = "valid-name";
+        String defaultVersion = "master";
+
+        LibraryConfiguration cfg = new LibraryConfiguration(libraryName, new SCMRetriever(new GitSCM("https://phony.jenkins.io/bar.git")));
+        cfg.setDefaultVersion(defaultVersion);
+        cfg.setAllowBRANCH_NAME(true);
+
+        assertEquals(true, cfg.isAllowBRANCH_NAME());
+        try {
+            assertEquals("master", cfg.defaultedVersion("${BRANCH_NAME}", null, null));
+        } catch(AbortException ae) {
+            Assert.fail("LibraryConfiguration.defaultedVersion() threw an AbortException when it was not expected: " + ae.getMessage());
+        }
+    }
+
+    @Issue("JENKINS-69731")
+    @Test public void allowedBRANCH_NAMEnoRunAbsentDefaultedVersion() {
+        String libraryName = "valid-name";
+
+        LibraryConfiguration cfg = new LibraryConfiguration(libraryName, new SCMRetriever(new GitSCM("https://phony.jenkins.io/bar.git")));
+        cfg.setAllowBRANCH_NAME(true);
+
+        assertEquals(true, cfg.isAllowBRANCH_NAME());
+        assertThrows(AbortException.class, () -> cfg.defaultedVersion("${BRANCH_NAME}", null, null));
+    }
+
+    /* Note: further tests for JENKINS-69731 behaviors with allowBRANCH_NAME
+     * would rely on having a Run with or without a BRANCH_NAME envvar, and
+     * a TaskListener, and a (mock?) LibraryRetriever that would confirm or
+     * deny existence of a requested "version" (e.g. Git branch) of the lib.
+     * For examples, see e.g. SCMSourceRetrieverTest codebase.
+     */
 
 }
