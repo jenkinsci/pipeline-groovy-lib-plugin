@@ -282,7 +282,7 @@ public class SCMSourceRetrieverTest {
     }
 
     @Issue("JENKINS-69731")
-    @Test public void checkDefaultVersion_BRANCH_NAME_MBP() throws Exception {
+    @Test public void checkDefaultVersion_MBP_BRANCH_NAME() throws Exception {
         // Create a MultiBranch Pipeline job instantiated from Git
         // and check behaviors with BRANCH_NAME="master",
         // BRANCH_NAME="feature", and BRANCH_NAME="bogus"
@@ -425,10 +425,11 @@ public class SCMSourceRetrieverTest {
     }
 
     @Issue("JENKINS-69731")
-    @Test public void checkDefaultVersion_BRANCH_NAME_notAllowed() throws Exception {
+    @Test public void checkDefaultVersion_MBP_BRANCH_NAME_notAllowed() throws Exception {
         // Test that lc.setAllowBRANCH_NAME(false) causes
-        // @Library('libname@${BRANCH_NAME}') to always
-        // fail, while fixed branch names should work.
+        // @Library('libname@${BRANCH_NAME}') to always fail
+        // (not treated as a "version override" for funny
+        // branch name that is literally "${BRANCH_NAME}").
 
         sampleRepo.init();
         sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something special'}");
