@@ -61,6 +61,7 @@ public class LibraryConfiguration extends AbstractDescribableImpl<LibraryConfigu
     private boolean implicit;
     private boolean allowVersionOverride = true;
     private boolean allowBRANCH_NAME = false;
+    private boolean allowBRANCH_NAME_PR = false;
     private boolean includeInChangesets = true;
     private LibraryCachingConfiguration cachingConfiguration = null;
 
@@ -127,6 +128,14 @@ public class LibraryConfiguration extends AbstractDescribableImpl<LibraryConfigu
 
     @DataBoundSetter public void setAllowBRANCH_NAME(boolean allowBRANCH_NAME) {
         this.allowBRANCH_NAME = allowBRANCH_NAME;
+    }
+
+    public boolean isAllowBRANCH_NAME_PR() {
+        return allowBRANCH_NAME_PR;
+    }
+
+    @DataBoundSetter public void setAllowBRANCH_NAME_PR(boolean allowBRANCH_NAME_PR) {
+        this.allowBRANCH_NAME_PR = allowBRANCH_NAME_PR;
     }
 
     /**
@@ -202,6 +211,47 @@ public class LibraryConfiguration extends AbstractDescribableImpl<LibraryConfigu
                 if (fv != null && fv.kind == FormValidation.Kind.OK) {
                     return runVersion;
                 }
+
+                if (runVersion.startsWith("PR-") && allowBRANCH_NAME_PR) {
+                    // MultiBranch Pipeline support for pull requests
+                    // sets BRANCH_NAME="PR-123" and keeps source
+                    // and target branch names in CHANGE_BRANCH and
+                    // CHANGE_TARGET respectively.
+
+                    // First check for possible PR-source branch of
+                    // pipeline coordinated with a PR of trusted
+                    // shared library (if branch exists in library,
+                    // after repo protections involved, it is already
+                    // somewhat trustworthy):
+                    try {
+                        runVersion = run.getEnvironment(listener).get("CHANGE_BRANCH", null);
+                    } catch (Exception x) {
+                        runVersion = null;
+                    }
+                    if (runVersion != null && !("".equals(runVersion))) {
+                        fv = retriever.validateVersion(name, runVersion, runParent);
+
+                        if (fv != null && fv.kind == FormValidation.Kind.OK) {
+                            return runVersion;
+                        }
+                    }
+
+                    // Next check for possible PR-target branch of
+                    // pipeline coordinated with existing version of
+                    // trusted shared library:
+                    try {
+                        runVersion = run.getEnvironment(listener).get("CHANGE_TARGET", null);
+                    } catch (Exception x) {
+                        runVersion = null;
+                    }
+                    if (runVersion != null && !("".equals(runVersion))) {
+                        fv = retriever.validateVersion(name, runVersion, runParent);
+
+                        if (fv != null && fv.kind == FormValidation.Kind.OK) {
+                            return runVersion;
+                        }
+                    }
+                }
             }
 
             // No retriever, or its validateVersion() did not confirm
@@ -236,7 +286,7 @@ public class LibraryConfiguration extends AbstractDescribableImpl<LibraryConfigu
         }
 
         @RequirePOST
-        public FormValidation doCheckDefaultVersion(@AncestorInPath Item context, @QueryParameter String defaultVersion, @QueryParameter boolean implicit, @QueryParameter boolean allowVersionOverride, @QueryParameter boolean allowBRANCH_NAME, @QueryParameter String name) {
+        public FormValidation doCheckDefaultVersion(@AncestorInPath Item context, @QueryParameter String defaultVersion, @QueryParameter boolean implicit, @QueryParameter boolean allowVersionOverride, @QueryParameter boolean allowBRANCH_NAME, @QueryParameter boolean allowBRANCH_NAME_PR, @QueryParameter String name) {
             if (defaultVersion.isEmpty()) {
                 if (implicit) {
                     return FormValidation.error("If you load a library implicitly, you must specify a default version.");
@@ -246,6 +296,9 @@ public class LibraryConfiguration extends AbstractDescribableImpl<LibraryConfigu
                 }
                 if (!allowVersionOverride) {
                     return FormValidation.error("If you deny overriding a default version, you must define that version.");
+                }
+                if (allowBRANCH_NAME_PR) {
+                    return FormValidation.warning("This setting has no effect when you do not allow use of literal '@${BRANCH_NAME}' for overriding a default version");
                 }
                 return FormValidation.ok();
             } else {
