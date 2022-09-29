@@ -315,21 +315,35 @@ public class SCMSourceRetrieverTest {
         WorkflowMultiBranchProject mbp = r.jenkins.createProject(WorkflowMultiBranchProject.class, "mbp");
         BranchSource branchSource = new BranchSource(new GitSCMSource("source-id", sampleRepo2.toString(), "", "*", "", false));
         mbp.getSourcesList().add(branchSource);
+        // Note: this notification causes discovery of branches,
+        // definition of MBP "leaf" jobs, and launch of builds,
+        // so below we just make sure they complete and analyze
+        // the outcomes.
         sampleRepo2.notifyCommit(r);
+        r.waitUntilNoActivity();
 
         WorkflowJob p1 = mbp.getItem("master");
-        WorkflowRun b1 = r.buildAndAssertSuccess(p1);
+        WorkflowRun b1 = p1.getLastBuild();
+        r.waitForCompletion(b1);
+        assertFalse(p1.isBuilding());
+        r.assertBuildStatusSuccess(b1);
         r.assertLogContains("Loading library branchylib@master", b1);
         r.assertLogContains("something special", b1);
 
         WorkflowJob p2 = mbp.getItem("feature");
-        WorkflowRun b2 = r.buildAndAssertSuccess(p2);
+        WorkflowRun b2 = p2.getLastBuild();
+        r.waitForCompletion(b2);
+        assertFalse(p2.isBuilding());
+        r.assertBuildStatusSuccess(b2);
         r.assertLogContains("Loading library branchylib@feature", b2);
         r.assertLogContains("something very special", b2);
 
         // library branch "bogus" does not exist => fall back to default (master)
         WorkflowJob p3 = mbp.getItem("bogus");
-        WorkflowRun b3 = r.buildAndAssertSuccess(p3);
+        WorkflowRun b3 = p3.getLastBuild();
+        r.waitForCompletion(b3);
+        assertFalse(p3.isBuilding());
+        r.assertBuildStatusSuccess(b3);
         r.assertLogContains("Loading library branchylib@master", b3);
         r.assertLogContains("something special", b3);
 
@@ -376,20 +390,34 @@ public class SCMSourceRetrieverTest {
         WorkflowMultiBranchProject mbp = r.jenkins.createProject(WorkflowMultiBranchProject.class, "mbp");
         BranchSource branchSource = new BranchSource(new GitSCMSource("source-id", sampleRepo2.toString(), "", "*", "", false));
         mbp.getSourcesList().add(branchSource);
+        // Note: this notification causes discovery of branches,
+        // definition of MBP "leaf" jobs, and launch of builds,
+        // so below we just make sure they complete and analyze
+        // the outcomes.
         sampleRepo2.notifyCommit(r);
+        r.waitUntilNoActivity();
 
         WorkflowJob p1 = mbp.getItem("master");
-        WorkflowRun b1 = r.buildAndAssertSuccess(p1);
+        WorkflowRun b1 = p1.getLastBuild();
+        r.waitForCompletion(b1);
+        assertFalse(p1.isBuilding());
+        r.assertBuildStatusSuccess(b1);
         r.assertLogContains("Loading library branchylib@master", b1);
         r.assertLogContains("something special", b1);
 
         WorkflowJob p2 = mbp.getItem("feature");
-        WorkflowRun b2 = r.buildAndAssertSuccess(p2);
+        WorkflowRun b2 = p2.getLastBuild();
+        r.waitForCompletion(b2);
+        assertFalse(p2.isBuilding());
+        r.assertBuildStatusSuccess(b2);
         r.assertLogContains("Loading library branchylib@feature", b2);
         r.assertLogContains("something very special", b2);
 
         WorkflowJob p3 = mbp.getItem("bogus");
-        WorkflowRun b3 = r.buildAndAssertStatus(Result.FAILURE, p3);
+        WorkflowRun b3 = p3.getLastBuild();
+        r.waitForCompletion(b3);
+        assertFalse(p3.isBuilding());
+        r.assertBuildStatus(Result.FAILURE, b3);
         r.assertLogContains("ERROR: Could not resolve bogus", b3);
         r.assertLogContains("ambiguous argument 'bogus^{commit}': unknown revision or path not in the working tree", b3);
         r.assertLogContains("ERROR: No version bogus found for library branchylib", b3);
@@ -430,20 +458,34 @@ public class SCMSourceRetrieverTest {
         WorkflowMultiBranchProject mbp = r.jenkins.createProject(WorkflowMultiBranchProject.class, "mbp");
         BranchSource branchSource = new BranchSource(new GitSCMSource("source-id", sampleRepo2.toString(), "", "*", "", false));
         mbp.getSourcesList().add(branchSource);
+        // Note: this notification causes discovery of branches,
+        // definition of MBP "leaf" jobs, and launch of builds,
+        // so below we just make sure they complete and analyze
+        // the outcomes.
         sampleRepo2.notifyCommit(r);
+        r.waitUntilNoActivity();
 
         WorkflowJob p1 = mbp.getItem("master");
-        WorkflowRun b1 = r.buildAndAssertStatus(Result.FAILURE, p1);
+        WorkflowRun b1 = p1.getLastBuild();
+        r.waitForCompletion(b1);
+        assertFalse(p1.isBuilding());
+        r.assertBuildStatus(Result.FAILURE, b1);
         r.assertLogContains("ERROR: Version override not permitted for library branchylib", b1);
         r.assertLogContains("WorkflowScript: Loading libraries failed", b1);
 
         WorkflowJob p2 = mbp.getItem("feature");
-        WorkflowRun b2 = r.buildAndAssertStatus(Result.FAILURE, p2);
+        WorkflowRun b2 = p2.getLastBuild();
+        r.waitForCompletion(b2);
+        assertFalse(p2.isBuilding());
+        r.assertBuildStatus(Result.FAILURE, b2);
         r.assertLogContains("ERROR: Version override not permitted for library branchylib", b2);
         r.assertLogContains("WorkflowScript: Loading libraries failed", b2);
 
         WorkflowJob p3 = mbp.getItem("bogus");
-        WorkflowRun b3 = r.buildAndAssertStatus(Result.FAILURE, p3);
+        WorkflowRun b3 = p3.getLastBuild();
+        r.waitForCompletion(b3);
+        assertFalse(p3.isBuilding());
+        r.assertBuildStatus(Result.FAILURE, b3);
         r.assertLogContains("ERROR: Version override not permitted for library branchylib", b3);
         r.assertLogContains("WorkflowScript: Loading libraries failed", b3);
     }
