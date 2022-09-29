@@ -25,6 +25,7 @@
 package org.jenkinsci.plugins.workflow.libs;
 
 import hudson.AbortException;
+import hudson.EnvVars;
 import hudson.Extension;
 import hudson.ExtensionList;
 import hudson.Util;
@@ -34,8 +35,10 @@ import hudson.model.DescriptorVisibilityFilter;
 import hudson.model.Item;
 import hudson.model.Run;
 import hudson.model.TaskListener;
+import hudson.scm.SCM;
 import hudson.util.FormValidation;
 import jenkins.model.Jenkins;
+import org.jenkinsci.plugins.workflow.job.WorkflowRun;
 import org.kohsuke.accmod.Restricted;
 import org.kohsuke.accmod.restrictions.NoExternalUse;
 import org.kohsuke.stapler.AncestorInPath;
@@ -48,6 +51,8 @@ import org.kohsuke.stapler.interceptor.RequirePOST;
 
 import edu.umd.cs.findbugs.annotations.CheckForNull;
 import edu.umd.cs.findbugs.annotations.NonNull;
+import java.lang.reflect.Method;
+import java.util.List;
 import java.util.Collection;
 
 /**
@@ -184,10 +189,103 @@ public class LibraryConfiguration extends AbstractDescribableImpl<LibraryConfigu
             if (run != null && listener != null) {
                 try {
                     runParent = run.getParent();
-                    runVersion = run.getEnvironment(listener).get("BRANCH_NAME", null);
                 } catch (Exception x) {
                     // no-op, keep null
                 }
+            }
+
+            // without a runParent we can't validateVersion() anyway
+            if (runParent != null) {
+                // First ask SCM source of the pipeline (if any),
+                // as the most authoritative source of the branch
+                // name we want:
+                try {
+                    if (run instanceof WorkflowRun) {
+                        // This covers both "Multibranch Pipeline"
+                        // and "Pipeline script from SCM" jobs;
+                        // it also covers "inline" pipeline scripts
+                        // but throws a hudson.AbortException since
+                        // there is no SCM attached.
+                        WorkflowRun wfRun = (WorkflowRun) run;
+                        SCM scm0 = wfRun.getSCMs().get(0);
+                        if (scm0 != null) {
+                            // Avoid importing GitSCM and so requiring that
+                            // it is always installed even if not used by
+                            // particular Jenkins deployment (using e.g.
+                            // SVN, Gerritt, etc.). Our aim is to query this:
+                            //   runVersion = scm0.getBranches().first().getExpandedName(run.getEnvironment(listener));
+                            // https://mkyong.com/java/how-to-use-reflection-to-call-java-method-at-runtime/
+                            Class noparams[] = {};
+                            Class[] paramEnvVars = new Class[1];
+                            paramEnvVars[0] = EnvVars.class;
+                            if ("hudson.plugins.git.GitSCM".equals(scm0.getClass().getName())) {
+                                // https://javadoc.jenkins.io/plugin/git/hudson/plugins/git/GitSCM.html#getBranches() =>
+                                // https://javadoc.jenkins.io/plugin/git/hudson/plugins/git/BranchSpec.html#toString()
+                                Method methodGetBranches = null;
+                                try {
+                                    methodGetBranches = scm0.getClass().getDeclaredMethod("getBranches", noparams);
+                                } catch (Exception x) {
+                                    // NoSuchMethodException | SecurityException | NullPointerException
+                                    methodGetBranches = null;
+                                }
+                                if (methodGetBranches != null) {
+                                    Object branchList = methodGetBranches.invoke(scm0);
+                                    if (branchList instanceof List) {
+                                        Object branch0 = ((List<Object>) branchList).get(0);
+                                        if ("hudson.plugins.git.BranchSpec".equals(branch0.getClass().getName())) {
+                                            Method methodGetExpandedName = null;
+                                            try {
+                                                methodGetExpandedName = branch0.getClass().getDeclaredMethod("getExpandedName", paramEnvVars);
+                                            } catch (Exception x) {
+                                                methodGetExpandedName = null;
+                                            }
+                                            if (methodGetExpandedName != null) {
+                                                // Handle possible shell-templated branch specs:
+                                                Object expandedBranchName = methodGetExpandedName.invoke(branch0, run.getEnvironment(listener));
+                                                if (expandedBranchName != null) {
+                                                    runVersion = expandedBranchName.toString();
+                                                }
+                                            }
+                                            if (runVersion == null || "".equals(runVersion)) {
+                                                runVersion = branch0.toString();
+                                            }
+                                        } // else unknown class, make no blind guesses
+                                    }
+                                } // else not really the GitSCM we know?
+                            } // else SVN, Gerritt or some other SCM -
+                              // add handling when needed and known how
+                              // or rely on BRANCH_NAME (if set) below...
+                        }
+
+                        // Still alive? Chop off leading '*/'
+                        // (if any) from single-branch MBP and
+                        // plain "Pipeline" job definitions.
+                        if (runVersion != null) {
+                            runVersion = runVersion.replaceFirst("^\\*/", "");
+                        }
+                    }
+                } catch (Exception x) {
+                    // no-op, keep null
+                }
+
+                if (runVersion == null) {
+                    // Probably not in a multibranch pipeline workflow
+                    // type of job? Is envvar BRANCH_NAME defined?
+                    try {
+                        runVersion = run.getEnvironment(listener).get("BRANCH_NAME", null);
+                    } catch (Exception x) {
+                        // no-op, keep null
+                    }
+                }
+
+                // Note: if runVersion remains null (unresolved -
+                // with other job types and/or SCMs maybe setting
+                // other envvar names), we might drill into names
+                // like GIT_BRANCH, GERRIT_BRANCH etc. but it would
+                // not be too scalable. So gotta stop somewhere.
+                // We would however look into (MBP-defined for PRs)
+                // CHANGE_BRANCH and CHANGE_TARGET as other fallbacks
+                // below.
             }
 
             if (runParent == null || runVersion == null || "".equals(runVersion)) {
