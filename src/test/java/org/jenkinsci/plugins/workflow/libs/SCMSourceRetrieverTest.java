@@ -43,6 +43,7 @@ import java.nio.file.Path;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
+import jenkins.branch.BranchSource;
 import jenkins.plugins.git.GitSCMSource;
 import jenkins.plugins.git.GitSampleRepoRule;
 import jenkins.scm.api.SCMHead;
@@ -58,6 +59,7 @@ import org.apache.commons.io.FileUtils;
 import org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition;
 import org.jenkinsci.plugins.workflow.job.WorkflowJob;
 import org.jenkinsci.plugins.workflow.job.WorkflowRun;
+import org.jenkinsci.plugins.workflow.multibranch.*;
 
 import static hudson.ExtensionList.lookupSingleton;
 import static org.hamcrest.Matchers.contains;
@@ -87,6 +89,7 @@ public class SCMSourceRetrieverTest {
     @ClassRule public static BuildWatcher buildWatcher = new BuildWatcher();
     @Rule public JenkinsRule r = new JenkinsRule();
     @Rule public GitSampleRepoRule sampleRepo = new GitSampleRepoRule();
+    @Rule public GitSampleRepoRule sampleRepo2 = new GitSampleRepoRule();
     @Rule public SubversionSampleRepoRule sampleRepoSvn = new SubversionSampleRepoRule();
 
     @Issue("JENKINS-40408")
@@ -276,12 +279,64 @@ public class SCMSourceRetrieverTest {
         r.assertLogContains("ERROR: No version bogus found for library branchylib", b4);
         r.assertLogContains("org.codehaus.groovy.control.MultipleCompilationErrorsException: startup failed:", b4);
         r.assertLogContains("WorkflowScript: Loading libraries failed", b4);
+    }
 
-        // TODO: create a job instantiated from Git (or fooled into
-        // thinking it is - injecting BRANCH_NAME envvar via Java)
+    @Issue("JENKINS-69731")
+    @Test public void checkDefaultVersion_BRANCH_NAME_MBP() throws Exception {
+        // Create a MultiBranch Pipeline job instantiated from Git
         // and check behaviors with BRANCH_NAME="master",
-        // BRANCH_NAME="feature", BRANCH_NAME="bogus" and
-        // BRANCH_NAME=""
+        // BRANCH_NAME="feature", and BRANCH_NAME="bogus"
+        // TODO? BRANCH_NAME=""
+
+        sampleRepo.init();
+        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something special'}");
+        sampleRepo.git("add", "vars");
+        sampleRepo.git("commit", "--message=init");
+        sampleRepo.git("checkout", "-b", "feature");
+        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something very special'}");
+        sampleRepo.git("add", "vars");
+        sampleRepo.git("commit", "--message=init");
+        SCMSourceRetriever scm = new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true));
+        LibraryConfiguration lc = new LibraryConfiguration("branchylib", scm);
+        lc.setDefaultVersion("master");
+        lc.setIncludeInChangesets(false);
+        lc.setAllowBRANCH_NAME(true);
+        GlobalLibraries.get().setLibraries(Collections.singletonList(lc));
+
+        // Inspired in part by tests like
+        // https://github.com/jenkinsci/workflow-multibranch-plugin/blob/master/src/test/java/org/jenkinsci/plugins/workflow/multibranch/NoTriggerBranchPropertyWorkflowTest.java#L132
+        sampleRepo2.init();
+        sampleRepo2.write("Jenkinsfile", "@Library('branchylib@${BRANCH_NAME}') import myecho; myecho()");
+        sampleRepo2.git("add", "Jenkinsfile");
+        sampleRepo2.git("commit", "--message=init");
+        sampleRepo2.git("branch", "feature");
+        sampleRepo2.git("branch", "bogus");
+
+        WorkflowMultiBranchProject mbp = r.jenkins.createProject(WorkflowMultiBranchProject.class, "mbp");
+        BranchSource branchSource = new BranchSource(new GitSCMSource("source-id", sampleRepo2.toString(), "", "*", "", false));
+        mbp.getSourcesList().add(branchSource);
+        sampleRepo2.notifyCommit(r);
+
+        WorkflowJob p1 = mbp.getItem("master");
+        WorkflowRun b1 = r.buildAndAssertSuccess(p1);
+        r.assertLogContains("Loading library branchylib@master", b1);
+        r.assertLogContains("something special", b1);
+
+        WorkflowJob p2 = mbp.getItem("feature");
+        WorkflowRun b2 = r.buildAndAssertSuccess(p2);
+        r.assertLogContains("Loading library branchylib@feature", b2);
+        r.assertLogContains("something very special", b2);
+
+        // library branch "bogus" does not exist => fall back to default (master)
+        WorkflowJob p3 = mbp.getItem("bogus");
+        WorkflowRun b3 = r.buildAndAssertSuccess(p3);
+        r.assertLogContains("Loading library branchylib@master", b3);
+        r.assertLogContains("something special", b3);
+
+        // TODO: test that lc.setAllowBRANCH_NAME(false) causes
+        // fallbacks always
+
+        // TODO: test lc.setAllowBRANCH_NAME_PR(true) for PR builds
     }
 
     @Issue("JENKINS-43802")
