@@ -333,10 +333,119 @@ public class SCMSourceRetrieverTest {
         r.assertLogContains("Loading library branchylib@master", b3);
         r.assertLogContains("something special", b3);
 
-        // TODO: test that lc.setAllowBRANCH_NAME(false) causes
-        // fallbacks always
-
         // TODO: test lc.setAllowBRANCH_NAME_PR(true) for PR builds
+    }
+
+    @Issue("JENKINS-69731")
+    @Test public void checkDefaultVersion_MBP() throws Exception {
+        // Test that lc.setAllowBRANCH_NAME(false) does not
+        // preclude fixed branch names (they should work),
+        // like @Library('branchylib@master')
+
+        sampleRepo.init();
+        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something special'}");
+        sampleRepo.git("add", "vars");
+        sampleRepo.git("commit", "--message=init");
+        sampleRepo.git("checkout", "-b", "feature");
+        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something very special'}");
+        sampleRepo.git("add", "vars");
+        sampleRepo.git("commit", "--message=init");
+        SCMSourceRetriever scm = new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true));
+        LibraryConfiguration lc = new LibraryConfiguration("branchylib", scm);
+        lc.setDefaultVersion("master");
+        lc.setIncludeInChangesets(false);
+        lc.setAllowVersionOverride(true);
+        lc.setAllowBRANCH_NAME(false);
+        GlobalLibraries.get().setLibraries(Collections.singletonList(lc));
+
+        // Inspired in part by tests like
+        // https://github.com/jenkinsci/workflow-multibranch-plugin/blob/master/src/test/java/org/jenkinsci/plugins/workflow/multibranch/NoTriggerBranchPropertyWorkflowTest.java#L132
+        sampleRepo2.init();
+        sampleRepo2.write("Jenkinsfile", "@Library('branchylib@master') import myecho; myecho()");
+        sampleRepo2.git("add", "Jenkinsfile");
+        sampleRepo2.git("commit", "--message=master");
+        sampleRepo2.git("checkout", "-b", "feature");
+        sampleRepo2.write("Jenkinsfile", "@Library('branchylib@feature') import myecho; myecho()");
+        sampleRepo2.git("add", "Jenkinsfile");
+        sampleRepo2.git("commit", "--message=feature");
+        sampleRepo2.git("checkout", "-b", "bogus");
+        sampleRepo2.write("Jenkinsfile", "@Library('branchylib@bogus') import myecho; myecho()");
+        sampleRepo2.git("add", "Jenkinsfile");
+        sampleRepo2.git("commit", "--message=bogus");
+
+        WorkflowMultiBranchProject mbp = r.jenkins.createProject(WorkflowMultiBranchProject.class, "mbp");
+        BranchSource branchSource = new BranchSource(new GitSCMSource("source-id", sampleRepo2.toString(), "", "*", "", false));
+        mbp.getSourcesList().add(branchSource);
+        sampleRepo2.notifyCommit(r);
+
+        WorkflowJob p1 = mbp.getItem("master");
+        WorkflowRun b1 = r.buildAndAssertSuccess(p1);
+        r.assertLogContains("Loading library branchylib@master", b1);
+        r.assertLogContains("something special", b1);
+
+        WorkflowJob p2 = mbp.getItem("feature");
+        WorkflowRun b2 = r.buildAndAssertSuccess(p2);
+        r.assertLogContains("Loading library branchylib@feature", b2);
+        r.assertLogContains("something very special", b2);
+
+        WorkflowJob p3 = mbp.getItem("bogus");
+        WorkflowRun b3 = r.buildAndAssertStatus(Result.FAILURE, p3);
+        r.assertLogContains("ERROR: Could not resolve bogus", b3);
+        r.assertLogContains("ambiguous argument 'bogus^{commit}': unknown revision or path not in the working tree", b3);
+        r.assertLogContains("ERROR: No version bogus found for library branchylib", b3);
+        r.assertLogContains("WorkflowScript: Loading libraries failed", b3);
+    }
+
+    @Issue("JENKINS-69731")
+    @Test public void checkDefaultVersion_BRANCH_NAME_notAllowed() throws Exception {
+        // Test that lc.setAllowBRANCH_NAME(false) causes
+        // @Library('libname@${BRANCH_NAME}') to always
+        // fail, while fixed branch names should work.
+
+        sampleRepo.init();
+        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something special'}");
+        sampleRepo.git("add", "vars");
+        sampleRepo.git("commit", "--message=init");
+        sampleRepo.git("checkout", "-b", "feature");
+        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something very special'}");
+        sampleRepo.git("add", "vars");
+        sampleRepo.git("commit", "--message=init");
+        SCMSourceRetriever scm = new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true));
+        LibraryConfiguration lc = new LibraryConfiguration("branchylib", scm);
+        lc.setDefaultVersion("master");
+        lc.setIncludeInChangesets(false);
+        lc.setAllowVersionOverride(true);
+        lc.setAllowBRANCH_NAME(false);
+        GlobalLibraries.get().setLibraries(Collections.singletonList(lc));
+
+        // Inspired in part by tests like
+        // https://github.com/jenkinsci/workflow-multibranch-plugin/blob/master/src/test/java/org/jenkinsci/plugins/workflow/multibranch/NoTriggerBranchPropertyWorkflowTest.java#L132
+        sampleRepo2.init();
+        sampleRepo2.write("Jenkinsfile", "@Library('branchylib@${BRANCH_NAME}') import myecho; myecho()");
+        sampleRepo2.git("add", "Jenkinsfile");
+        sampleRepo2.git("commit", "--message=init");
+        sampleRepo2.git("branch", "feature");
+        sampleRepo2.git("branch", "bogus");
+
+        WorkflowMultiBranchProject mbp = r.jenkins.createProject(WorkflowMultiBranchProject.class, "mbp");
+        BranchSource branchSource = new BranchSource(new GitSCMSource("source-id", sampleRepo2.toString(), "", "*", "", false));
+        mbp.getSourcesList().add(branchSource);
+        sampleRepo2.notifyCommit(r);
+
+        WorkflowJob p1 = mbp.getItem("master");
+        WorkflowRun b1 = r.buildAndAssertStatus(Result.FAILURE, p1);
+        r.assertLogContains("ERROR: Version override not permitted for library branchylib", b1);
+        r.assertLogContains("WorkflowScript: Loading libraries failed", b1);
+
+        WorkflowJob p2 = mbp.getItem("feature");
+        WorkflowRun b2 = r.buildAndAssertStatus(Result.FAILURE, p2);
+        r.assertLogContains("ERROR: Version override not permitted for library branchylib", b2);
+        r.assertLogContains("WorkflowScript: Loading libraries failed", b2);
+
+        WorkflowJob p3 = mbp.getItem("bogus");
+        WorkflowRun b3 = r.buildAndAssertStatus(Result.FAILURE, p3);
+        r.assertLogContains("ERROR: Version override not permitted for library branchylib", b3);
+        r.assertLogContains("WorkflowScript: Loading libraries failed", b3);
     }
 
     @Issue("JENKINS-43802")
