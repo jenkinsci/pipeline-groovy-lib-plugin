@@ -32,6 +32,8 @@ import hudson.Functions;
 import hudson.model.Item;
 import hudson.model.Result;
 import hudson.model.TaskListener;
+import hudson.plugins.git.GitSCM;
+import hudson.plugins.git.BranchSpec;
 import hudson.scm.ChangeLogSet;
 import hudson.scm.SCM;
 import hudson.slaves.WorkspaceList;
@@ -57,6 +59,7 @@ import jenkins.scm.impl.subversion.SubversionSCMSource;
 import jenkins.scm.impl.subversion.SubversionSampleRepoRule;
 import org.apache.commons.io.FileUtils;
 import org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition;
+import org.jenkinsci.plugins.workflow.cps.CpsScmFlowDefinition;
 import org.jenkinsci.plugins.workflow.job.WorkflowJob;
 import org.jenkinsci.plugins.workflow.job.WorkflowRun;
 import org.jenkinsci.plugins.workflow.multibranch.*;
@@ -489,6 +492,64 @@ public class SCMSourceRetrieverTest {
         r.assertBuildStatus(Result.FAILURE, b3);
         r.assertLogContains("ERROR: Version override not permitted for library branchylib", b3);
         r.assertLogContains("WorkflowScript: Loading libraries failed", b3);
+    }
+
+    @Issue("JENKINS-69731")
+    @Test public void checkDefaultVersion_singleBranch() throws Exception {
+        // Test that lc.setAllowBRANCH_NAME(false) does not
+        // preclude fixed branch names (they should work),
+        // like @Library('branchylib@master') when used for
+        // a simple "Pipeline" job with static SCM source.
+
+        sampleRepo.init();
+        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something special'}");
+        sampleRepo.git("add", "vars");
+        sampleRepo.git("commit", "--message=init");
+        sampleRepo.git("checkout", "-b", "feature");
+        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something very special'}");
+        sampleRepo.git("add", "vars");
+        sampleRepo.git("commit", "--message=init");
+        SCMSourceRetriever scm = new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true));
+        LibraryConfiguration lc = new LibraryConfiguration("branchylib", scm);
+        lc.setDefaultVersion("master");
+        lc.setIncludeInChangesets(false);
+        lc.setAllowVersionOverride(true);
+        lc.setAllowBRANCH_NAME(false);
+        GlobalLibraries.get().setLibraries(Collections.singletonList(lc));
+
+        // Inspired in part by tests like
+        // https://github.com/jenkinsci/workflow-multibranch-plugin/blob/master/src/test/java/org/jenkinsci/plugins/workflow/multibranch/NoTriggerBranchPropertyWorkflowTest.java#L132
+        sampleRepo2.init();
+        sampleRepo2.write("Jenkinsfile", "@Library('branchylib@master') import myecho; myecho()");
+        sampleRepo2.git("add", "Jenkinsfile");
+        sampleRepo2.git("commit", "--message=master");
+        sampleRepo2.git("checkout", "-b", "feature");
+        sampleRepo2.write("Jenkinsfile", "@Library('branchylib@feature') import myecho; myecho()");
+        sampleRepo2.git("add", "Jenkinsfile");
+        sampleRepo2.git("commit", "--message=feature");
+        sampleRepo2.git("checkout", "-b", "bogus");
+        sampleRepo2.write("Jenkinsfile", "@Library('branchylib@bogus') import myecho; myecho()");
+        sampleRepo2.git("add", "Jenkinsfile");
+        sampleRepo2.git("commit", "--message=bogus");
+
+        //GitSCM gitSCM = new GitSCM(sampleRepo2.toString());
+        GitSCM gitSCM = new GitSCM(
+                GitSCM.createRepoList(sampleRepo2.toString(), null),
+                Collections.singletonList(new BranchSpec("*/feature")),
+                null, null, Collections.emptyList());
+
+        WorkflowJob p0 = r.jenkins.createProject(WorkflowJob.class, "p0");
+        p0.setDefinition(new CpsScmFlowDefinition(gitSCM, "Jenkinsfile"));
+        // Note: this notification causes discovery of branches,
+        // definition of MBP "leaf" jobs, and launch of builds,
+        // so below we just make sure they complete and analyze
+        // the outcomes.
+        sampleRepo2.notifyCommit(r);
+        r.waitUntilNoActivity();
+
+        WorkflowRun b0 = r.buildAndAssertSuccess(p0);
+        r.assertLogContains("Loading library branchylib@feature", b0);
+        r.assertLogContains("something very special", b0);
     }
 
     @Issue("JENKINS-43802")
