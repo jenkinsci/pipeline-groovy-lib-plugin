@@ -298,13 +298,19 @@ public class LibraryConfiguration extends AbstractDescribableImpl<LibraryConfigu
                         }
                     }
 
-/*
                     // NOTE: the list of SCMs used by the run does not
                     // seem trustworthy: if an "inline" pipeline script
                     // (not from SCM) is used, there is no "relevant"
-                    // branch name to request; however the list of SCMs
-                    // would be populated as @Library lines are processed
-                    // and some SCM sources get checked out.
+                    // branch name to request; however during work on
+                    // JENKINS-69731 I was concerned that the list of
+                    // SCMs might get populated as @Library lines are
+                    // processed and some SCM sources get checked out.
+                    // Experimentally it seems this is not happening,
+                    // and whole pipeline script source is pre-processed
+                    // first (calling this method for many @Library
+                    // lines), and checkouts happen later (populating
+                    // list of SCMs). This is specifically tested by
+                    // checkDefaultVersion_inline_BRANCH_NAME() case.
                     if (scm0 == null && run instanceof WorkflowRun) {
                         // This covers both "Multibranch Pipeline"
                         // and "Pipeline script from SCM" jobs;
@@ -325,7 +331,6 @@ public class LibraryConfiguration extends AbstractDescribableImpl<LibraryConfigu
                             }
                         }
                     }
-*/
 
                     if (scm0 != null) {
                         // Avoid importing GitSCM and so requiring that
