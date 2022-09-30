@@ -53,6 +53,8 @@ import org.kohsuke.stapler.interceptor.RequirePOST;
 
 import edu.umd.cs.findbugs.annotations.CheckForNull;
 import edu.umd.cs.findbugs.annotations.NonNull;
+
+import java.io.PrintStream;
 import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Collection;
@@ -69,6 +71,11 @@ public class LibraryConfiguration extends AbstractDescribableImpl<LibraryConfigu
     private boolean allowVersionOverride = true;
     private boolean allowBRANCH_NAME = false;
     private boolean allowBRANCH_NAME_PR = false;
+    // Print defaultedVersion() progress resolving BRANCH_NAME
+    // to a build console log. This is exposed as UI checkbox
+    // for deployment troubleshooting, but is primarily intended
+    // for programmatic consumption e.g. in unit-tests.
+    private boolean traceBRANCH_NAME = false;
     private boolean includeInChangesets = true;
     private LibraryCachingConfiguration cachingConfiguration = null;
 
@@ -137,6 +144,14 @@ public class LibraryConfiguration extends AbstractDescribableImpl<LibraryConfigu
         this.allowBRANCH_NAME = allowBRANCH_NAME;
     }
 
+    public boolean isTraceBRANCH_NAME() {
+        return traceBRANCH_NAME;
+    }
+
+    @DataBoundSetter public void setTraceBRANCH_NAME(boolean traceBRANCH_NAME) {
+        this.traceBRANCH_NAME = traceBRANCH_NAME;
+    }
+
     public boolean isAllowBRANCH_NAME_PR() {
         return allowBRANCH_NAME_PR;
     }
@@ -177,6 +192,14 @@ public class LibraryConfiguration extends AbstractDescribableImpl<LibraryConfigu
     }
 
     @NonNull String defaultedVersion(@CheckForNull String version, Run<?, ?> run, TaskListener listener) throws AbortException {
+        PrintStream logger = null;
+        if (traceBRANCH_NAME && listener != null) {
+            logger = listener.getLogger();
+        }
+        if (logger != null) {
+            logger.println("defaultedVersion(): Resolving '" + version + "'");
+        }
+
         if (version == null) {
             if (defaultVersion == null) {
                 throw new AbortException("No version specified for library " + name);
@@ -196,14 +219,30 @@ public class LibraryConfiguration extends AbstractDescribableImpl<LibraryConfigu
                 }
             }
 
+            if (logger != null) {
+                logger.println("defaultedVersion(): Resolving BRANCH_NAME; " +
+                    (runParent == null ? "without" : "have") +
+                    " a runParent object");
+            }
+
             // without a runParent we can't validateVersion() anyway
             if (runParent != null) {
                 // First, check if envvar BRANCH_NAME is defined?
                 // Trust the plugins and situations where it is set.
                 try {
                     runVersion = run.getEnvironment(listener).get("BRANCH_NAME", null);
+                    if (logger != null) {
+                        if (runVersion != null) {
+                            logger.println("defaultedVersion(): Resolved envvar BRANCH_NAME='" + runVersion + "'");
+                        } else {
+                            logger.println("defaultedVersion(): Did not resolve envvar BRANCH_NAME: not in env");
+                        }
+                    }
                 } catch (Exception x) {
-                    // no-op, keep null
+                    runVersion = null;
+                    if (logger != null) {
+                        logger.println("defaultedVersion(): Did not resolve envvar BRANCH_NAME: " + x.getMessage());
+                    }
                 }
 
                 if (runVersion == null) {
@@ -223,15 +262,37 @@ public class LibraryConfiguration extends AbstractDescribableImpl<LibraryConfigu
                         // the "static source".
                         // TODO: If there are "pre-loaded libraries"
                         // in a Jenkins deployment, can they interfere?
+                        if (logger != null) {
+                            logger.println("defaultedVersion(): inspecting WorkflowJob for a FlowDefinition");
+                        }
                         FlowDefinition fd = ((WorkflowJob)runParent).getDefinition();
                         if (fd != null) {
-                            for (SCM scmN : fd.getSCMs()) {
-                                if ("hudson.plugins.git.GitSCM".equals(scmN.getClass().getName())) {
-                                    // The best we can do here is accept
-                                    // the first seen SCM (with branch
-                                    // support which we know how to query).
-                                    scm0 = scmN;
-                                    break;
+                            Collection<SCM> fdscms = (Collection<SCM>) fd.getSCMs();
+                            if (fdscms.isEmpty()) {
+                                if (logger != null) {
+                                    logger.println("defaultedVersion(): FlowDefinition '" +
+                                        fd.getClass().getName() +
+                                        "' is not associated with any SCMs");
+                                }
+                            } else {
+                                if (logger != null) {
+                                    logger.println("defaultedVersion(): inspecting FlowDefinition '" +
+                                        fd.getClass().getName() +
+                                        "' for SCMs it might use");
+                                }
+                                for (SCM scmN : fdscms) {
+                                    if (logger != null) {
+                                        logger.println("defaultedVersion(): inspecting SCM '" +
+                                            scmN.getClass().getName() +
+                                            "': " + scmN.toString());
+                                    }
+                                    if ("hudson.plugins.git.GitSCM".equals(scmN.getClass().getName())) {
+                                        // The best we can do here is accept
+                                        // the first seen SCM (with branch
+                                        // support which we know how to query).
+                                        scm0 = scmN;
+                                        break;
+                                    }
                                 }
                             }
                         }
@@ -250,11 +311,18 @@ public class LibraryConfiguration extends AbstractDescribableImpl<LibraryConfigu
                         // it also covers "inline" pipeline scripts
                         // but throws a hudson.AbortException since
                         // there is no SCM attached.
+                        if (logger != null) {
+                            logger.println("defaultedVersion(): inspecting WorkflowRun");
+                        }
                         try {
                             WorkflowRun wfRun = (WorkflowRun) run;
                             scm0 = wfRun.getSCMs().get(0);
                         } catch (Exception x) {
-                            // no-op, keep null
+                            if (logger != null) {
+                                logger.println("defaultedVersion(): " +
+                                    "Did not get first listed SCM: " +
+                                    x.getMessage());
+                            }
                         }
                     }
 */
@@ -266,6 +334,12 @@ public class LibraryConfiguration extends AbstractDescribableImpl<LibraryConfigu
                         // SVN, Gerritt, etc.). Our aim is to query this:
                         //   runVersion = scm0.getBranches().first().getExpandedName(run.getEnvironment(listener));
                         // https://mkyong.com/java/how-to-use-reflection-to-call-java-method-at-runtime/
+                        if (logger != null) {
+                            logger.println("defaultedVersion(): " +
+                                "inspecting first listed SCM: " +
+                                scm0.toString());
+                        }
+
                         Class noparams[] = {};
                         Class[] paramEnvVars = new Class[1];
                         paramEnvVars[0] = EnvVars.class;
@@ -289,7 +363,7 @@ public class LibraryConfiguration extends AbstractDescribableImpl<LibraryConfigu
                                 }
                                 if (branchList != null && branchList instanceof List) {
                                     Object branch0 = ((List<Object>) branchList).get(0);
-                                    if ("hudson.plugins.git.BranchSpec".equals(branch0.getClass().getName())) {
+                                    if (branch0 != null && "hudson.plugins.git.BranchSpec".equals(branch0.getClass().getName())) {
                                         Method methodGetExpandedName = null;
                                         try {
                                             methodGetExpandedName = branch0.getClass().getDeclaredMethod("getExpandedName", paramEnvVars);
@@ -308,22 +382,63 @@ public class LibraryConfiguration extends AbstractDescribableImpl<LibraryConfigu
                                             if (expandedBranchName != null) {
                                                 runVersion = expandedBranchName.toString();
                                             }
+                                        } else {
+                                            if (logger != null) {
+                                                logger.println("defaultedVersion(): " +
+                                                    "did not find method BranchSpec.getExpandedName()");
+                                            }
                                         }
                                         if (runVersion == null || "".equals(runVersion)) {
                                             runVersion = branch0.toString();
                                         }
-                                    } // else unknown class, make no blind guesses
+                                    } else {
+                                        // unknown branchspec class, make no blind guesses
+                                        if (logger != null) {
+                                            logger.println("defaultedVersion(): " +
+                                                "list of branches did not return a " +
+                                                "BranchSpec class instance, but " +
+                                                (branch0 == null ? "null" :
+                                                branch0.getClass().getName()));
+                                        }
+                                    }
+                                } else {
+                                    if (logger != null) {
+                                        logger.println("defaultedVersion(): " +
+                                            "getBranches() did not return a " +
+                                            "list of branches: " +
+                                            (branchList == null ? "null" :
+                                            branchList.getClass().getName()));
+                                    }
                                 }
-                            } // else not really the GitSCM we know?
-                        } // else SVN, Gerritt or some other SCM -
-                          // add handling when needed and known how
-                          // or rely on BRANCH_NAME (if set) below...
+                            } else {
+                                // not really the GitSCM we know?
+                                if (logger != null) {
+                                    logger.println("defaultedVersion(): " +
+                                        "did not find method GitSCM.getBranches()");
+                                }
+                            }
+                        } else {
+                            // else SVN, Gerritt or some other SCM -
+                            // add handling when needed and known how
+                            // or rely on BRANCH_NAME (if set) below...
+                            if (logger != null) {
+                                logger.println("defaultedVersion(): " +
+                                    "the first listed SCM was not of currently " +
+                                    "supported class with recognized branch support: " +
+                                    scm0.getClass().getName());
+                            }
+                        }
 
                         // Still alive? Chop off leading '*/'
                         // (if any) from single-branch MBP and
                         // plain "Pipeline" job definitions.
                         if (runVersion != null) {
                             runVersion = runVersion.replaceFirst("^\\*/", "");
+                            if (logger != null) {
+                                logger.println("defaultedVersion(): " +
+                                    "Discovered runVersion '" + runVersion +
+                                    "' in SCM source of the pipeline");
+                            }
                         }
                     }
                 }
@@ -336,6 +451,11 @@ public class LibraryConfiguration extends AbstractDescribableImpl<LibraryConfigu
                 // We would however look into (MBP-defined for PRs)
                 // CHANGE_BRANCH and CHANGE_TARGET as other fallbacks
                 // below.
+            } else {
+                if (logger != null) {
+                    logger.println("defaultedVersion(): Trying to default: " +
+                        "without a runParent we can't validateVersion() anyway");
+                }
             }
 
             if (runParent == null || runVersion == null || "".equals(runVersion)) {
@@ -344,6 +464,12 @@ public class LibraryConfiguration extends AbstractDescribableImpl<LibraryConfigu
                 // args for run/listener needed for validateVersion()
                 // below, or some other problem occurred.
                 // Fall back if we can:
+                if (logger != null) {
+                    logger.println("defaultedVersion(): Trying to default: " +
+                        "runVersion is " +
+                        (runVersion == null ? "null" :
+                            ("".equals(runVersion) ? "empty" : runVersion)));
+                }
                 if (defaultVersion == null) {
                     throw new AbortException("No version specified for library " + name);
                 } else {
@@ -354,6 +480,10 @@ public class LibraryConfiguration extends AbstractDescribableImpl<LibraryConfigu
             // Check if runVersion is resolvable by LibraryRetriever
             // implementation (SCM, HTTP, etc.); fall back if not:
             if (retriever != null) {
+                if (logger != null) {
+                    logger.println("defaultedVersion(): Trying to validate runVersion: " + runVersion);
+                }
+
                 FormValidation fv = retriever.validateVersion(name, runVersion, runParent);
 
                 if (fv != null && fv.kind == FormValidation.Kind.OK) {
@@ -377,6 +507,9 @@ public class LibraryConfiguration extends AbstractDescribableImpl<LibraryConfigu
                         runVersion = null;
                     }
                     if (runVersion != null && !("".equals(runVersion))) {
+                        if (logger != null) {
+                            logger.println("defaultedVersion(): Trying to validate CHANGE_BRANCH: " + runVersion);
+                        }
                         fv = retriever.validateVersion(name, runVersion, runParent);
 
                         if (fv != null && fv.kind == FormValidation.Kind.OK) {
@@ -393,17 +526,26 @@ public class LibraryConfiguration extends AbstractDescribableImpl<LibraryConfigu
                         runVersion = null;
                     }
                     if (runVersion != null && !("".equals(runVersion))) {
+                        if (logger != null) {
+                            logger.println("defaultedVersion(): Trying to validate CHANGE_TARGET: " + runVersion);
+                        }
                         fv = retriever.validateVersion(name, runVersion, runParent);
 
                         if (fv != null && fv.kind == FormValidation.Kind.OK) {
                             return runVersion;
                         }
                     }
-                }
+                } // else not a PR or not allowBRANCH_NAME_PR
             }
 
             // No retriever, or its validateVersion() did not confirm
             // usability of BRANCH_NAME string value as the version...
+            if (logger != null) {
+                logger.println("defaultedVersion(): Trying to default: " +
+                    "could not resolve runVersion which is " +
+                    (runVersion == null ? "null" :
+                        ("".equals(runVersion) ? "empty" : runVersion)));
+            }
             if (defaultVersion == null) {
                 throw new AbortException("BRANCH_NAME version " + runVersion +
                     " was not found, and no default version specified, for library " + name);
