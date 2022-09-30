@@ -240,6 +240,7 @@ public class SCMSourceRetrieverTest {
         lc.setDefaultVersion("master");
         lc.setIncludeInChangesets(false);
         lc.setAllowBRANCH_NAME(true);
+        lc.setTraceBRANCH_NAME(true);
         GlobalLibraries.get().setLibraries(Collections.singletonList(lc));
 
         // Basename "libname" notation => use specified default branch
@@ -305,6 +306,7 @@ public class SCMSourceRetrieverTest {
         lc.setDefaultVersion("master");
         lc.setIncludeInChangesets(false);
         lc.setAllowBRANCH_NAME(true);
+        lc.setTraceBRANCH_NAME(true);
         GlobalLibraries.get().setLibraries(Collections.singletonList(lc));
 
         // Inspired in part by tests like
@@ -375,6 +377,7 @@ public class SCMSourceRetrieverTest {
         lc.setIncludeInChangesets(false);
         lc.setAllowVersionOverride(true);
         lc.setAllowBRANCH_NAME(false);
+        lc.setTraceBRANCH_NAME(true);
         GlobalLibraries.get().setLibraries(Collections.singletonList(lc));
 
         // Inspired in part by tests like
@@ -451,6 +454,7 @@ public class SCMSourceRetrieverTest {
         lc.setIncludeInChangesets(false);
         lc.setAllowVersionOverride(true);
         lc.setAllowBRANCH_NAME(false);
+        lc.setTraceBRANCH_NAME(true);
         GlobalLibraries.get().setLibraries(Collections.singletonList(lc));
 
         // Inspired in part by tests like
@@ -524,6 +528,7 @@ public class SCMSourceRetrieverTest {
         lc.setIncludeInChangesets(false);
         lc.setAllowVersionOverride(true);
         lc.setAllowBRANCH_NAME(false);
+        lc.setTraceBRANCH_NAME(true);
         GlobalLibraries.get().setLibraries(Collections.singletonList(lc));
 
         // Inspired in part by tests like
@@ -608,6 +613,7 @@ public class SCMSourceRetrieverTest {
         lc.setIncludeInChangesets(false);
         lc.setAllowVersionOverride(true);
         lc.setAllowBRANCH_NAME(false);
+        lc.setTraceBRANCH_NAME(true);
         GlobalLibraries.get().setLibraries(Collections.singletonList(lc));
 
         // Inspired in part by tests like
