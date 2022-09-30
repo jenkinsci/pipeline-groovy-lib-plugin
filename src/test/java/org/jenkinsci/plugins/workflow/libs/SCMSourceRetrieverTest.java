@@ -42,6 +42,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
@@ -244,38 +245,25 @@ public class SCMSourceRetrieverTest {
         GlobalLibraries.get().setLibraries(Collections.singletonList(lc));
 
         // Basename "libname" notation => use specified default branch
-        WorkflowJob p0 = r.jenkins.createProject(WorkflowJob.class, "p0");
-        p0.setDefinition(new CpsFlowDefinition("@Library('branchylib') import myecho; myecho()", true));
-        WorkflowRun b0 = r.buildAndAssertSuccess(p0);
-        r.assertLogContains("Loading library branchylib@master", b0);
-        r.assertLogContains("something special", b0);
-
-        // Use specified branch
         WorkflowJob p1 = r.jenkins.createProject(WorkflowJob.class, "p1");
-        p1.setDefinition(new CpsFlowDefinition("@Library('branchylib@master') import myecho; myecho()", true));
+        p1.setDefinition(new CpsFlowDefinition("@Library('branchylib') import myecho; myecho()", true));
         WorkflowRun b1 = r.buildAndAssertSuccess(p1);
         r.assertLogContains("Loading library branchylib@master", b1);
         r.assertLogContains("something special", b1);
 
-        // Use another specified branch
+        // Use specified branch
         WorkflowJob p2 = r.jenkins.createProject(WorkflowJob.class, "p2");
-        p2.setDefinition(new CpsFlowDefinition("@Library('branchylib@feature') import myecho; myecho()", true));
+        p2.setDefinition(new CpsFlowDefinition("@Library('branchylib@master') import myecho; myecho()", true));
         WorkflowRun b2 = r.buildAndAssertSuccess(p2);
-        r.assertLogContains("Loading library branchylib@feature", b2);
-        r.assertLogContains("something very special", b2);
+        r.assertLogContains("Loading library branchylib@master", b2);
+        r.assertLogContains("something special", b2);
 
-        // Do not let caller-provided BRANCH_NAME interfere here
-        if (System.getenv("BRANCH_NAME") == null) {
-            // Branch context for job not set - fall back to default
-            WorkflowJob p3 = r.jenkins.createProject(WorkflowJob.class, "p3");
-            p3.setDefinition(new CpsFlowDefinition("@Library('branchylib@${BRANCH_NAME}') import myecho; myecho()", true));
-            WorkflowRun b3 = r.buildAndAssertSuccess(p3);
-            r.assertLogContains("Loading library branchylib@master", b3);
-            r.assertLogContains("something special", b3);
-        } else {
-            System.out.println("SKIPPED test case with @Library('branchylib@${BRANCH_NAME}') " +
-                "because BRANCH_NAME is defined among system environment variables");
-        }
+        // Use another specified branch
+        WorkflowJob p3 = r.jenkins.createProject(WorkflowJob.class, "p3");
+        p3.setDefinition(new CpsFlowDefinition("@Library('branchylib@feature') import myecho; myecho()", true));
+        WorkflowRun b3 = r.buildAndAssertSuccess(p3);
+        r.assertLogContains("Loading library branchylib@feature", b3);
+        r.assertLogContains("something very special", b3);
 
         // Use a specified but missing branch
         WorkflowJob p4 = r.jenkins.createProject(WorkflowJob.class, "p4");
@@ -284,6 +272,60 @@ public class SCMSourceRetrieverTest {
         r.assertLogContains("ERROR: No version bogus found for library branchylib", b4);
         r.assertLogContains("org.codehaus.groovy.control.MultipleCompilationErrorsException: startup failed:", b4);
         r.assertLogContains("WorkflowScript: Loading libraries failed", b4);
+    }
+
+    @Issue("JENKINS-69731")
+    @Test public void checkDefaultVersion_inline_BRANCH_NAME() throws Exception {
+        // Test that @Library('branchylib@${BRANCH_NAME}')
+        // falls back to default for "Pipeline script" which
+        // is not "from SCM", even when we try to confuse it
+        // by having some checkouts (and so list of SCMs).
+
+        // Do not let caller-provided BRANCH_NAME interfere here
+        assumeFalse("An externally provided BRANCH_NAME envvar interferes with tested logic",
+                System.getenv("BRANCH_NAME") != null);
+
+        sampleRepo.init();
+        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something special'}");
+        sampleRepo.git("add", "vars");
+        sampleRepo.git("commit", "--message=init");
+        sampleRepo.git("checkout", "-b", "feature");
+        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something very special'}");
+        sampleRepo.git("add", "vars");
+        sampleRepo.git("commit", "--message=init");
+        SCMSourceRetriever scm = new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true));
+        LibraryConfiguration lc = new LibraryConfiguration("branchylib", scm);
+        lc.setDefaultVersion("master");
+        lc.setIncludeInChangesets(false);
+        lc.setAllowVersionOverride(true);
+        lc.setAllowBRANCH_NAME(true);
+        lc.setTraceBRANCH_NAME(true);
+
+        sampleRepo2.init();
+        sampleRepo2.write("vars/myecho2.groovy", "def call() {echo 'something weird'}");
+        sampleRepo2.git("add", "vars");
+        sampleRepo2.git("commit", "--message=init");
+        sampleRepo2.git("checkout", "-b", "feature");
+        sampleRepo2.write("vars/myecho2.groovy", "def call() {echo 'something wonderful'}");
+        sampleRepo2.git("add", "vars");
+        sampleRepo2.git("commit", "--message=init");
+        SCMSourceRetriever scm2 = new SCMSourceRetriever(new GitSCMSource(null, sampleRepo2.toString(), "", "*", "", true));
+        LibraryConfiguration lc2 = new LibraryConfiguration("branchylib2", scm2);
+        lc2.setDefaultVersion("master");
+        lc2.setIncludeInChangesets(false);
+        lc2.setAllowVersionOverride(true);
+        lc2.setAllowBRANCH_NAME(true);
+        lc2.setTraceBRANCH_NAME(true);
+
+        // Configure two libs to make a mess :)
+        GlobalLibraries.get().setLibraries(Arrays.asList(lc, lc2));
+
+        // Branch context for job not set - fall back to default
+        WorkflowJob p0 = r.jenkins.createProject(WorkflowJob.class, "p0");
+        p0.setDefinition(new CpsFlowDefinition("@Library('branchylib@${BRANCH_NAME}') import myecho; myecho()", true));
+        WorkflowRun b0 = r.buildAndAssertSuccess(p0);
+        r.assertLogContains("Loading library branchylib@master", b0);
+        r.assertLogContains("something special", b0);
     }
 
     @Issue("JENKINS-69731")
