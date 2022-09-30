@@ -788,6 +788,58 @@ public class SCMSourceRetrieverTest {
         r.assertLogContains("something very special", b0);
     }
 
+    @Issue("JENKINS-69731")
+    @Test public void checkDefaultVersion_singleBranch_BRANCH_NAME() throws Exception {
+        // Test that lc.setAllowBRANCH_NAME(true) enables
+        // @Library('branchylib@${BRANCH_NAME}') also for
+        // a simple "Pipeline" job with static SCM source,
+        // and that even lc.setAllowVersionOverride(false)
+        // does not intervene here.
+        assumeFalse("An externally provided BRANCH_NAME envvar interferes with tested logic",
+            System.getenv("BRANCH_NAME") != null);
+
+        sampleRepo.init();
+        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something special'}");
+        sampleRepo.git("add", "vars");
+        sampleRepo.git("commit", "--message=init");
+        sampleRepo.git("checkout", "-b", "feature");
+        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something very special'}");
+        sampleRepo.git("add", "vars");
+        sampleRepo.git("commit", "--message=init");
+        SCMSourceRetriever scm = new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true));
+        LibraryConfiguration lc = new LibraryConfiguration("branchylib", scm);
+        lc.setDefaultVersion("master");
+        lc.setIncludeInChangesets(false);
+        lc.setAllowVersionOverride(false);
+        lc.setAllowBRANCH_NAME(true);
+        lc.setTraceBRANCH_NAME(true);
+        GlobalLibraries.get().setLibraries(Collections.singletonList(lc));
+
+        // Inspired in part by tests like
+        // https://github.com/jenkinsci/workflow-multibranch-plugin/blob/master/src/test/java/org/jenkinsci/plugins/workflow/multibranch/NoTriggerBranchPropertyWorkflowTest.java#L132
+        sampleRepo2.init();
+        sampleRepo2.write("Jenkinsfile", "@Library('branchylib@${BRANCH_NAME}') import myecho; myecho()");
+        sampleRepo2.git("add", "Jenkinsfile");
+        sampleRepo2.git("commit", "--message=init");
+        sampleRepo2.git("branch", "feature");
+        sampleRepo2.git("branch", "bogus");
+
+        // Get a non-default branch loaded for this single-branch build:
+        GitSCM gitSCM = new GitSCM(
+                GitSCM.createRepoList(sampleRepo2.toString(), null),
+                Collections.singletonList(new BranchSpec("*/feature")),
+                null, null, Collections.emptyList());
+
+        WorkflowJob p0 = r.jenkins.createProject(WorkflowJob.class, "p0");
+        p0.setDefinition(new CpsScmFlowDefinition(gitSCM, "Jenkinsfile"));
+        sampleRepo2.notifyCommit(r);
+        r.waitUntilNoActivity();
+
+        WorkflowRun b0 = r.buildAndAssertSuccess(p0);
+        r.assertLogContains("Loading library branchylib@feature", b0);
+        r.assertLogContains("something very special", b0);
+    }
+
     @Issue("JENKINS-43802")
     @Test public void owner() throws Exception {
         GlobalLibraries.get().setLibraries(Collections.singletonList(
