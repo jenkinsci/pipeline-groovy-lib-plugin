@@ -46,6 +46,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
+import java.util.TreeMap;
 import jenkins.branch.BranchSource;
 import jenkins.plugins.git.GitSCMSource;
 import jenkins.plugins.git.GitSampleRepoRule;
@@ -60,6 +61,7 @@ import jenkins.scm.impl.SingleSCMSource;
 import jenkins.scm.impl.subversion.SubversionSCMSource;
 import jenkins.scm.impl.subversion.SubversionSampleRepoRule;
 import org.apache.commons.io.FileUtils;
+import org.jenkinsci.plugins.envinject.EnvInjectPluginAction;
 import org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition;
 import org.jenkinsci.plugins.workflow.cps.CpsScmFlowDefinition;
 import org.jenkinsci.plugins.workflow.job.WorkflowJob;
@@ -73,6 +75,7 @@ import static org.hamcrest.Matchers.instanceOf;
 import static org.hamcrest.Matchers.not;
 import static org.junit.Assert.*;
 import org.junit.ClassRule;
+import org.junit.Ignore;
 import org.junit.Rule;
 import org.junit.Test;
 import org.jvnet.hudson.test.BuildWatcher;
@@ -838,6 +841,53 @@ public class SCMSourceRetrieverTest {
         WorkflowRun b0 = r.buildAndAssertSuccess(p0);
         r.assertLogContains("Loading library branchylib@feature", b0);
         r.assertLogContains("something very special", b0);
+    }
+
+    @Issue("JENKINS-69731")
+    @Ignore("Need help with environment manipulation for the build")
+    @Test public void checkDefaultVersion_inline_allowVersionEnvvar() throws Exception {
+        // Test that @Library('branchylib@${env.TEST_VAR_NAME}')
+        // is resolved with the TEST_VAR_NAME="feature" in environment.
+
+        // Do not let caller-provided BRANCH_NAME interfere here
+        assumeFalse("An externally provided TEST_VAR_NAME envvar interferes with tested logic",
+                System.getenv("TEST_VAR_NAME") != null);
+
+        sampleRepo.init();
+        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something special'}");
+        sampleRepo.git("add", "vars");
+        sampleRepo.git("commit", "--message=init");
+        sampleRepo.git("checkout", "-b", "feature");
+        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something very special'}");
+        sampleRepo.git("add", "vars");
+        sampleRepo.git("commit", "--message=init");
+        SCMSourceRetriever scm = new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true));
+        LibraryConfiguration lc = new LibraryConfiguration("branchylib", scm);
+        lc.setDefaultVersion("master");
+        lc.setIncludeInChangesets(false);
+        lc.setAllowVersionOverride(true);
+        lc.setAllowVersionEnvvar(true);
+        lc.setTraceBRANCH_NAME(true);
+        GlobalLibraries.get().setLibraries(Collections.singletonList(lc));
+
+        // TEST_VAR_NAME for job not set - fall back to default
+        WorkflowJob p0 = r.jenkins.createProject(WorkflowJob.class, "p0");
+        p0.setDefinition(new CpsFlowDefinition("@Library('branchylib@${env.TEST_VAR_NAME}') import myecho; myecho()", true));
+        WorkflowRun b0 = r.buildAndAssertSuccess(p0);
+        r.assertLogContains("Loading library branchylib@master", b0);
+        r.assertLogContains("something special", b0);
+
+        // TEST_VAR_NAME injected into env, use its value for library checkout
+        // https://github.com/jenkinsci/envinject-plugin/blob/master/src/test/java/org/jenkinsci/plugins/envinject/EnvInjectPluginActionTest.java
+        TreeMap<String, String> testEnv = new TreeMap();
+        testEnv.put("TEST_VAR_NAME", "feature");
+        EnvInjectPluginAction ea = new EnvInjectPluginAction(testEnv);
+        WorkflowJob p1 = r.jenkins.createProject(WorkflowJob.class, "p1");
+        p1.setDefinition(new CpsFlowDefinition("@Library('branchylib@${env.TEST_VAR_NAME}') import myecho; myecho()", true));
+        p1.addAction(ea);
+        WorkflowRun b1 = r.buildAndAssertSuccess(p1);
+        r.assertLogContains("Loading library branchylib@feature", b1);
+        r.assertLogContains("something very special", b1);
     }
 
     @Issue("JENKINS-43802")
