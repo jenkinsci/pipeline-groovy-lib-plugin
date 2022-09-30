@@ -292,6 +292,9 @@ public class SCMSourceRetrieverTest {
         // and check behaviors with BRANCH_NAME="master",
         // BRANCH_NAME="feature", and BRANCH_NAME="bogus"
         // TODO? BRANCH_NAME=""
+        // Note: An externally provided BRANCH_NAME envvar
+        // does not interfere with tested logic, since MBP
+        // sets the value for launched builds.
 
         sampleRepo.init();
         sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something special'}");
@@ -639,10 +642,6 @@ public class SCMSourceRetrieverTest {
 
         WorkflowJob p0 = r.jenkins.createProject(WorkflowJob.class, "p0");
         p0.setDefinition(new CpsScmFlowDefinition(gitSCM, "Jenkinsfile"));
-        // Note: this notification causes discovery of branches,
-        // definition of MBP "leaf" jobs, and launch of builds,
-        // so below we just make sure they complete and analyze
-        // the outcomes.
         sampleRepo2.notifyCommit(r);
         r.waitUntilNoActivity();
 
