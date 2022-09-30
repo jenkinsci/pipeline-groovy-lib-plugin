@@ -226,7 +226,7 @@ public class SCMSourceRetrieverTest {
     }
 
     @Issue("JENKINS-69731")
-    @Test public void checkDefaultVersionStaticStrings() throws Exception {
+    @Test public void checkDefaultVersion_inline_staticStrings() throws Exception {
         sampleRepo.init();
         sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something special'}");
         sampleRepo.git("add", "vars");
@@ -361,7 +361,7 @@ public class SCMSourceRetrieverTest {
     }
 
     @Issue("JENKINS-69731")
-    @Test public void checkDefaultVersion_MBP() throws Exception {
+    @Test public void checkDefaultVersion_MBP_staticStrings() throws Exception {
         // Test that lc.setAllowBRANCH_NAME(false) does not
         // preclude fixed branch names (they should work),
         // like @Library('branchylib@master')
@@ -507,7 +507,7 @@ public class SCMSourceRetrieverTest {
 
     @Issue("JENKINS-69731")
     //@Ignore("Need help setting up MBP+SingleSCMSource")
-    @Test public void checkDefaultVersion_MBP_singleBranch() throws Exception {
+    @Test public void checkDefaultVersion_MBPsingleBranch_staticStrings() throws Exception {
         // FAILS: Setup below does not instantiate any jobs!
         // (expected one for "feature")
 
@@ -596,7 +596,7 @@ public class SCMSourceRetrieverTest {
     }
 
     @Issue("JENKINS-69731")
-    @Test public void checkDefaultVersion_singleBranch() throws Exception {
+    @Test public void checkDefaultVersion_singleBranch_staticStrings() throws Exception {
         // Test that lc.setAllowBRANCH_NAME(false) does not
         // preclude fixed branch names (they should work),
         // like @Library('branchylib@master') when used for
