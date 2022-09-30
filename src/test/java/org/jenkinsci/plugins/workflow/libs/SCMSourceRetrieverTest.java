@@ -326,6 +326,20 @@ public class SCMSourceRetrieverTest {
         WorkflowRun b0 = r.buildAndAssertSuccess(p0);
         r.assertLogContains("Loading library branchylib@master", b0);
         r.assertLogContains("something special", b0);
+
+        // Branch context for second lib might be confused as "feature"
+        // because the first loaded lib would become part of SCMs list
+        // for this build, and there are no other SCMs in the list (an
+        // inline pipeline). In fact the second lib should fall back to
+        // "master" because the pipeline script is not from Git so there
+        // is no "BRANCH_NAME" of its own.
+        WorkflowJob p1 = r.jenkins.createProject(WorkflowJob.class, "p1");
+        p1.setDefinition(new CpsFlowDefinition("@Library('branchylib@feature') import myecho; myecho(); @Library('branchylib2@${BRANCH_NAME}') import myecho2; myecho2()", true));
+        WorkflowRun b1 = r.buildAndAssertSuccess(p1);
+        r.assertLogContains("Loading library branchylib@feature", b1);
+        r.assertLogContains("Loading library branchylib2@master", b1);
+        r.assertLogContains("something very special", b1);
+        r.assertLogContains("something weird", b1);
     }
 
     @Issue("JENKINS-69731")
