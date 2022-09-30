@@ -1,0 +1,10 @@
+<div>
+  If checked, scripts may select a custom version of the library
+  by appending literally <code>@${env.VARNAME}</code> pattern in
+  the <code>@Library</code> annotation, to use current value of
+  chosen environment variable named <code>VARNAME</code> if it
+  is defined in job properties or on the build agent.<br/>
+  If such branch name is not resolvable as an environment variable
+  or not present in library storage (SCM, release artifacts...),
+  it would fall back to default version you select here.
+</div>

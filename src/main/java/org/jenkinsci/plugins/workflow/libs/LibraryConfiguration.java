@@ -69,6 +69,7 @@ public class LibraryConfiguration extends AbstractDescribableImpl<LibraryConfigu
     private String defaultVersion;
     private boolean implicit;
     private boolean allowVersionOverride = true;
+    private boolean allowVersionEnvvar = false;
     private boolean allowBRANCH_NAME = false;
     private boolean allowBRANCH_NAME_PR = false;
     // Print defaultedVersion() progress resolving BRANCH_NAME
@@ -128,6 +129,21 @@ public class LibraryConfiguration extends AbstractDescribableImpl<LibraryConfigu
 
     @DataBoundSetter public void setAllowVersionOverride(boolean allowVersionOverride) {
         this.allowVersionOverride = allowVersionOverride;
+    }
+
+    /**
+     * Whether jobs should be permitted to specify literally @Library('libname@${env.VARNAME}')
+     * in pipeline files to try using the branch name of library resolved from environment
+     * variables pre-set in any manner by the build environment, host, etc. If such branch
+     * name does not exist in the library, fall back to retrieve() defaultVersion.
+     */
+
+    public boolean isAllowVersionEnvvar() {
+        return allowVersionEnvvar;
+    }
+
+    @DataBoundSetter public void setAllowVersionEnvvar(boolean allowVersionEnvvar) {
+        this.allowVersionEnvvar = allowVersionEnvvar;
     }
 
     /**
@@ -206,8 +222,100 @@ public class LibraryConfiguration extends AbstractDescribableImpl<LibraryConfigu
             } else {
                 return defaultVersion;
             }
-        } else if (allowVersionOverride && !"${BRANCH_NAME}".equals(version)) {
+        } else if (allowVersionOverride
+                && !("${BRANCH_NAME}".equals(version))
+                && !(version.startsWith("${env.") && version.endsWith("}"))
+        ) {
             return version;
+        } else if (allowVersionEnvvar && version.startsWith("${env.") && version.endsWith("}")) {
+            String runVersion = null;
+            String envVersion = version.substring(6, version.length() - 1);
+            Item runParent = null;
+            if (run != null && listener != null) {
+                try {
+                    runParent = run.getParent();
+                } catch (Exception x) {
+                    // no-op, keep null
+                }
+            }
+
+            if (logger != null) {
+                logger.println("defaultedVersion(): " +
+                    "Resolving envvar '" + envVersion + "'; " +
+                    (runParent == null ? "without" : "have") +
+                    " a runParent object");
+            }
+
+            // without a runParent we can't validateVersion() anyway
+            if (runParent != null) {
+                try {
+                    runVersion = run.getEnvironment(listener).get(envVersion, null);
+                    if (logger != null) {
+                        if (runVersion != null) {
+                            logger.println("defaultedVersion(): Resolved envvar " + envVersion + "='" + runVersion + "'");
+                        } else {
+                            logger.println("defaultedVersion(): Did not resolve envvar " + envVersion + ": not in env");
+                        }
+                    }
+                } catch (Exception x) {
+                    runVersion = null;
+                    if (logger != null) {
+                        logger.println("defaultedVersion(): Did not resolve envvar " + envVersion + ": " + x.getMessage());
+                    }
+                }
+            } else {
+                if (logger != null) {
+                    logger.println("defaultedVersion(): Trying to default: " +
+                            "without a runParent we can't validateVersion() anyway");
+                }
+            }
+
+            if (runParent == null || runVersion == null || "".equals(runVersion)) {
+                // Current build does not know the requested envvar,
+                // or it's an empty string, or this request has null
+                // args for run/listener needed for validateVersion()
+                // below, or some other problem occurred.
+                // Fall back if we can:
+                if (logger != null) {
+                    logger.println("defaultedVersion(): Trying to default: " +
+                        "runVersion is " +
+                        (runVersion == null ? "null" :
+                            ("".equals(runVersion) ? "empty" : runVersion)));
+                }
+                if (defaultVersion == null) {
+                    throw new AbortException("No version specified for library " + name);
+                } else {
+                    return defaultVersion;
+                }
+            }
+
+            // Check if runVersion is resolvable by LibraryRetriever
+            // implementation (SCM, HTTP, etc.); fall back if not:
+            if (retriever != null) {
+                if (logger != null) {
+                    logger.println("defaultedVersion(): Trying to validate runVersion: " + runVersion);
+                }
+
+                FormValidation fv = retriever.validateVersion(name, runVersion, runParent);
+
+                if (fv != null && fv.kind == FormValidation.Kind.OK) {
+                    return runVersion;
+                }
+            }
+
+            // No retriever, or its validateVersion() did not confirm
+            // usability of BRANCH_NAME string value as the version...
+            if (logger != null) {
+                logger.println("defaultedVersion(): Trying to default: " +
+                    "could not resolve runVersion which is " +
+                    ("".equals(runVersion) ? "empty" : runVersion));
+            }
+            if (defaultVersion == null) {
+                throw new AbortException(envVersion + " version " + runVersion +
+                    " was not found, and no default version specified, for library " + name);
+            } else {
+                return defaultVersion;
+            }
         } else if (allowBRANCH_NAME && "${BRANCH_NAME}".equals(version)) {
             String runVersion = null;
             Item runParent = null;
@@ -581,13 +689,16 @@ public class LibraryConfiguration extends AbstractDescribableImpl<LibraryConfigu
         }
 
         @RequirePOST
-        public FormValidation doCheckDefaultVersion(@AncestorInPath Item context, @QueryParameter String defaultVersion, @QueryParameter boolean implicit, @QueryParameter boolean allowVersionOverride, @QueryParameter boolean allowBRANCH_NAME, @QueryParameter boolean allowBRANCH_NAME_PR, @QueryParameter String name) {
+        public FormValidation doCheckDefaultVersion(@AncestorInPath Item context, @QueryParameter String defaultVersion, @QueryParameter boolean implicit, @QueryParameter boolean allowVersionOverride, @QueryParameter boolean allowVersionEnvvar, @QueryParameter boolean allowBRANCH_NAME, @QueryParameter boolean allowBRANCH_NAME_PR, @QueryParameter String name) {
             if (defaultVersion.isEmpty()) {
                 if (implicit) {
                     return FormValidation.error("If you load a library implicitly, you must specify a default version.");
                 }
                 if (allowBRANCH_NAME) {
                     return FormValidation.error("If you allow use of literal '@${BRANCH_NAME}' for overriding a default version, you must define that version as fallback.");
+                }
+                if (allowVersionEnvvar) {
+                    return FormValidation.error("If you allow use of literal '@${env.VARNAME}' pattern for overriding a default version, you must define that version as fallback.");
                 }
                 if (!allowVersionOverride) {
                     return FormValidation.error("If you deny overriding a default version, you must define that version.");
@@ -614,6 +725,16 @@ public class LibraryConfiguration extends AbstractDescribableImpl<LibraryConfigu
                     } else {
                         return FormValidation.error(msg);
                     }
+                }
+
+                if (defaultVersion.startsWith("${env.") && defaultVersion.endsWith("}")) {
+                    if (!allowVersionEnvvar) {
+                        return FormValidation.error("Use of literal '@${env.VARNAME}' pattern not allowed in this configuration.");
+                    }
+
+                    String msg = "Cannot set default version to " +
+                            "literal '@${env.VARNAME}' pattern";
+                    return FormValidation.error(msg);
                 }
 
                 for (LibraryResolver resolver : ExtensionList.lookup(LibraryResolver.class)) {
