@@ -404,6 +404,39 @@ public class LibraryConfiguration extends AbstractDescribableImpl<LibraryConfigu
                                 }
                             }
                         }
+
+                        if (scm0 == null) {
+                            Collection<SCM> wjscms = (Collection<SCM>) ((WorkflowJob)runParent).getSCMs();;
+                            if (wjscms.isEmpty()) {
+                                if (logger != null) {
+                                    logger.println("defaultedVersion(): " +
+                                            "WorkflowJob '" +
+                                            runParent.getClass().getName() +
+                                            "' is not associated with any SCMs");
+                                }
+                            } else {
+                                if (logger != null) {
+                                    logger.println("defaultedVersion(): " +
+                                            "inspecting WorkflowJob '" +
+                                            runParent.getClass().getName() +
+                                            "' for SCMs it might use");
+                                }
+                                for (SCM scmN : wjscms) {
+                                    if (logger != null) {
+                                        logger.println("defaultedVersion(): inspecting SCM '" +
+                                                scmN.getClass().getName() +
+                                                "': " + scmN.toString());
+                                    }
+                                    if ("hudson.plugins.git.GitSCM".equals(scmN.getClass().getName())) {
+                                        // The best we can do here is accept
+                                        // the first seen SCM (with branch
+                                        // support which we know how to query).
+                                        scm0 = scmN;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     // NOTE: the list of SCMs used by the run does not
