@@ -695,28 +695,28 @@ public class LibraryConfiguration extends AbstractDescribableImpl<LibraryConfigu
                     return FormValidation.error("If you load a library implicitly, you must specify a default version.");
                 }
                 if (allowBRANCH_NAME) {
-                    return FormValidation.error("If you allow use of literal '@${BRANCH_NAME}' for overriding a default version, you must define that version as fallback.");
+                    return FormValidation.error("If you allow use of literal '${BRANCH_NAME}' for overriding a default version, you must define that version as fallback.");
                 }
                 if (allowVersionEnvvar) {
-                    return FormValidation.error("If you allow use of literal '@${env.VARNAME}' pattern for overriding a default version, you must define that version as fallback.");
+                    return FormValidation.error("If you allow use of literal '${env.VARNAME}' pattern for overriding a default version, you must define that version as fallback.");
                 }
                 if (!allowVersionOverride) {
                     return FormValidation.error("If you deny overriding a default version, you must define that version.");
                 }
                 if (allowBRANCH_NAME_PR) {
-                    return FormValidation.warning("This setting has no effect when you do not allow use of literal '@${BRANCH_NAME}' for overriding a default version");
+                    return FormValidation.warning("This setting has no effect when you do not allow use of literal '${BRANCH_NAME}' for overriding a default version");
                 }
                 return FormValidation.ok();
             } else {
                 if ("${BRANCH_NAME}".equals(defaultVersion)) {
                     if (!allowBRANCH_NAME) {
-                        return FormValidation.error("Use of literal '@${BRANCH_NAME}' not allowed in this configuration.");
+                        return FormValidation.error("Use of literal '${BRANCH_NAME}' not allowed in this configuration.");
                     }
 
                     // The context is not a particular Run (might be a Job)
                     // so we can't detect which BRANCH_NAME is relevant:
                     String msg = "Cannot validate default version: " +
-                            "literal '@${BRANCH_NAME}' is reserved " +
+                            "literal '${BRANCH_NAME}' is reserved " +
                             "for pipeline files from SCM";
                     if (implicit) {
                         // Someone might want to bind feature branches of
@@ -729,11 +729,18 @@ public class LibraryConfiguration extends AbstractDescribableImpl<LibraryConfigu
 
                 if (defaultVersion.startsWith("${env.") && defaultVersion.endsWith("}")) {
                     if (!allowVersionEnvvar) {
-                        return FormValidation.error("Use of literal '@${env.VARNAME}' pattern not allowed in this configuration.");
+                        return FormValidation.error("Use of literal '${env.VARNAME}' pattern not allowed in this configuration.");
                     }
 
                     String msg = "Cannot set default version to " +
-                            "literal '@${env.VARNAME}' pattern";
+                            "literal '${env.VARNAME}' pattern";
+                    // TOTHINK: Should this be an error?
+                    // What if users intentionally want the (implicit?)
+                    // library version to depend on envvars without a
+                    // fallback? and what about git clones with no
+                    // specified "version" to use preference of GitHub
+                    // or similar platform's project/org settings as
+                    // the final sensible fallback?
                     return FormValidation.error(msg);
                 }
 
