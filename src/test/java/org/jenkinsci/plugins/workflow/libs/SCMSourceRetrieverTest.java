@@ -31,6 +31,7 @@ import hudson.EnvVars;
 import hudson.FilePath;
 import hudson.Functions;
 import hudson.model.Item;
+import hudson.model.Node;
 import hudson.model.Result;
 import hudson.model.TaskListener;
 import hudson.plugins.git.GitSCM;
@@ -991,6 +992,7 @@ public class SCMSourceRetrieverTest {
 
         // TODO: similar trick with build-agent settings
         // to check they override global server settings?
+        //p1.getEnvironment(r.jenkins.getNode("built-in"), null).put("TEST_VAR_NAME", "feature");
 
 /*
         // TODO: Make sense of envinject or similar way to set
@@ -1002,7 +1004,13 @@ public class SCMSourceRetrieverTest {
         testEnv.put("TEST_VAR_NAME", "feature");
         EnvInjectPluginAction ea = new EnvInjectPluginAction(testEnv);
         p1.addAction(ea);
-        WorkflowRun b2 = r.buildAndAssertSuccess(p1);
+        p1.save();
+        p1.scheduleBuild2(0, ea);
+        r.waitUntilNoActivity();
+        WorkflowRun b2 = p1.getLastBuild();
+        r.waitForCompletion(b2);
+        assertFalse(p1.isBuilding());
+        r.assertBuildStatusSuccess(b2);
         r.assertLogContains("Loading library branchylib@feature", b2);
         r.assertLogContains("something very special", b2);
  */
