@@ -41,6 +41,7 @@ import jenkins.model.Jenkins;
 import org.jenkinsci.plugins.workflow.flow.FlowDefinition;
 import org.jenkinsci.plugins.workflow.job.WorkflowJob;
 import org.jenkinsci.plugins.workflow.job.WorkflowRun;
+import org.jenkinsci.plugins.workflow.multibranch.BranchJobProperty;
 import org.kohsuke.accmod.Restricted;
 import org.kohsuke.accmod.restrictions.NoExternalUse;
 import org.kohsuke.stapler.AncestorInPath;
@@ -335,21 +336,51 @@ public class LibraryConfiguration extends AbstractDescribableImpl<LibraryConfigu
 
             // without a runParent we can't validateVersion() anyway
             if (runParent != null) {
-                // First, check if envvar BRANCH_NAME is defined?
-                // Trust the plugins and situations where it is set.
-                try {
-                    runVersion = run.getEnvironment(listener).get("BRANCH_NAME", null);
+                // For a first shot, ask if the job says anything?
+                // If not, we have more complex SCM-dependent queries
+                // for WorkflowJob to try below...
+                if (runParent instanceof WorkflowJob) {
                     if (logger != null) {
-                        if (runVersion != null) {
-                            logger.println("defaultedVersion(): Resolved envvar BRANCH_NAME='" + runVersion + "'");
-                        } else {
-                            logger.println("defaultedVersion(): Did not resolve envvar BRANCH_NAME: not in env");
+                        logger.println("defaultedVersion(): inspecting WorkflowJob for BranchJobProperty");
+                    }
+                    BranchJobProperty property = ((WorkflowJob)runParent).getProperty(BranchJobProperty.class);
+                    if (property != null) {
+                        try {
+                            runVersion = property.getBranch().getName();
+                            if (logger != null) {
+                                logger.println("defaultedVersion(): WorkflowJob BranchJobProperty refers to " + runVersion);
+                            }
+                        } catch (Exception x) {
+                            runVersion = null;
+                            if (logger != null) {
+                                logger.println("defaultedVersion(): WorkflowJob BranchJobProperty " +
+                                        "does not refer to a runVersion: " + x.getMessage());
+                            }
+                        }
+                    } else {
+                        if (logger != null) {
+                            logger.println("defaultedVersion(): WorkflowJob is not associated with a BranchJobProperty");
                         }
                     }
-                } catch (Exception x) {
-                    runVersion = null;
-                    if (logger != null) {
-                        logger.println("defaultedVersion(): Did not resolve envvar BRANCH_NAME: " + x.getMessage());
+                }
+
+                // Next, check if envvar BRANCH_NAME is defined?
+                // Trust the plugins and situations where it is set.
+                if (runVersion == null) {
+                    try {
+                        runVersion = run.getEnvironment(listener).get("BRANCH_NAME", null);
+                        if (logger != null) {
+                            if (runVersion != null) {
+                                logger.println("defaultedVersion(): Resolved envvar BRANCH_NAME='" + runVersion + "'");
+                            } else {
+                                logger.println("defaultedVersion(): Did not resolve envvar BRANCH_NAME: not in env");
+                            }
+                        }
+                    } catch (Exception x) {
+                        runVersion = null;
+                        if (logger != null) {
+                            logger.println("defaultedVersion(): Did not resolve envvar BRANCH_NAME: " + x.getMessage());
+                        }
                     }
                 }
 
