@@ -844,6 +844,83 @@ public class SCMSourceRetrieverTest {
     }
 
     @Issue("JENKINS-69731")
+    @Test public void checkDefaultVersion_singleBranch_BRANCH_NAME_doubleQuotes() throws Exception {
+        // Similar to above, the goal of this test is to
+        // verify that substitution of ${BRANCH_NAME} is
+        // not impacted by content of Groovy variables.
+        // The @Library annotation version resolution
+        // happens before Groovy->Java->... compilation.
+        // Note that at this time LibraryDecorator.java
+        // forbids use of non-constant strings; so this
+        // test would be dynamically skipped as long as
+        // this behavior happens.
+        // TODO: If this behavior does change, extend
+        // the test to also try ${env.VARNAME} confusion.
+
+        assumeFalse("An externally provided BRANCH_NAME envvar interferes with tested logic",
+                System.getenv("BRANCH_NAME") != null);
+
+        sampleRepo.init();
+        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something special'}");
+        sampleRepo.git("add", "vars");
+        sampleRepo.git("commit", "--message=init");
+        sampleRepo.git("checkout", "-b", "feature");
+        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something very special'}");
+        sampleRepo.git("add", "vars");
+        sampleRepo.git("commit", "--message=init");
+        SCMSourceRetriever scm = new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true));
+        LibraryConfiguration lc = new LibraryConfiguration("branchylib", scm);
+        lc.setDefaultVersion("master");
+        lc.setIncludeInChangesets(false);
+        lc.setAllowVersionOverride(false);
+        lc.setAllowBRANCH_NAME(true);
+        lc.setTraceBRANCH_NAME(true);
+        GlobalLibraries.get().setLibraries(Collections.singletonList(lc));
+
+        // Inspired in part by tests like
+        // https://github.com/jenkinsci/workflow-multibranch-plugin/blob/master/src/test/java/org/jenkinsci/plugins/workflow/multibranch/NoTriggerBranchPropertyWorkflowTest.java#L132
+        sampleRepo2.init();
+        sampleRepo2.write("Jenkinsfile", "BRANCH_NAME='whatever'; @Library(\"branchylib@${BRANCH_NAME}\") import myecho; myecho()");
+        sampleRepo2.git("add", "Jenkinsfile");
+        sampleRepo2.git("commit", "--message=init");
+        sampleRepo2.git("branch", "feature");
+        sampleRepo2.git("branch", "bogus");
+
+        // Get a non-default branch loaded for this single-branch build:
+        GitSCM gitSCM = new GitSCM(
+                GitSCM.createRepoList(sampleRepo2.toString(), null),
+                Collections.singletonList(new BranchSpec("*/feature")),
+                null, null, Collections.emptyList());
+
+        WorkflowJob p1 = r.jenkins.createProject(WorkflowJob.class, "p1");
+        p1.setDefinition(new CpsScmFlowDefinition(gitSCM, "Jenkinsfile"));
+        sampleRepo2.notifyCommit(r);
+        r.waitUntilNoActivity();
+        p1.scheduleBuild2(0);
+        r.waitUntilNoActivity();
+        WorkflowRun b1 = p1.getLastBuild();
+        r.waitForCompletion(b1);
+        assertFalse(p1.isBuilding());
+
+        // LibraryDecorator may forbid use of double-quotes
+        try {
+            r.assertBuildStatus(Result.FAILURE, b1);
+            r.assertLogContains("WorkflowScript: @Library value", b1);
+            r.assertLogContains("was not a constant; did you mean to use the", b1);
+            r.assertLogContains("step instead?", b1);
+            // assertions survived, skip the test
+            assumeFalse("LibraryDecorator forbids use of double-quotes for @Library annotation", true);
+        } catch(AssertionError x) {
+            // Chosen library version should not be "whatever"
+            // causing fallback to "master", but "feature" per
+            // pipeline SCM branch name.
+            r.assertBuildStatusSuccess(b1);
+            r.assertLogContains("Loading library branchylib@feature", b1);
+            r.assertLogContains("something very special", b1);
+        }
+    }
+
+    @Issue("JENKINS-69731")
     @Ignore("Need help with environment manipulation for the build")
     @Test public void checkDefaultVersion_inline_allowVersionEnvvar() throws Exception {
         // Test that @Library('branchylib@${env.TEST_VAR_NAME}')
