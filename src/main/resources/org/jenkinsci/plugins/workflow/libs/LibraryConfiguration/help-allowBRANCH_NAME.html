@@ -5,5 +5,13 @@
   of the library codebase as that of the pipeline being built.<br/>
   If such branch name is not resolvable as an environment variable
   or not present in library storage (SCM, release artifacts...),
-  it would fall back to default version you select here.
+  it would fall back to default version you select here.<br/>
+  Keep in mind that while the markup for such variable version
+  specification is intentionally similar to what you would use
+  in pipeline Groovy code, for simpler use and maintenance, the
+  actual strings are expanded by the plugin as it pre-processes
+  the pipeline script before compilation. Tokens spelled in the
+  <code>@Library</code> annotation are not Groovy variables!
+  The values substituted here are not influenced by run-time
+  interpretation of the pipeline script source text!
 </div>
