@@ -632,6 +632,7 @@ public class SCMSourceRetrieverTest {
                 null, null, Collections.emptyList());
         BranchSource branchSource = new BranchSource(new SingleSCMSource("feature-id", "feature", gitSCM));
         mbp.getSourcesList().add(branchSource);
+        mbp.save();
         // Note: this notification causes discovery of branches,
         // definition of MBP "leaf" jobs, and launch of builds,
         // so below we just make sure they complete and analyze
@@ -714,6 +715,7 @@ public class SCMSourceRetrieverTest {
                 null, null, Collections.emptyList());
         BranchSource branchSource = new BranchSource(new SingleSCMSource("feature", "feature", gitSCM));
         mbp.getSourcesList().add(branchSource);
+        mbp.save();
         // Note: this notification causes discovery of branches,
         // definition of MBP "leaf" jobs, and launch of builds,
         // so below we just make sure they complete and analyze
