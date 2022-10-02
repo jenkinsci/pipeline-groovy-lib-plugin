@@ -250,7 +250,7 @@ public class SCMSourceRetrieverTest {
         lc.setDefaultVersion("master");
         lc.setIncludeInChangesets(false);
         lc.setAllowBRANCH_NAME(true);
-        lc.setTraceBRANCH_NAME(true);
+        lc.setTraceDefaultedVersion(true);
         GlobalLibraries.get().setLibraries(Collections.singletonList(lc));
 
         // Basename "libname" notation => use specified default branch
@@ -308,7 +308,7 @@ public class SCMSourceRetrieverTest {
         lc.setIncludeInChangesets(false);
         lc.setAllowVersionOverride(true);
         lc.setAllowBRANCH_NAME(true);
-        lc.setTraceBRANCH_NAME(true);
+        lc.setTraceDefaultedVersion(true);
 
         sampleRepo2.init();
         sampleRepo2.write("vars/myecho2.groovy", "def call() {echo 'something weird'}");
@@ -324,7 +324,7 @@ public class SCMSourceRetrieverTest {
         lc2.setIncludeInChangesets(false);
         lc2.setAllowVersionOverride(true);
         lc2.setAllowBRANCH_NAME(true);
-        lc2.setTraceBRANCH_NAME(true);
+        lc2.setTraceDefaultedVersion(true);
 
         // Configure two libs to make a mess :)
         GlobalLibraries.get().setLibraries(Arrays.asList(lc, lc2));
@@ -374,7 +374,7 @@ public class SCMSourceRetrieverTest {
         lc.setDefaultVersion("master");
         lc.setIncludeInChangesets(false);
         lc.setAllowBRANCH_NAME(true);
-        lc.setTraceBRANCH_NAME(true);
+        lc.setTraceDefaultedVersion(true);
         GlobalLibraries.get().setLibraries(Collections.singletonList(lc));
 
         // Inspired in part by tests like
@@ -445,7 +445,7 @@ public class SCMSourceRetrieverTest {
         lc.setIncludeInChangesets(false);
         lc.setAllowVersionOverride(true);
         lc.setAllowBRANCH_NAME(false);
-        lc.setTraceBRANCH_NAME(true);
+        lc.setTraceDefaultedVersion(true);
         GlobalLibraries.get().setLibraries(Collections.singletonList(lc));
 
         // Inspired in part by tests like
@@ -522,7 +522,7 @@ public class SCMSourceRetrieverTest {
         lc.setIncludeInChangesets(false);
         lc.setAllowVersionOverride(true);
         lc.setAllowBRANCH_NAME(false);
-        lc.setTraceBRANCH_NAME(true);
+        lc.setTraceDefaultedVersion(true);
         GlobalLibraries.get().setLibraries(Collections.singletonList(lc));
 
         // Inspired in part by tests like
@@ -596,7 +596,7 @@ public class SCMSourceRetrieverTest {
         lc.setIncludeInChangesets(false);
         lc.setAllowVersionOverride(true);
         lc.setAllowBRANCH_NAME(false);
-        lc.setTraceBRANCH_NAME(true);
+        lc.setTraceDefaultedVersion(true);
         GlobalLibraries.get().setLibraries(Collections.singletonList(lc));
 
         // Inspired in part by tests like
@@ -685,7 +685,7 @@ public class SCMSourceRetrieverTest {
         lc.setIncludeInChangesets(false);
         lc.setAllowVersionOverride(true);
         lc.setAllowBRANCH_NAME(false);
-        lc.setTraceBRANCH_NAME(true);
+        lc.setTraceDefaultedVersion(true);
         GlobalLibraries.get().setLibraries(Collections.singletonList(lc));
 
         // Inspired in part by tests like
@@ -765,7 +765,7 @@ public class SCMSourceRetrieverTest {
         lc.setIncludeInChangesets(false);
         lc.setAllowVersionOverride(true);
         lc.setAllowBRANCH_NAME(false);
-        lc.setTraceBRANCH_NAME(true);
+        lc.setTraceDefaultedVersion(true);
         GlobalLibraries.get().setLibraries(Collections.singletonList(lc));
 
         // Inspired in part by tests like
@@ -823,7 +823,7 @@ public class SCMSourceRetrieverTest {
         lc.setIncludeInChangesets(false);
         lc.setAllowVersionOverride(false);
         lc.setAllowBRANCH_NAME(true);
-        lc.setTraceBRANCH_NAME(true);
+        lc.setTraceDefaultedVersion(true);
         GlobalLibraries.get().setLibraries(Collections.singletonList(lc));
 
         // Inspired in part by tests like
@@ -882,7 +882,7 @@ public class SCMSourceRetrieverTest {
         lc.setIncludeInChangesets(false);
         lc.setAllowVersionOverride(false);
         lc.setAllowBRANCH_NAME(true);
-        lc.setTraceBRANCH_NAME(true);
+        lc.setTraceDefaultedVersion(true);
         GlobalLibraries.get().setLibraries(Collections.singletonList(lc));
 
         // Inspired in part by tests like
@@ -955,7 +955,7 @@ public class SCMSourceRetrieverTest {
         lc.setIncludeInChangesets(false);
         lc.setAllowVersionOverride(true);
         lc.setAllowVersionEnvvar(true);
-        lc.setTraceBRANCH_NAME(true);
+        lc.setTraceDefaultedVersion(true);
         GlobalLibraries.get().setLibraries(Collections.singletonList(lc));
 
         // TEST_VAR_NAME for job not set - fall back to default

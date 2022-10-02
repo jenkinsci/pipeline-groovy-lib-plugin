@@ -153,11 +153,11 @@ public class LibraryConfigurationTest {
         LibraryConfiguration cfg = new LibraryConfiguration(libraryName, new SCMRetriever(new GitSCM("https://phony.jenkins.io/bar.git")));
         cfg.setAllowVersionOverride(true);
         cfg.setAllowBRANCH_NAME(false);
-        cfg.setTraceBRANCH_NAME(true);
+        cfg.setTraceDefaultedVersion(true);
 
         assertEquals(true, cfg.isAllowVersionOverride());
         assertEquals(false, cfg.isAllowBRANCH_NAME());
-        assertEquals(true, cfg.isTraceBRANCH_NAME());
+        assertEquals(true, cfg.isTraceDefaultedVersion());
         assertThrows(AbortException.class, () -> cfg.defaultedVersion("${BRANCH_NAME}"));
         /* This SHOULD NOT return a version string that literally remains '${BRANCH_NAME}'! */
     }
@@ -170,7 +170,7 @@ public class LibraryConfigurationTest {
         LibraryConfiguration cfg = new LibraryConfiguration(libraryName, new SCMRetriever(new GitSCM("https://phony.jenkins.io/bar.git")));
         cfg.setDefaultVersion(defaultVersion);
         cfg.setAllowBRANCH_NAME(true);
-        cfg.setTraceBRANCH_NAME(true);
+        cfg.setTraceDefaultedVersion(true);
 
         assertEquals(true, cfg.isAllowBRANCH_NAME());
         try {
@@ -186,7 +186,7 @@ public class LibraryConfigurationTest {
 
         LibraryConfiguration cfg = new LibraryConfiguration(libraryName, new SCMRetriever(new GitSCM("https://phony.jenkins.io/bar.git")));
         cfg.setAllowBRANCH_NAME(true);
-        cfg.setTraceBRANCH_NAME(true);
+        cfg.setTraceDefaultedVersion(true);
 
         assertEquals(true, cfg.isAllowBRANCH_NAME());
         assertThrows(AbortException.class, () -> cfg.defaultedVersion("${BRANCH_NAME}", null, null));

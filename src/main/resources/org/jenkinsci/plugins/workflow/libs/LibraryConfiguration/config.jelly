@@ -46,7 +46,7 @@ THE SOFTWARE.
     <f:entry field="allowBRANCH_NAME_PR" title="${%If you allow literal use of @Library 'libname@${BRANCH_NAME}' above, you can also allow fallback to CHANGE_BRANCH and/or CHANGE_TARGET for pull request builds}">
         <f:checkbox default="false"/>
     </f:entry>
-    <f:entry field="traceBRANCH_NAME" title="${%Request tracing of 'libname@${BRANCH_NAME}' resolution into build log}">
+    <f:entry field="traceDefaultedVersion" title="${%Request tracing of 'libname@${BRANCH_NAME}' resolution into build log}">
         <f:checkbox default="false"/>
     </f:entry>
     <f:entry field="includeInChangesets" title="${%Include @Library changes in job recent changes}">

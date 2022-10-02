@@ -74,10 +74,11 @@ public class LibraryConfiguration extends AbstractDescribableImpl<LibraryConfigu
     private boolean allowBRANCH_NAME = false;
     private boolean allowBRANCH_NAME_PR = false;
     // Print defaultedVersion() progress resolving BRANCH_NAME
-    // to a build console log. This is exposed as UI checkbox
-    // for deployment troubleshooting, but is primarily intended
-    // for programmatic consumption e.g. in unit-tests.
-    private boolean traceBRANCH_NAME = false;
+    // or env.VARNAME patterns to a build console log. This is
+    // exposed as UI checkbox for deployment troubleshooting,
+    // but is primarily intended for programmatic consumption
+    // e.g. in unit-tests.
+    private boolean traceDefaultedVersion = false;
     private boolean includeInChangesets = true;
     private LibraryCachingConfiguration cachingConfiguration = null;
 
@@ -161,12 +162,12 @@ public class LibraryConfiguration extends AbstractDescribableImpl<LibraryConfigu
         this.allowBRANCH_NAME = allowBRANCH_NAME;
     }
 
-    public boolean isTraceBRANCH_NAME() {
-        return traceBRANCH_NAME;
+    public boolean isTraceDefaultedVersion() {
+        return traceDefaultedVersion;
     }
 
-    @DataBoundSetter public void setTraceBRANCH_NAME(boolean traceBRANCH_NAME) {
-        this.traceBRANCH_NAME = traceBRANCH_NAME;
+    @DataBoundSetter public void setTraceDefaultedVersion(boolean traceDefaultedVersion) {
+        this.traceDefaultedVersion = traceDefaultedVersion;
     }
 
     public boolean isAllowBRANCH_NAME_PR() {
@@ -468,7 +469,7 @@ public class LibraryConfiguration extends AbstractDescribableImpl<LibraryConfigu
 
     @NonNull String defaultedVersion(@CheckForNull String version, Run<?, ?> run, TaskListener listener) throws AbortException {
         PrintStream logger = null;
-        if (traceBRANCH_NAME && listener != null) {
+        if (traceDefaultedVersion && listener != null) {
             logger = listener.getLogger();
         }
         if (logger != null) {
