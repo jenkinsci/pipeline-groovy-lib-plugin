@@ -929,7 +929,6 @@ public class SCMSourceRetrieverTest {
     }
 
     @Issue("JENKINS-69731")
-    //@Ignore("Need help with environment manipulation for the build")
     @Test public void checkDefaultVersion_inline_allowVersionEnvvar() throws Exception {
         // Test that @Library('branchylib@${env.TEST_VAR_NAME}')
         // is resolved with the TEST_VAR_NAME="feature" in environment.
@@ -996,26 +995,32 @@ public class SCMSourceRetrieverTest {
         // to check they override global server settings?
         //p1.getEnvironment(r.jenkins.getNode("built-in"), null).put("TEST_VAR_NAME", "feature");
 
-/*
-        // TODO: Make sense of envinject or similar way to set
-        // envvars into the job or build before it starts.
-        // Look at how workflow or git plugins do it?..
+        // This part of the test is optionally fenced away -
+        // so developers tinkering on the fix can do so and
+        // run it, but for default case it is so far ignored.
+        //   $ ENABLE_TEST_VAR_NAME_JOBLEVEL=true mvn test -Dtest='SCMSourceRetrieverTest#checkDefaultVersion_inline_allowVersionEnvvar'
+        if ("true".equals(System.getenv("ENABLE_TEST_VAR_NAME_JOBLEVEL"))) {
+            //@Ignore("Need help with environment manipulation for the build")
 
-        // Same job, different value of envvar, nearer in scope:
-        TreeMap<String, String> testEnv = new TreeMap();
-        testEnv.put("TEST_VAR_NAME", "feature");
-        EnvInjectPluginAction ea = new EnvInjectPluginAction(testEnv);
-        p1.addAction(ea);
-        p1.save();
-        p1.scheduleBuild2(0, ea);
-        r.waitUntilNoActivity();
-        WorkflowRun b2 = p1.getLastBuild();
-        r.waitForCompletion(b2);
-        assertFalse(p1.isBuilding());
-        r.assertBuildStatusSuccess(b2);
-        r.assertLogContains("Loading library branchylib@feature", b2);
-        r.assertLogContains("something very special", b2);
- */
+            // TODO: Make sense of envinject or similar way to set
+            // envvars into the job or build before it starts.
+            // Look at how workflow or git plugins do it?..
+
+            // Same job, different value of envvar, nearer in scope:
+            TreeMap<String, String> testEnv = new TreeMap();
+            testEnv.put("TEST_VAR_NAME", "feature");
+            EnvInjectPluginAction ea = new EnvInjectPluginAction(testEnv);
+            p1.addAction(ea);
+            p1.save();
+            p1.scheduleBuild2(0, ea);
+            r.waitUntilNoActivity();
+            WorkflowRun b2 = p1.getLastBuild();
+            r.waitForCompletion(b2);
+            assertFalse(p1.isBuilding());
+            r.assertBuildStatusSuccess(b2);
+            r.assertLogContains("Loading library branchylib@feature", b2);
+            r.assertLogContains("something very special", b2);
+        }
     }
 
     @Issue("JENKINS-43802")
