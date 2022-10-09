@@ -1088,11 +1088,9 @@ public class SCMSourceRetrieverTest {
                     ev.put("TEST_VAR_NAME", "feature");
                 }
             });
-/*
             for (EnvironmentContributor ec : ecOrig) {
                 ecList.add(ec);
             }
-*/
 
             p1.scheduleBuild2(0);
             r.waitUntilNoActivity();
