@@ -1054,6 +1054,8 @@ public class SCMSourceRetrieverTest {
         // run it, but for default case it is so far ignored.
         //   $ ENABLE_TEST_VAR_NAME_JOBLEVEL=true mvn test -Dtest='SCMSourceRetrieverTest#checkDefaultVersion_inline_allowVersionEnvvar'
         if ("true".equals(System.getenv("ENABLE_TEST_VAR_NAME_JOBLEVEL"))) {
+            // See research commented at
+            // https://github.com/jenkinsci/pipeline-groovy-lib-plugin/pull/19#discussion_r990792561
             //@Ignore("Need help with environment manipulation for the build")
 
             // TODO: Make sense of envinject or similar way to set
@@ -1082,6 +1084,12 @@ public class SCMSourceRetrieverTest {
         }
 
         if ("true".equals(System.getenv("ENABLE_TEST_VAR_NAME_JOBLEVEL"))) {
+            // Try a more direct way to inject environment
+            // variables into a Job/Run without extra plugins:
+
+            // See research commented at
+            // https://github.com/jenkinsci/pipeline-groovy-lib-plugin/pull/19#discussion_r990781686
+
             // General override idea was lifted from
             // https://github.com/jenkinsci/subversion-plugin/blob/master/src/test/java/hudson/scm/SubversionSCMTest.java#L1383
             // test-case recursiveEnvironmentVariables()
