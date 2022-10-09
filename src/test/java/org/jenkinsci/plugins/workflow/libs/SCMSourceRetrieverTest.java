@@ -75,7 +75,6 @@ import jenkins.scm.impl.SingleSCMSource;
 import jenkins.scm.impl.subversion.SubversionSCMSource;
 import jenkins.scm.impl.subversion.SubversionSampleRepoRule;
 import org.apache.commons.io.FileUtils;
-import org.jenkinsci.plugins.envinject.EnvInjectPluginAction;
 import org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition;
 import org.jenkinsci.plugins.workflow.cps.CpsScmFlowDefinition;
 import org.jenkinsci.plugins.workflow.job.WorkflowJob;
@@ -1053,36 +1052,6 @@ public class SCMSourceRetrieverTest {
         // so developers tinkering on the fix can do so and
         // run it, but for default case it is so far ignored.
         //   $ ENABLE_TEST_VAR_NAME_JOBLEVEL=true mvn test -Dtest='SCMSourceRetrieverTest#checkDefaultVersion_inline_allowVersionEnvvar'
-        if ("true".equals(System.getenv("ENABLE_TEST_VAR_NAME_JOBLEVEL"))) {
-            // See research commented at
-            // https://github.com/jenkinsci/pipeline-groovy-lib-plugin/pull/19#discussion_r990792561
-            //@Ignore("Need help with environment manipulation for the build")
-
-            // TODO: Make sense of envinject or similar way to set
-            // envvars into the job or build before it starts.
-            // Look at how workflow or git plugins do it?..
-
-            // Same job, different value of envvar, nearer in scope:
-            TreeMap<String, String> testEnv = new TreeMap();
-            testEnv.put("TEST_VAR_NAME", "feature");
-            EnvInjectPluginAction ea = new EnvInjectPluginAction(testEnv);
-            p1.addAction(ea);
-            p1.save();
-            p1.scheduleBuild2(0, ea);
-            r.waitUntilNoActivity();
-            WorkflowRun b2 = p1.getLastBuild();
-            r.waitForCompletion(b2);
-            assertFalse(p1.isBuilding());
-            r.assertBuildStatusSuccess(b2);
-
-            System.out.println("[DEBUG:EXT] wfJob env: " + p1.getEnvironment(null, null));
-            System.out.println("[DEBUG:EXT] wfRun env: " + b2.getEnvironment());
-            System.out.println("[DEBUG:EXT] wfRun envContribActions: " + b2.getActions(EnvironmentContributingAction.class));
-
-            r.assertLogContains("Loading library branchylib@feature", b2);
-            r.assertLogContains("something very special", b2);
-        }
-
         if ("true".equals(System.getenv("ENABLE_TEST_VAR_NAME_JOBLEVEL"))) {
             // Try a more direct way to inject environment
             // variables into a Job/Run without extra plugins:
