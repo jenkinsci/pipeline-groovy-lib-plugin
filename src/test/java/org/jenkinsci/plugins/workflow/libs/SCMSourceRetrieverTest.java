@@ -28,10 +28,16 @@ import com.cloudbees.hudson.plugins.folder.Folder;
 import edu.umd.cs.findbugs.annotations.NonNull;
 import hudson.AbortException;
 import hudson.EnvVars;
+import hudson.ExtensionList;
 import hudson.FilePath;
 import hudson.Functions;
+import hudson.model.BuildVariableContributor;
+import hudson.model.EnvironmentContributingAction;
+import hudson.model.EnvironmentContributor;
 import hudson.model.Item;
+import hudson.model.Job;
 import hudson.model.Result;
+import hudson.model.Run;
 import hudson.model.TaskListener;
 import hudson.plugins.git.GitSCM;
 import hudson.plugins.git.BranchSpec;
@@ -46,6 +52,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.Iterator;
@@ -1060,6 +1067,57 @@ public class SCMSourceRetrieverTest {
             p1.addAction(ea);
             p1.save();
             p1.scheduleBuild2(0, ea);
+            r.waitUntilNoActivity();
+            WorkflowRun b2 = p1.getLastBuild();
+            r.waitForCompletion(b2);
+            assertFalse(p1.isBuilding());
+            r.assertBuildStatusSuccess(b2);
+
+            System.out.println("[DEBUG:EXT] wfJob env: " + p1.getEnvironment(null, null));
+            System.out.println("[DEBUG:EXT] wfRun env: " + b2.getEnvironment());
+            System.out.println("[DEBUG:EXT] wfRun envContribActions: " + b2.getActions(EnvironmentContributingAction.class));
+
+            r.assertLogContains("Loading library branchylib@feature", b2);
+            r.assertLogContains("something very special", b2);
+        }
+
+        if ("true".equals(System.getenv("ENABLE_TEST_VAR_NAME_JOBLEVEL"))) {
+            // General override idea was lifted from
+            // https://github.com/jenkinsci/subversion-plugin/blob/master/src/test/java/hudson/scm/SubversionSCMTest.java#L1383
+            // test-case recursiveEnvironmentVariables()
+
+            // Per https://github.com/jenkinsci/jenkins/blob/031f40c50899ec4e5fa4d886a1c006a5330f2627/core/src/main/java/hudson/ExtensionList.java#L296
+            // in implementation of `add(index, T)` the index is ignored.
+            // So we save a copy in same order, drop the list, add our
+            // override as the only entry (hence highest priority)
+            // and re-add the original list contents.
+            ExtensionList<EnvironmentContributor> ecList = EnvironmentContributor.all();
+            List<EnvironmentContributor> ecOrig = new ArrayList();
+            for (EnvironmentContributor ec : ecList) {
+                ecOrig.add(ec);
+            }
+            ecList.removeAll(ecOrig);
+            assumeFalse("EnvironmentContributor.all() should be empty now", !ecList.isEmpty());
+
+            ecList.add(new EnvironmentContributor() {
+                @Override public void buildEnvironmentFor(Run run, EnvVars ev, TaskListener tl) throws IOException, InterruptedException {
+                    if (tl != null)
+                        tl.getLogger().println("[DEBUG:RUN] Injecting TEST_VAR_NAME='feature' to EnvVars");
+                    ev.put("TEST_VAR_NAME", "feature");
+                }
+                @Override public void buildEnvironmentFor(Job run, EnvVars ev, TaskListener tl) throws IOException, InterruptedException {
+                    if (tl != null)
+                        tl.getLogger().println("[DEBUG:JOB] Injecting TEST_VAR_NAME='feature' to EnvVars");
+                    ev.put("TEST_VAR_NAME", "feature");
+                }
+            });
+/*
+            for (EnvironmentContributor ec : ecOrig) {
+                ecList.add(ec);
+            }
+*/
+
+            p1.scheduleBuild2(0);
             r.waitUntilNoActivity();
             WorkflowRun b2 = p1.getLastBuild();
             r.waitForCompletion(b2);
