@@ -1014,7 +1014,7 @@ public class SCMSourceRetrieverTest {
         // TEST_VAR_NAME injected into env, use its value for library checkout
         // https://github.com/jenkinsci/envinject-plugin/blob/master/src/test/java/org/jenkinsci/plugins/envinject/EnvInjectPluginActionTest.java
         WorkflowJob p1 = r.jenkins.createProject(WorkflowJob.class, "p1");
-        p1.setDefinition(new CpsFlowDefinition("@Library('branchylib@${env.TEST_VAR_NAME}') import myecho; myecho()", true));
+        p1.setDefinition(new CpsFlowDefinition("@Library('branchylib@${env.TEST_VAR_NAME}') import myecho; myecho(); echo \"Groovy TEST_VAR_NAME='${TEST_VAR_NAME}'\"; echo \"env.TEST_VAR_NAME='${env.TEST_VAR_NAME}'\"", true));
 
         // Inject envvar to server global settings:
         DescribableList<NodeProperty<?>, NodePropertyDescriptor> globalNodeProperties = r.jenkins.getGlobalNodeProperties();
@@ -1064,6 +1064,11 @@ public class SCMSourceRetrieverTest {
             r.waitForCompletion(b2);
             assertFalse(p1.isBuilding());
             r.assertBuildStatusSuccess(b2);
+
+            System.out.println("[DEBUG:EXT] wfJob env: " + p1.getEnvironment(null, null));
+            System.out.println("[DEBUG:EXT] wfRun env: " + b2.getEnvironment());
+            System.out.println("[DEBUG:EXT] wfRun envContribActions: " + b2.getActions(EnvironmentContributingAction.class));
+
             r.assertLogContains("Loading library branchylib@feature", b2);
             r.assertLogContains("something very special", b2);
         }
