@@ -1103,8 +1103,28 @@ public class SCMSourceRetrieverTest {
             System.out.println("[DEBUG:EXT] wfRun env: " + b2.getEnvironment());
             System.out.println("[DEBUG:EXT] wfRun envContribActions: " + b2.getActions(EnvironmentContributingAction.class));
 
-            r.assertLogContains("Loading library branchylib@feature", b2);
-            r.assertLogContains("something very special", b2);
+            // Our first try is expected to fail currently, since
+            // WorkflowRun::buildEnvironmentFor() takes "env" from
+            // super-class, and overlays with envvars from global
+            // configuration. However, if in the future behavior
+            // of workflow changes, it is not consequential - just
+            // something to adjust "correct" expectations for.
+            r.assertLogContains("Loading library branchylib@stable", b2);
+            r.assertLogContains("something reliable", b2);
+
+            // For the next try, however, we remove global config
+            // part and expect the injected envvar to take hold:
+            envVars.remove("TEST_VAR_NAME");
+            r.jenkins.save();
+
+            WorkflowRun b3 = r.buildAndAssertSuccess(p1);
+
+            System.out.println("[DEBUG:EXT] wfJob env: " + p1.getEnvironment(null, null));
+            System.out.println("[DEBUG:EXT] wfRun env: " + b3.getEnvironment());
+            System.out.println("[DEBUG:EXT] wfRun envContribActions: " + b3.getActions(EnvironmentContributingAction.class));
+
+            r.assertLogContains("Loading library branchylib@feature", b3);
+            r.assertLogContains("something very special", b3);
         }
     }
 
