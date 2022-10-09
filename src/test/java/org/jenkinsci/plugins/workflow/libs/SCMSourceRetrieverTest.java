@@ -1039,6 +1039,7 @@ public class SCMSourceRetrieverTest {
 
         // TODO: similar trick with build-agent settings
         // to check they override global server settings?
+        //p1.setAssignedNode(r.createSlave());
         //p1.getEnvironment(r.jenkins.getNode("built-in"), null).put("TEST_VAR_NAME", "feature");
 
         // This part of the test is optionally fenced away -
