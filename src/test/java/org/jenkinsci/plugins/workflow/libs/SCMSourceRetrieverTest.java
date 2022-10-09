@@ -1043,89 +1043,86 @@ public class SCMSourceRetrieverTest {
         r.assertLogContains("Loading library branchylib@stable", b1);
         r.assertLogContains("something reliable", b1);
 
-        // TODO: similar trick with build-agent settings
-        // to check they override global server settings?
+        // Now try a more direct way to inject environment
+        // variables into a Job/Run without extra plugins:
+
+        // See research commented at
+        // https://github.com/jenkinsci/pipeline-groovy-lib-plugin/pull/19#discussion_r990781686
+
+        // General override idea was lifted from
+        // https://github.com/jenkinsci/subversion-plugin/blob/master/src/test/java/hudson/scm/SubversionSCMTest.java#L1383
+        // test-case recursiveEnvironmentVariables()
+
+        // Per https://github.com/jenkinsci/jenkins/blob/031f40c50899ec4e5fa4d886a1c006a5330f2627/core/src/main/java/hudson/ExtensionList.java#L296
+        // in implementation of `add(index, T)` the index is ignored.
+        // So we save a copy in same order, drop the list, add our
+        // override as the only entry (hence highest priority)
+        // and re-add the original list contents.
+        ExtensionList<EnvironmentContributor> ecList = EnvironmentContributor.all();
+        List<EnvironmentContributor> ecOrig = new ArrayList();
+        for (EnvironmentContributor ec : ecList) {
+            ecOrig.add(ec);
+        }
+        ecList.removeAll(ecOrig);
+        assumeFalse("EnvironmentContributor.all() should be empty now", !ecList.isEmpty());
+
+        ecList.add(new EnvironmentContributor() {
+            @Override public void buildEnvironmentFor(Run run, EnvVars ev, TaskListener tl) throws IOException, InterruptedException {
+                if (tl != null)
+                    tl.getLogger().println("[DEBUG:RUN] Injecting TEST_VAR_NAME='feature' to EnvVars");
+                ev.put("TEST_VAR_NAME", "feature");
+            }
+            @Override public void buildEnvironmentFor(Job run, EnvVars ev, TaskListener tl) throws IOException, InterruptedException {
+                if (tl != null)
+                    tl.getLogger().println("[DEBUG:JOB] Injecting TEST_VAR_NAME='feature' to EnvVars");
+                ev.put("TEST_VAR_NAME", "feature");
+            }
+        });
+        for (EnvironmentContributor ec : ecOrig) {
+            ecList.add(ec);
+        }
+
+        p1.scheduleBuild2(0);
+        r.waitUntilNoActivity();
+        WorkflowRun b2 = p1.getLastBuild();
+        r.waitForCompletion(b2);
+        assertFalse(p1.isBuilding());
+        r.assertBuildStatusSuccess(b2);
+
+        System.out.println("[DEBUG:EXT] wfJob env: " + p1.getEnvironment(null, null));
+        System.out.println("[DEBUG:EXT] wfRun env: " + b2.getEnvironment());
+        System.out.println("[DEBUG:EXT] wfRun envContribActions: " + b2.getActions(EnvironmentContributingAction.class));
+
+        // Our first try is expected to fail currently, since
+        // WorkflowRun::getEnvironment() takes "env" from
+        // super-class, and overlays with envvars from global
+        // configuration. However, if in the future behavior
+        // of workflow changes, it is not consequential - just
+        // something to adjust "correct" expectations for.
+        r.assertLogContains("Loading library branchylib@stable", b2);
+        r.assertLogContains("something reliable", b2);
+
+        // For the next try, however, we remove global config
+        // part and expect the injected envvar to take hold:
+        envVars.remove("TEST_VAR_NAME");
+        r.jenkins.save();
+
+        WorkflowRun b3 = r.buildAndAssertSuccess(p1);
+
+        System.out.println("[DEBUG:EXT] wfJob env: " + p1.getEnvironment(null, null));
+        System.out.println("[DEBUG:EXT] wfRun env: " + b3.getEnvironment());
+        System.out.println("[DEBUG:EXT] wfRun envContribActions: " + b3.getActions(EnvironmentContributingAction.class));
+
+        r.assertLogContains("Loading library branchylib@feature", b3);
+        r.assertLogContains("something very special", b3);
+
+        // TODO: similar trick with built-in agent settings
+        // which has lowest priority behind global and injected
+        // envvars (see Run::getEnvironment()). Check with the
+        // override above, and with ecList contents restored to
+        // ecOrig state only.
         //p1.setAssignedNode(r.createSlave());
         //p1.getEnvironment(r.jenkins.getNode("built-in"), null).put("TEST_VAR_NAME", "feature");
-
-        // This part of the test is optionally fenced away -
-        // so developers tinkering on the fix can do so and
-        // run it, but for default case it is so far ignored.
-        //   $ ENABLE_TEST_VAR_NAME_JOBLEVEL=true mvn test -Dtest='SCMSourceRetrieverTest#checkDefaultVersion_inline_allowVersionEnvvar'
-        if ("true".equals(System.getenv("ENABLE_TEST_VAR_NAME_JOBLEVEL"))) {
-            // Try a more direct way to inject environment
-            // variables into a Job/Run without extra plugins:
-
-            // See research commented at
-            // https://github.com/jenkinsci/pipeline-groovy-lib-plugin/pull/19#discussion_r990781686
-
-            // General override idea was lifted from
-            // https://github.com/jenkinsci/subversion-plugin/blob/master/src/test/java/hudson/scm/SubversionSCMTest.java#L1383
-            // test-case recursiveEnvironmentVariables()
-
-            // Per https://github.com/jenkinsci/jenkins/blob/031f40c50899ec4e5fa4d886a1c006a5330f2627/core/src/main/java/hudson/ExtensionList.java#L296
-            // in implementation of `add(index, T)` the index is ignored.
-            // So we save a copy in same order, drop the list, add our
-            // override as the only entry (hence highest priority)
-            // and re-add the original list contents.
-            ExtensionList<EnvironmentContributor> ecList = EnvironmentContributor.all();
-            List<EnvironmentContributor> ecOrig = new ArrayList();
-            for (EnvironmentContributor ec : ecList) {
-                ecOrig.add(ec);
-            }
-            ecList.removeAll(ecOrig);
-            assumeFalse("EnvironmentContributor.all() should be empty now", !ecList.isEmpty());
-
-            ecList.add(new EnvironmentContributor() {
-                @Override public void buildEnvironmentFor(Run run, EnvVars ev, TaskListener tl) throws IOException, InterruptedException {
-                    if (tl != null)
-                        tl.getLogger().println("[DEBUG:RUN] Injecting TEST_VAR_NAME='feature' to EnvVars");
-                    ev.put("TEST_VAR_NAME", "feature");
-                }
-                @Override public void buildEnvironmentFor(Job run, EnvVars ev, TaskListener tl) throws IOException, InterruptedException {
-                    if (tl != null)
-                        tl.getLogger().println("[DEBUG:JOB] Injecting TEST_VAR_NAME='feature' to EnvVars");
-                    ev.put("TEST_VAR_NAME", "feature");
-                }
-            });
-            for (EnvironmentContributor ec : ecOrig) {
-                ecList.add(ec);
-            }
-
-            p1.scheduleBuild2(0);
-            r.waitUntilNoActivity();
-            WorkflowRun b2 = p1.getLastBuild();
-            r.waitForCompletion(b2);
-            assertFalse(p1.isBuilding());
-            r.assertBuildStatusSuccess(b2);
-
-            System.out.println("[DEBUG:EXT] wfJob env: " + p1.getEnvironment(null, null));
-            System.out.println("[DEBUG:EXT] wfRun env: " + b2.getEnvironment());
-            System.out.println("[DEBUG:EXT] wfRun envContribActions: " + b2.getActions(EnvironmentContributingAction.class));
-
-            // Our first try is expected to fail currently, since
-            // WorkflowRun::buildEnvironmentFor() takes "env" from
-            // super-class, and overlays with envvars from global
-            // configuration. However, if in the future behavior
-            // of workflow changes, it is not consequential - just
-            // something to adjust "correct" expectations for.
-            r.assertLogContains("Loading library branchylib@stable", b2);
-            r.assertLogContains("something reliable", b2);
-
-            // For the next try, however, we remove global config
-            // part and expect the injected envvar to take hold:
-            envVars.remove("TEST_VAR_NAME");
-            r.jenkins.save();
-
-            WorkflowRun b3 = r.buildAndAssertSuccess(p1);
-
-            System.out.println("[DEBUG:EXT] wfJob env: " + p1.getEnvironment(null, null));
-            System.out.println("[DEBUG:EXT] wfRun env: " + b3.getEnvironment());
-            System.out.println("[DEBUG:EXT] wfRun envContribActions: " + b3.getActions(EnvironmentContributingAction.class));
-
-            r.assertLogContains("Loading library branchylib@feature", b3);
-            r.assertLogContains("something very special", b3);
-        }
     }
 
     @Issue("JENKINS-43802")
