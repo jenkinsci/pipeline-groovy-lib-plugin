@@ -1089,9 +1089,9 @@ public class SCMSourceRetrieverTest {
         assertFalse(p1.isBuilding());
         r.assertBuildStatusSuccess(b2);
 
-        System.out.println("[DEBUG:EXT] wfJob env: " + p1.getEnvironment(null, null));
-        System.out.println("[DEBUG:EXT] wfRun env: " + b2.getEnvironment());
-        System.out.println("[DEBUG:EXT] wfRun envContribActions: " + b2.getActions(EnvironmentContributingAction.class));
+        System.out.println("[DEBUG:EXT:p1b2] wfJob env: " + p1.getEnvironment(null, null));
+        System.out.println("[DEBUG:EXT:p1b2] wfRun env: " + b2.getEnvironment());
+        System.out.println("[DEBUG:EXT:p1b2] wfRun envContribActions: " + b2.getActions(EnvironmentContributingAction.class));
 
         // Our first try is expected to fail currently, since
         // WorkflowRun::getEnvironment() takes "env" from
@@ -1109,9 +1109,9 @@ public class SCMSourceRetrieverTest {
 
         WorkflowRun b3 = r.buildAndAssertSuccess(p1);
 
-        System.out.println("[DEBUG:EXT] wfJob env: " + p1.getEnvironment(null, null));
-        System.out.println("[DEBUG:EXT] wfRun env: " + b3.getEnvironment());
-        System.out.println("[DEBUG:EXT] wfRun envContribActions: " + b3.getActions(EnvironmentContributingAction.class));
+        System.out.println("[DEBUG:EXT:p1b3] wfJob env: " + p1.getEnvironment(null, null));
+        System.out.println("[DEBUG:EXT:p1b3] wfRun env: " + b3.getEnvironment());
+        System.out.println("[DEBUG:EXT:p1b3] wfRun envContribActions: " + b3.getActions(EnvironmentContributingAction.class));
 
         r.assertLogContains("Loading library branchylib@feature", b3);
         r.assertLogContains("something very special", b3);
