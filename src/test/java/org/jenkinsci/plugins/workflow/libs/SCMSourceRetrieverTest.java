@@ -31,24 +31,29 @@ import hudson.EnvVars;
 import hudson.ExtensionList;
 import hudson.FilePath;
 import hudson.Functions;
-import hudson.model.BuildVariableContributor;
+import hudson.model.Computer;
 import hudson.model.EnvironmentContributingAction;
 import hudson.model.EnvironmentContributor;
 import hudson.model.Item;
 import hudson.model.Job;
+import hudson.model.Node;
 import hudson.model.Result;
 import hudson.model.Run;
 import hudson.model.TaskListener;
 import hudson.plugins.git.GitSCM;
 import hudson.plugins.git.BranchSpec;
+import hudson.remoting.VirtualChannel;
 import hudson.scm.ChangeLogSet;
 import hudson.scm.SCM;
 import hudson.slaves.EnvironmentVariablesNodeProperty;
 import hudson.slaves.NodeProperty;
 import hudson.slaves.NodePropertyDescriptor;
+import hudson.slaves.OfflineCause;
+import hudson.slaves.WorkspaceList;
 import hudson.slaves.WorkspaceList;
 import java.io.File;
 import java.io.IOException;
+import java.lang.reflect.Field;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -57,11 +62,11 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
-import java.util.TreeMap;
 import hudson.util.DescribableList;
 import jenkins.branch.BranchProperty;
 import jenkins.branch.BranchSource;
 import jenkins.branch.DefaultBranchPropertyStrategy;
+import jenkins.model.Jenkins;
 import jenkins.plugins.git.GitSCMSource;
 import jenkins.plugins.git.GitSampleRepoRule;
 import jenkins.scm.api.SCMHead;
@@ -1020,7 +1025,7 @@ public class SCMSourceRetrieverTest {
         // TEST_VAR_NAME injected into env, use its value for library checkout
         // https://github.com/jenkinsci/envinject-plugin/blob/master/src/test/java/org/jenkinsci/plugins/envinject/EnvInjectPluginActionTest.java
         WorkflowJob p1 = r.jenkins.createProject(WorkflowJob.class, "p1");
-        p1.setDefinition(new CpsFlowDefinition("@Library('branchylib@${env.TEST_VAR_NAME}') import myecho; myecho(); echo \"Groovy TEST_VAR_NAME='${TEST_VAR_NAME}'\"; echo \"env.TEST_VAR_NAME='${env.TEST_VAR_NAME}'\"", true));
+        p1.setDefinition(new CpsFlowDefinition("@Library('branchylib@${env.TEST_VAR_NAME}') import myecho; myecho(); try { echo \"Groovy TEST_VAR_NAME='${TEST_VAR_NAME}'\"; } catch (groovy.lang.MissingPropertyException mpe) { echo \"Groovy TEST_VAR_NAME missing: ${mpe.getMessage()}\"; } ; echo \"env.TEST_VAR_NAME='${env.TEST_VAR_NAME}'\"", true));
 
         // Inject envvar to server global settings:
         DescribableList<NodeProperty<?>, NodePropertyDescriptor> globalNodeProperties = r.jenkins.getGlobalNodeProperties();
@@ -1116,13 +1121,168 @@ public class SCMSourceRetrieverTest {
         r.assertLogContains("Loading library branchylib@feature", b3);
         r.assertLogContains("something very special", b3);
 
-        // TODO: similar trick with built-in agent settings
-        // which has lowest priority behind global and injected
-        // envvars (see Run::getEnvironment()). Check with the
-        // override above, and with ecList contents restored to
-        // ecOrig state only.
-        //p1.setAssignedNode(r.createSlave());
-        //p1.getEnvironment(r.jenkins.getNode("built-in"), null).put("TEST_VAR_NAME", "feature");
+        // Below we do a similar trick with built-in agent settings
+        // which (as a Computer=>Node) has lowest priority behind
+        // global and injected envvars (see Run::getEnvironment()).
+        // Check with the injected envvars (they override) like above
+        // first, and with ecList contents restored to ecOrig state
+        // only (so only Computer envvars are applied).
+        // Trick here is that the "jenkins.model.Jenkins" is inherited
+        // from Node and its toComputer() returns the "built-in" (nee
+        // "master"), instance of "hudson.model.Hudson$MasterComputer"
+        // whose String getName() is actually empty.
+        // Pipeline scripts are initially processed only by this node,
+        // further run on the controller, and then the actual work is
+        // distributed to agents (often via remoting proxy methods)
+        // if any are defined.
+        Computer builtInComputer = r.jenkins.toComputer();
+        Node builtInNode = builtInComputer.getNode();
+/*
+        EnvironmentVariablesNodeProperty builtInEnvProp = builtInNode.getNodeProperty(EnvironmentVariablesNodeProperty.class);
+
+        if (builtInEnvProp == null) {
+            builtInEnvProp = new EnvironmentVariablesNodeProperty();
+            //builtInEnvProp.setNode(builtInNode);
+            builtInNode.getNodeProperties().add(builtInEnvProp);
+        }
+        EnvVars builtInEnvVars = builtInEnvProp.getEnvVars();
+        builtInEnvVars.put("TEST_VAR_NAME", "stable");
+        builtInEnvProp.buildEnvVars(new EnvVars("TEST_VAR_NAME", "stable"), null);
+ */
+        builtInNode.getNodeProperties().add(new EnvironmentVariablesNodeProperty(new EnvironmentVariablesNodeProperty.Entry("TEST_VAR_NAME", "stable")));
+        r.jenkins.save();
+        builtInNode.save();
+
+        System.out.println("[DEBUG] Restart the 'built-in' Computer connection to clear its cachedEnvironment and recognize added envvar");
+        builtInComputer.setTemporarilyOffline(true, new OfflineCause.ByCLI("Restart built-in to reread envvars config"));
+        builtInComputer.waitUntilOffline();
+        builtInComputer.disconnect(new OfflineCause.ByCLI("Restart built-in to reread envvars config"));
+        r.waitUntilNoActivity();
+        Thread.sleep(3000);
+        builtInComputer.setTemporarilyOffline(false, null);
+        builtInComputer.connect(true);
+        builtInComputer.waitUntilOnline();
+
+        System.out.println("[DEBUG] builtIn node env: " + builtInComputer.getEnvironment());
+
+        // Both injected var and build node envvar setting present;
+        // injected var wins:
+        WorkflowRun b4 = r.buildAndAssertSuccess(p1);
+        System.out.println("[DEBUG:EXT:p1b4] wfJob env: " + p1.getEnvironment(null, null));
+        System.out.println("[DEBUG:EXT:p1b4] wfRun env: " + b4.getEnvironment());
+        System.out.println("[DEBUG:EXT:p1b4] wfRun envContribActions: " + b4.getActions(EnvironmentContributingAction.class));
+        r.assertLogContains("Loading library branchylib@feature", b4);
+        r.assertLogContains("something very special", b4);
+        r.assertLogContains("Groovy TEST_VAR_NAME='feature'", b4);
+        r.assertLogContains("env.TEST_VAR_NAME='feature'", b4);
+
+        // Only build agent envvars are present: drop all,
+        // add back original (before our mock above):
+        List<EnvironmentContributor> ecCurr = new ArrayList();
+        for (EnvironmentContributor ec : ecList) {
+            ecCurr.add(ec);
+        }
+        ecList.removeAll(ecCurr);
+        for (EnvironmentContributor ec : ecOrig) {
+            ecList.add(ec);
+        }
+
+        System.out.println("[DEBUG:EXT:p1b5] EnvironmentContributor.all(): " + EnvironmentContributor.all());
+        System.out.println("[DEBUG:EXT:p1b5] builtIn node env: " + builtInComputer.getEnvironment());
+        System.out.println("[DEBUG:EXT:p1b5] wfJob env in builtIn: " + p1.getEnvironment(builtInNode, null));
+        System.out.println("[DEBUG:EXT:p1b5] wfJob env (without node): " + p1.getEnvironment(null, null));
+        WorkflowRun b5 = r.buildAndAssertSuccess(p1);
+        System.out.println("[DEBUG:EXT:p1b5] wfRun env: " + b5.getEnvironment());
+        System.out.println("[DEBUG:EXT:p1b5] wfRun envContribActions: " + b5.getActions(EnvironmentContributingAction.class));
+        r.assertLogContains("Loading library branchylib@stable", b5);
+        r.assertLogContains("something reliable", b5);
+        // Why oh why is the build agent's (cached) envvar not resolved
+        // even after reconnect?.. Probably a burden of "built-in" until
+        // Jenkins restart?..
+        r.assertLogContains("Groovy TEST_VAR_NAME missing", b5);
+        r.assertLogContains("env.TEST_VAR_NAME='null'", b5);
+
+        // Let's try just that - restart Jenkins to fully reinit the
+        // built-in node with its config:
+        r.jenkins.reload();
+        r.waitUntilNoActivity();
+
+        WorkflowRun b6 = r.buildAndAssertSuccess(p1);
+        r.assertLogContains("Loading library branchylib@stable", b6);
+        r.assertLogContains("something reliable", b6);
+        r.assertLogContains("Groovy TEST_VAR_NAME missing", b6);
+        r.assertLogContains("env.TEST_VAR_NAME='null'", b6);
+
+        Thread.sleep(160000);
+    }
+
+    @Issue("JENKINS-69731")
+    @Test public void checkDefaultVersion_inline_allowVersionEnvvar_builtIn() throws Exception {
+        // Test that @Library('branchylib@${env.TEST_VAR_NAME}')
+        // is resolved with the TEST_VAR_NAME="feature" in the
+        // "built-in" node environment settings.
+
+        // Do not let caller-provided BRANCH_NAME interfere here
+        assumeFalse("An externally provided TEST_VAR_NAME envvar interferes with tested logic",
+                System.getenv("TEST_VAR_NAME") != null);
+
+        // First apply the "built-in node", then touch Jenkins jobs:
+        Computer builtInComputer = r.jenkins.toComputer();
+        Node builtInNode = builtInComputer.getNode();
+        builtInNode.getNodeProperties().add(new EnvironmentVariablesNodeProperty(new EnvironmentVariablesNodeProperty.Entry("TEST_VAR_NAME", "stable")));
+        r.jenkins.save();
+        builtInNode.save();
+
+        System.out.println("[DEBUG] Restart the 'built-in' Computer connection to clear its cachedEnvironment and recognize added envvar");
+        builtInComputer.setTemporarilyOffline(true, new OfflineCause.ByCLI("Restart built-in to reread envvars config"));
+        builtInComputer.disconnect(new OfflineCause.ByCLI("Restart built-in to reread envvars config"));
+        builtInComputer.waitUntilOffline();
+        r.waitUntilNoActivity();
+        builtInComputer.getChannel().close();
+        Thread.sleep(3000);
+        r.jenkins.reload();
+        builtInComputer.setTemporarilyOffline(false, null);
+        builtInComputer.connect(true);
+        builtInComputer.waitUntilOnline();
+        r.waitUntilNoActivity();
+
+        // Feed it to Java reflection, to clear the internal cache...
+        Field ccc = Computer.class.getDeclaredField("cachedEnvironment");
+        ccc.setAccessible(true);
+        ccc.set(builtInComputer, null);
+
+        System.out.println("[DEBUG] builtIn node env: " + builtInComputer.getEnvironment());
+
+        sampleRepo.init();
+        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something special'}");
+        sampleRepo.git("add", "vars");
+        sampleRepo.git("commit", "--message=init");
+        sampleRepo.git("checkout", "-b", "feature");
+        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something very special'}");
+        sampleRepo.git("add", "vars");
+        sampleRepo.git("commit", "--message=init");
+        sampleRepo.git("checkout", "-b", "stable");
+        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something reliable'}");
+        sampleRepo.git("add", "vars");
+        sampleRepo.git("commit", "--message=init");
+        SCMSourceRetriever scm = new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true));
+        LibraryConfiguration lc = new LibraryConfiguration("branchylib", scm);
+        lc.setDefaultVersion("master");
+        lc.setIncludeInChangesets(false);
+        lc.setAllowVersionOverride(true);
+        lc.setAllowVersionEnvvar(true);
+        lc.setTraceDefaultedVersion(true);
+        GlobalLibraries.get().setLibraries(Collections.singletonList(lc));
+
+        WorkflowJob p1 = r.jenkins.createProject(WorkflowJob.class, "p1");
+        p1.setDefinition(new CpsFlowDefinition("@Library('branchylib@${env.TEST_VAR_NAME}') import myecho; myecho(); try { echo \"Groovy TEST_VAR_NAME='${TEST_VAR_NAME}'\"; } catch (groovy.lang.MissingPropertyException mpe) { echo \"Groovy TEST_VAR_NAME missing: ${mpe.getMessage()}\"; } ; echo \"env.TEST_VAR_NAME='${env.TEST_VAR_NAME}'\"", true));
+
+        WorkflowRun b6 = r.buildAndAssertSuccess(p1);
+        r.assertLogContains("Loading library branchylib@stable", b6);
+        r.assertLogContains("something reliable", b6);
+        r.assertLogContains("Groovy TEST_VAR_NAME missing", b6);
+        r.assertLogContains("env.TEST_VAR_NAME='null'", b6);
+
     }
 
     @Issue("JENKINS-43802")
