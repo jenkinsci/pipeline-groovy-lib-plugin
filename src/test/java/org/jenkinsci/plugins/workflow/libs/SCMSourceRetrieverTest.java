@@ -909,6 +909,143 @@ public class SCMSourceRetrieverTest {
     }
 
     @Issue("JENKINS-69731")
+    @Test public void checkDefaultVersion_singleBranch_BRANCH_NAME_after_staticStrings() throws Exception {
+        // Test that using @Library('branchylib@static')
+        // in one build of a job definition, and then a
+        // @Library('branchylib@${BRANCH_NAME}') next,
+        // both behave well.
+        // For context see e.g. WorkflowJob.getSCMs():
+        // https://github.com/jonsten/workflow-job-plugin/blob/master/src/main/java/org/jenkinsci/plugins/workflow/job/WorkflowJob.java#L539
+        // https://issues.jenkins.io/browse/JENKINS-40255
+        // how it looks at a history of EARLIER builds
+        // (preferring successes) and not at the current
+        // job definition.
+        // Note: being a piece of test-driven development,
+        // this test does not fail as soon as it gets an
+        // "unexpected" log message (so far expected due
+        // to the bug being hunted), but counts the faults
+        // and asserts in the end whether there were none.
+        assumeFalse("An externally provided BRANCH_NAME envvar interferes with tested logic",
+                System.getenv("BRANCH_NAME") != null);
+
+        sampleRepo.init();
+        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something special'}");
+        sampleRepo.git("add", "vars");
+        sampleRepo.git("commit", "--message=init");
+        sampleRepo.git("checkout", "-b", "feature");
+        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something very special'}");
+        sampleRepo.git("add", "vars");
+        sampleRepo.git("commit", "--message=init");
+        sampleRepo.git("checkout", "-b", "stable");
+        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something reliable'}");
+        sampleRepo.git("add", "vars");
+        sampleRepo.git("commit", "--message=init");
+        SCMSourceRetriever scm = new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true));
+        LibraryConfiguration lc = new LibraryConfiguration("branchylib", scm);
+        lc.setDefaultVersion("master");
+        lc.setIncludeInChangesets(false);
+        lc.setAllowVersionOverride(false);
+        lc.setAllowBRANCH_NAME(true);
+        lc.setTraceDefaultedVersion(true);
+        GlobalLibraries.get().setLibraries(Collections.singletonList(lc));
+
+        // Inspired in part by tests like
+        // https://github.com/jenkinsci/workflow-multibranch-plugin/blob/master/src/test/java/org/jenkinsci/plugins/workflow/multibranch/NoTriggerBranchPropertyWorkflowTest.java#L132
+        sampleRepo2.init();
+        sampleRepo2.write("Jenkinsfile", "@Library('branchylib@${BRANCH_NAME}') import myecho; myecho()");
+        sampleRepo2.write("Jenkinsfile-static", "@Library('branchylib@stable') import myecho; myecho()");
+        sampleRepo2.git("add", "Jenkinsfile*");
+        sampleRepo2.git("commit", "--message=init");
+        sampleRepo2.git("branch", "feature");
+        sampleRepo2.git("branch", "bogus");
+
+        // Get a non-default branch loaded for this single-branch build:
+        GitSCM gitSCM = new GitSCM(
+                GitSCM.createRepoList(sampleRepo2.toString(), null),
+                Collections.singletonList(new BranchSpec("*/feature")),
+                null, null, Collections.emptyList());
+
+        sampleRepo2.notifyCommit(r);
+        r.waitUntilNoActivity();
+
+        // First run a job definition with a fixed library version,
+        // e.g. like a custom Replay might in the field, or before
+        // redefining an "inline" pipeline to one coming from SCM.
+        // Pepper job history with successes and faults:
+        long failCount = 0;
+        WorkflowJob p1 = r.jenkins.createProject(WorkflowJob.class, "p1");
+        p1.setDefinition(new CpsFlowDefinition("@Library('branchylib@stable') import myecho; myecho()", true));
+        WorkflowRun b1 = r.buildAndAssertStatus(Result.FAILURE, p1);
+        r.assertLogContains("ERROR: Version override not permitted for library branchylib", b1);
+        r.assertLogContains("WorkflowScript: Loading libraries failed", b1);
+
+        // Use default version:
+        p1.setDefinition(new CpsFlowDefinition("@Library('branchylib') import myecho; myecho()", true));
+        WorkflowRun b2 = r.buildAndAssertSuccess(p1);
+        r.assertLogContains("Loading library branchylib@master", b2);
+        r.assertLogContains("something special", b2);
+
+        // Now redefine the same job to come from SCM and use a
+        // run-time resolved library version (WorkflowJob getSCMs
+        // behavior should not be a problem):
+        p1.setDefinition(new CpsScmFlowDefinition(gitSCM, "Jenkinsfile"));
+        WorkflowRun b3 = r.buildAndAssertSuccess(p1);
+        try {
+            // In case of misbehavior this loads "master" version:
+            r.assertLogContains("Loading library branchylib@feature", b3);
+            r.assertLogContains("something very special", b3);
+        } catch (AssertionError ae) {
+            failCount++;
+            // Make sure it was not some other problem:
+            r.assertLogContains("Loading library branchylib@master", b3);
+            r.assertLogContains("something special", b3);
+        }
+
+        // Override with a static version:
+        lc.setAllowVersionOverride(true);
+        p1.setDefinition(new CpsFlowDefinition("@Library('branchylib@stable') import myecho; myecho()", true));
+        WorkflowRun b4 = r.buildAndAssertSuccess(p1);
+        r.assertLogContains("Loading library branchylib@stable", b4);
+        r.assertLogContains("something reliable", b4);
+
+        // Dynamic version again:
+        p1.setDefinition(new CpsScmFlowDefinition(gitSCM, "Jenkinsfile"));
+        WorkflowRun b5 = r.buildAndAssertSuccess(p1);
+        try {
+            // In case of misbehavior this loads "stable" version:
+            r.assertLogContains("Loading library branchylib@feature", b5);
+            r.assertLogContains("something very special", b5);
+        } catch (AssertionError ae) {
+            failCount++;
+            // Make sure it was not some other problem:
+            r.assertLogContains("Loading library branchylib@stable", b5);
+            r.assertLogContains("something reliable", b5);
+        }
+
+        // SCM source pointing at static version
+        p1.setDefinition(new CpsScmFlowDefinition(gitSCM, "Jenkinsfile-static"));
+        WorkflowRun b6 = r.buildAndAssertSuccess(p1);
+        r.assertLogContains("Loading library branchylib@stable", b6);
+        r.assertLogContains("something reliable", b6);
+
+        // Dynamic version again; seems with the change of filename it works okay:
+        p1.setDefinition(new CpsScmFlowDefinition(gitSCM, "Jenkinsfile"));
+        WorkflowRun b7 = r.buildAndAssertSuccess(p1);
+        try {
+            // In case of misbehavior this loads "stable" version:
+            r.assertLogContains("Loading library branchylib@feature", b7);
+            r.assertLogContains("something very special", b7);
+        } catch (AssertionError ae) {
+            failCount++;
+            // Make sure it was not some other problem:
+            r.assertLogContains("Loading library branchylib@stable", b7);
+            r.assertLogContains("something reliable", b7);
+        }
+
+        assertEquals("All BRANCH_NAME resolutions are expected to checkout feature",0, failCount);
+    }
+
+    @Issue("JENKINS-69731")
     @Test public void checkDefaultVersion_singleBranch_BRANCH_NAME_doubleQuotes() throws Exception {
         // Similar to above, the goal of this test is to
         // verify that substitution of ${BRANCH_NAME} is
