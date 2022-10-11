@@ -33,7 +33,7 @@
     </parent>
     <groupId>io.jenkins.plugins</groupId>
     <artifactId>pipeline-groovy-lib</artifactId>
-    <version>${changelist}</version>
+    <version>612.${changelist}</version>
     <packaging>hpi</packaging>
     <name>Pipeline: Groovy Libraries</name>
     <url>https://github.com/jenkinsci/${project.artifactId}-plugin</url>
