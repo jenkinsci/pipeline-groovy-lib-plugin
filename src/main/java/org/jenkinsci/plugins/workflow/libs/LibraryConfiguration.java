@@ -37,7 +37,9 @@ import hudson.model.Run;
 import hudson.model.TaskListener;
 import hudson.scm.SCM;
 import hudson.util.FormValidation;
+import jenkins.branch.Branch;
 import jenkins.model.Jenkins;
+import jenkins.scm.api.SCMSourceOwner;
 import org.jenkinsci.plugins.workflow.flow.FlowDefinition;
 import org.jenkinsci.plugins.workflow.job.WorkflowJob;
 import org.jenkinsci.plugins.workflow.job.WorkflowRun;
@@ -274,8 +276,12 @@ public class LibraryConfiguration extends AbstractDescribableImpl<LibraryConfigu
             }
 
             if (scm0 == null) {
-                Collection<SCM> wjscms = (Collection<SCM>) ((WorkflowJob)runParent).getSCMs();;
-                if (wjscms.isEmpty()) {
+                // WARNING: the WorkflowJob.getSCMs() does not return SCMs
+                // associated with the current build configuration, but
+                // rather those that were associated with previous runs
+                // for different branches (with lastSuccessfulBuild on top)!
+                BranchJobProperty property = ((WorkflowJob)runParent).getProperty(BranchJobProperty.class);
+                if (property == null) { // && !(runParent.getParent() instanceof SCMSourceOwner)) {
                     if (logger != null) {
                         logger.println("defaultedVersion(): " +
                                 "WorkflowJob '" +
@@ -283,25 +289,28 @@ public class LibraryConfiguration extends AbstractDescribableImpl<LibraryConfigu
                                 "' is not associated with any SCMs");
                     }
                 } else {
+                    Branch pipelineBranch = property.getBranch();
                     if (logger != null) {
                         logger.println("defaultedVersion(): " +
                                 "inspecting WorkflowJob '" +
                                 runParent.getClass().getName() +
                                 "' for SCMs it might use");
                     }
-                    for (SCM scmN : wjscms) {
+                    if (pipelineBranch != null) {
                         if (logger != null) {
-                            logger.println("defaultedVersion(): inspecting SCM '" +
-                                    scmN.getClass().getName() +
-                                    "': " + scmN.toString());
+                            logger.println("defaultedVersion(): inspecting pipelineBranch '" +
+                                    pipelineBranch.getClass().getName() +
+                                    "': " + pipelineBranch.toString());
                         }
-                        if ("hudson.plugins.git.GitSCM".equals(scmN.getClass().getName())) {
+/*
+                       if ("hudson.plugins.git.GitSCM".equals(scmN.getClass().getName())) {
                             // The best we can do here is accept
                             // the first seen SCM (with branch
                             // support which we know how to query).
                             scm0 = scmN;
                             break;
                         }
+*/
                     }
                 }
             }
