@@ -275,45 +275,13 @@ public class LibraryConfiguration extends AbstractDescribableImpl<LibraryConfigu
                 }
             }
 
-            if (scm0 == null) {
-                // WARNING: the WorkflowJob.getSCMs() does not return SCMs
-                // associated with the current build configuration, but
-                // rather those that were associated with previous runs
-                // for different branches (with lastSuccessfulBuild on top)!
-                BranchJobProperty property = ((WorkflowJob)runParent).getProperty(BranchJobProperty.class);
-                if (property == null) { // && !(runParent.getParent() instanceof SCMSourceOwner)) {
-                    if (logger != null) {
-                        logger.println("defaultedVersion(): " +
-                                "WorkflowJob '" +
-                                runParent.getClass().getName() +
-                                "' is not associated with any SCMs");
-                    }
-                } else {
-                    Branch pipelineBranch = property.getBranch();
-                    if (logger != null) {
-                        logger.println("defaultedVersion(): " +
-                                "inspecting WorkflowJob '" +
-                                runParent.getClass().getName() +
-                                "' for SCMs it might use");
-                    }
-                    if (pipelineBranch != null) {
-                        if (logger != null) {
-                            logger.println("defaultedVersion(): inspecting pipelineBranch '" +
-                                    pipelineBranch.getClass().getName() +
-                                    "': " + pipelineBranch.toString());
-                        }
-/*
-                       if ("hudson.plugins.git.GitSCM".equals(scmN.getClass().getName())) {
-                            // The best we can do here is accept
-                            // the first seen SCM (with branch
-                            // support which we know how to query).
-                            scm0 = scmN;
-                            break;
-                        }
-*/
-                    }
-                }
-            }
+            // WARNING: the WorkflowJob.getSCMs() does not return SCMs
+            // associated with the current build configuration, but
+            // rather those that were associated with previous runs
+            // for different branches (with lastSuccessfulBuild on
+            // top), so we should not fall back looking at those!
+            // And we inspect (MBP) BranchJobProperty early in the
+            // main defaultedVersion() method.
         } // if (runParent != null && runParent instanceof WorkflowJob)
 
         // If no hit with runParent, look into the run itself:
