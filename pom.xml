@@ -63,15 +63,16 @@
     </pluginRepositories>
     <properties>
         <changelist>999999-SNAPSHOT</changelist>
-        <jenkins.version>2.289.1</jenkins.version>
+        <jenkins.version>2.346.1</jenkins.version>
         <gitHubRepo>jenkinsci/${project.artifactId}-plugin</gitHubRepo>
+        <workflow-cps-plugin.version>2746.2748.v365128b_c26d7</workflow-cps-plugin.version>
     </properties>
     <dependencyManagement>
         <dependencies>
             <dependency>
                 <groupId>io.jenkins.tools.bom</groupId>
-                <artifactId>bom-2.289.x</artifactId>
-                <version>1008.vb9e22885c9cf</version>
+                <artifactId>bom-2.346.x</artifactId>
+                <version>1466.v85a_616ea_b_87c</version>
                 <scope>import</scope>
                 <type>pom</type>
             </dependency>
@@ -101,6 +102,7 @@
         <dependency>
             <groupId>org.jenkins-ci.plugins.workflow</groupId>
             <artifactId>workflow-cps</artifactId>
+            <version>${workflow-cps-plugin.version}</version>
         </dependency>
         <dependency>
             <groupId>org.jenkins-ci.plugins.workflow</groupId>
@@ -117,6 +119,7 @@
         <dependency>
             <groupId>org.jenkins-ci.plugins</groupId>
             <artifactId>script-security</artifactId>
+            <version>1175.1177.vda_175b_77d144</version>
         </dependency>
 
         <dependency>
@@ -166,6 +169,7 @@
         <dependency>
             <groupId>org.jenkins-ci.plugins.workflow</groupId>
             <artifactId>workflow-cps</artifactId>
+            <version>${workflow-cps-plugin.version}</version>
             <classifier>tests</classifier>
             <scope>test</scope>
         </dependency>
