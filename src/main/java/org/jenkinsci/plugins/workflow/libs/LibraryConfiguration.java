@@ -40,6 +40,7 @@ import hudson.util.FormValidation;
 import jenkins.branch.Branch;
 import jenkins.model.Jenkins;
 import jenkins.scm.api.SCMSourceOwner;
+import org.jenkinsci.plugins.workflow.cps.CpsScmFlowDefinition;
 import org.jenkinsci.plugins.workflow.flow.FlowDefinition;
 import org.jenkinsci.plugins.workflow.job.WorkflowJob;
 import org.jenkinsci.plugins.workflow.job.WorkflowRun;
@@ -245,31 +246,61 @@ public class LibraryConfiguration extends AbstractDescribableImpl<LibraryConfigu
             }
             FlowDefinition fd = ((WorkflowJob)runParent).getDefinition();
             if (fd != null) {
-                Collection<SCM> fdscms = (Collection<SCM>) fd.getSCMs();
-                if (fdscms.isEmpty()) {
+                if (fd instanceof CpsScmFlowDefinition) {
+                    CpsScmFlowDefinition csfd = (CpsScmFlowDefinition)fd;
                     if (logger != null) {
-                        logger.println("defaultedVersion(): FlowDefinition '" +
-                                fd.getClass().getName() +
-                                "' is not associated with any SCMs");
+                        logger.println("defaultedVersion(): inspecting CpsScmFlowDefinition '" +
+                                csfd.getClass().getName() +
+                                "' for an SCM it might use (with" +
+                                (csfd.isLightweight() ? "" : "out") +
+                                " lightweight checkout)");
                     }
-                } else {
-                    if (logger != null) {
-                        logger.println("defaultedVersion(): inspecting FlowDefinition '" +
-                                fd.getClass().getName() +
-                                "' for SCMs it might use");
-                    }
-                    for (SCM scmN : fdscms) {
+                    scm0 = csfd.getScm();
+
+                    if (scm0 == null) {
                         if (logger != null) {
-                            logger.println("defaultedVersion(): inspecting SCM '" +
-                                    scmN.getClass().getName() +
-                                    "': " + scmN.toString());
+                            logger.println("defaultedVersion(): CpsScmFlowDefinition '" +
+                                    csfd.getClass().getName() +
+                                    "' is not associated with an SCM");
                         }
-                        if ("hudson.plugins.git.GitSCM".equals(scmN.getClass().getName())) {
-                            // The best we can do here is accept
-                            // the first seen SCM (with branch
-                            // support which we know how to query).
-                            scm0 = scmN;
-                            break;
+                    } else if (!("hudson.plugins.git.GitSCM".equals(scm0.getClass().getName()))) {
+                        if (logger != null) {
+                            logger.println("defaultedVersion(): CpsScmFlowDefinition '" +
+                                    csfd.getClass().getName() +
+                                    "' is associated with an SCM we can not query: " +
+                                    scm0.toString());
+                        }
+                        scm0 = null;
+                    }
+                }
+
+                if (scm0 == null) {
+                    Collection<SCM> fdscms = (Collection<SCM>) fd.getSCMs();
+                    if (fdscms.isEmpty()) {
+                        if (logger != null) {
+                            logger.println("defaultedVersion(): generic FlowDefinition '" +
+                                    fd.getClass().getName() +
+                                    "' is not associated with any SCMs");
+                        }
+                    } else {
+                        if (logger != null) {
+                            logger.println("defaultedVersion(): inspecting generic FlowDefinition '" +
+                                    fd.getClass().getName() +
+                                    "' for SCMs it might use");
+                        }
+                        for (SCM scmN : fdscms) {
+                            if (logger != null) {
+                                logger.println("defaultedVersion(): inspecting SCM '" +
+                                        scmN.getClass().getName() +
+                                        "': " + scmN.toString());
+                            }
+                            if ("hudson.plugins.git.GitSCM".equals(scmN.getClass().getName())) {
+                                // The best we can do here is accept
+                                // the first seen SCM (with branch
+                                // support which we know how to query).
+                                scm0 = scmN;
+                                break;
+                            }
                         }
                     }
                 }
