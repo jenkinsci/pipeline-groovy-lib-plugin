@@ -117,12 +117,35 @@ public class SCMSourceRetrieverTest {
     @Rule public GitSampleRepoRule sampleRepo2 = new GitSampleRepoRule();
     @Rule public SubversionSampleRepoRule sampleRepoSvn = new SubversionSampleRepoRule();
 
+    // Repetitive helpers for test cases
+    private void sampleRepo1ContentMaster() throws Exception {
+        sampleRepo1ContentMaster(null);
+    }
+
+    private void sampleRepo1ContentMaster(String subdir) throws Exception {
+        if (subdir != null && !(subdir.endsWith("/"))) subdir += "/";
+        if (subdir == null) subdir = "";
+        sampleRepo.init();
+        sampleRepo.write(subdir + "vars/myecho.groovy", "def call() {echo 'something special'}");
+        sampleRepo.git("add", subdir + "vars");
+        sampleRepo.git("commit", "--message=init");
+    }
+
+    private void sampleRepo1ContentMasterAddLibraryCommit() throws Exception {
+        sampleRepo1ContentMasterAddLibraryCommit(null);
+    }
+
+    private void sampleRepo1ContentMasterAddLibraryCommit(String subdir) throws Exception {
+        if (subdir != null && !(subdir.endsWith("/"))) subdir += "/";
+        if (subdir == null) subdir = "";
+        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something even more special'}");
+        sampleRepo.git("add", "vars");
+        sampleRepo.git("commit", "--message=library_commit");
+    }
+
     @Issue("JENKINS-40408")
     @Test public void lease() throws Exception {
-        sampleRepo.init();
-        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something special'}");
-        sampleRepo.git("add", "vars");
-        sampleRepo.git("commit", "--message=init");
+        sampleRepo1ContentMaster();
         GlobalLibraries.get().setLibraries(Collections.singletonList(
             new LibraryConfiguration("echoing",
                 new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true)))));
@@ -143,10 +166,7 @@ public class SCMSourceRetrieverTest {
 
     @Issue("JENKINS-41497")
     @Test public void includeChanges() throws Exception {
-        sampleRepo.init();
-        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something special'}");
-        sampleRepo.git("add", "vars");
-        sampleRepo.git("commit", "--message=init");
+        sampleRepo1ContentMaster();
         GlobalLibraries.get().setLibraries(Collections.singletonList(
             new LibraryConfiguration("include_changes",
                 new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true)))));
@@ -157,9 +177,7 @@ public class SCMSourceRetrieverTest {
             WorkflowRun a = r.buildAndAssertSuccess(p);
             r.assertLogContains("something special", a);
         }
-        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something even more special'}");
-        sampleRepo.git("add", "vars");
-        sampleRepo.git("commit", "--message=library_commit");
+        sampleRepo1ContentMasterAddLibraryCommit();
         try (WorkspaceList.Lease lease = r.jenkins.toComputer().getWorkspaceList().acquire(base)) {
             WorkflowRun b = r.buildAndAssertSuccess(p);
             List<ChangeLogSet<? extends ChangeLogSet.Entry>> changeSets = b.getChangeSets();
@@ -177,10 +195,7 @@ public class SCMSourceRetrieverTest {
 
     @Issue("JENKINS-41497")
     @Test public void dontIncludeChanges() throws Exception {
-        sampleRepo.init();
-        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something special'}");
-        sampleRepo.git("add", "vars");
-        sampleRepo.git("commit", "--message=init");
+        sampleRepo1ContentMaster();
         LibraryConfiguration lc = new LibraryConfiguration("dont_include_changes", new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true)));
         lc.setIncludeInChangesets(false);
         GlobalLibraries.get().setLibraries(Collections.singletonList(lc));
@@ -190,9 +205,7 @@ public class SCMSourceRetrieverTest {
         try (WorkspaceList.Lease lease = r.jenkins.toComputer().getWorkspaceList().acquire(base)) {
             WorkflowRun a = r.buildAndAssertSuccess(p);
         }
-        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something even more special'}");
-        sampleRepo.git("add", "vars");
-        sampleRepo.git("commit", "--message=library_commit");
+        sampleRepo1ContentMasterAddLibraryCommit();
         try (WorkspaceList.Lease lease = r.jenkins.toComputer().getWorkspaceList().acquire(base)) {
             WorkflowRun b = r.buildAndAssertSuccess(p);
             List<ChangeLogSet<? extends ChangeLogSet.Entry>> changeSets = b.getChangeSets();
@@ -203,10 +216,7 @@ public class SCMSourceRetrieverTest {
 
     @Issue("JENKINS-38609")
     @Test public void libraryPath() throws Exception {
-        sampleRepo.init();
-        sampleRepo.write("sub/path/vars/myecho.groovy", "def call() {echo 'something special'}");
-        sampleRepo.git("add", "sub");
-        sampleRepo.git("commit", "--message=init");
+        sampleRepo1ContentMaster("sub/path");
         SCMSourceRetriever scm = new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true));
         LibraryConfiguration lc = new LibraryConfiguration("root_sub_path", scm);
         lc.setIncludeInChangesets(false);
@@ -220,10 +230,7 @@ public class SCMSourceRetrieverTest {
 
     @Issue("JENKINS-38609")
     @Test public void libraryPathSecurity() throws Exception {
-        sampleRepo.init();
-        sampleRepo.write("sub/path/vars/myecho.groovy", "def call() {echo 'something special'}");
-        sampleRepo.git("add", "sub");
-        sampleRepo.git("commit", "--message=init");
+        sampleRepo1ContentMaster("sub/path");
         SCMSourceRetriever scm = new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true));
         LibraryConfiguration lc = new LibraryConfiguration("root_sub_path", scm);
         lc.setIncludeInChangesets(false);
@@ -1471,10 +1478,7 @@ public class SCMSourceRetrieverTest {
 
     @Issue("JENKINS-66629")
     @Test public void renameDeletesOldLibsWorkspace() throws Exception {
-        sampleRepo.init();
-        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something special'}");
-        sampleRepo.git("add", "vars");
-        sampleRepo.git("commit", "--message=init");
+        sampleRepo1ContentMaster();
         GlobalLibraries.get().setLibraries(Collections.singletonList(
                 new LibraryConfiguration("delete_removes_libs_workspace",
                         new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true)))));
@@ -1495,10 +1499,7 @@ public class SCMSourceRetrieverTest {
 
     @Issue("JENKINS-66629")
     @Test public void deleteRemovesLibsWorkspace() throws Exception {
-        sampleRepo.init();
-        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something special'}");
-        sampleRepo.git("add", "vars");
-        sampleRepo.git("commit", "--message=init");
+        sampleRepo1ContentMaster();
         GlobalLibraries.get().setLibraries(Collections.singletonList(
                 new LibraryConfiguration("delete_removes_libs_workspace",
                         new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true)))));
