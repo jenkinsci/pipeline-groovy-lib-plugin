@@ -1496,7 +1496,9 @@ public class SCMSourceRetrieverTest {
 
     @Issue("SECURITY-2463")
     @Test public void checkoutDirectoriesAreNotReusedByDifferentScms() throws Exception {
-        assumeFalse(Functions.isWindows()); // Checkout hook is not cross-platform.
+        assumeFalse("checkoutDirectoriesAreNotReusedByDifferentScms() is " +
+                "skipped on Windows: Checkout hook is not cross-platform",
+                Functions.isWindows());
         sampleRepo.init();
         sampleRepo.write("vars/foo.groovy", "def call() { echo('using global lib') }");
         sampleRepo.git("add", "vars");
