@@ -34,7 +34,7 @@ THE SOFTWARE.
     <f:entry field="implicit" title="${%Load implicitly}">
         <f:checkbox/>
     </f:entry>
-    <f:entry field="allowVersionOverride" title="${%Allow default version to be overridden}">
+    <f:entry field="allowVersionOverride" title="${%Allow default version to be overridden by a fixed string - branch name etc.}">
         <f:checkbox default="true"/>
     </f:entry>
     <f:entry field="allowVersionEnvvar" title="${%Allow literal use of @Library 'libname@${env.VARNAME}' pattern in pipeline scripts; falls back to default version if such custom VARNAME is not available among environment variables for the build or not found as branch name in SCM}">
