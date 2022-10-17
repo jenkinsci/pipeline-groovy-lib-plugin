@@ -1080,6 +1080,46 @@ public class SCMSourceRetrieverTest {
     }
 
     @Issue("JENKINS-69731")
+    @Test public void checkDefaultVersion_singleBranch_BRANCH_NAME_lightweight() throws Exception {
+        // Test that lightweight checkouts from SCM allow
+        // @Library('branchylib@${BRANCH_NAME}') to see
+        // sufficient SCM context to determine the branch.
+        assumeFalse("An externally provided BRANCH_NAME envvar interferes with tested logic",
+                System.getenv("BRANCH_NAME") != null);
+
+        sampleRepo1ContentMasterFeature();
+        SCMSourceRetriever scm = new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true));
+        LibraryConfiguration lc = new LibraryConfiguration("branchylib", scm);
+        lc.setDefaultVersion("master");
+        lc.setIncludeInChangesets(false);
+        lc.setAllowVersionOverride(false);
+        lc.setAllowBRANCH_NAME(true);
+        lc.setTraceDefaultedVersion(true);
+        GlobalLibraries.get().setLibraries(Collections.singletonList(lc));
+
+        // Inspired in part by tests like
+        // https://github.com/jenkinsci/workflow-multibranch-plugin/blob/master/src/test/java/org/jenkinsci/plugins/workflow/multibranch/NoTriggerBranchPropertyWorkflowTest.java#L132
+        sampleRepo2ContentSameMasterFeatureBogus_BRANCH_NAME();
+
+        // Get a non-default branch loaded for this single-branch build:
+        GitSCM gitSCM = new GitSCM(
+                GitSCM.createRepoList(sampleRepo2.toString(), null),
+                Collections.singletonList(new BranchSpec("*/feature")),
+                null, null, Collections.emptyList());
+
+        CpsScmFlowDefinition csfd = new CpsScmFlowDefinition(gitSCM, "Jenkinsfile");
+        csfd.setLightweight(true);
+        WorkflowJob p0 = r.jenkins.createProject(WorkflowJob.class, "p0");
+        p0.setDefinition(csfd);
+        sampleRepo2.notifyCommit(r);
+        r.waitUntilNoActivity();
+
+        WorkflowRun b0 = r.buildAndAssertSuccess(p0);
+        r.assertLogContains("Loading library branchylib@feature", b0);
+        r.assertLogContains("something very special", b0);
+    }
+
+    @Issue("JENKINS-69731")
     @Test public void checkDefaultVersion_inline_allowVersionEnvvar() throws Exception {
         // Test that @Library('branchylib@${env.TEST_VAR_NAME}')
         // is resolved with the TEST_VAR_NAME="feature" in environment.
