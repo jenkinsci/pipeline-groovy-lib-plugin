@@ -311,7 +311,17 @@ public class LibraryConfiguration extends AbstractDescribableImpl<LibraryConfigu
             }
             try {
                 WorkflowRun wfRun = (WorkflowRun) run;
-                scm0 = wfRun.getSCMs().get(0);
+                Collection<SCM> wfrscms = (Collection<SCM>) wfRun.getSCMs();
+                if (wfrscms.isEmpty()) {
+                    if (logger != null) {
+                        logger.println("defaultedVersion(): WorkflowRun '" +
+                                wfRun.getClass().getName() +
+                                "' is not associated with any SCMs");
+                    }
+                } else {
+                    // Somewhat a guess in the dark...
+                    scm0 = wfRun.getSCMs().get(0);
+                }
             } catch (Exception x) {
                 if (logger != null) {
                     logger.println("defaultedVersion(): " +
