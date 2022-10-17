@@ -117,7 +117,7 @@ public class SCMSourceRetrieverTest {
     @Rule public GitSampleRepoRule sampleRepo2 = new GitSampleRepoRule();
     @Rule public SubversionSampleRepoRule sampleRepoSvn = new SubversionSampleRepoRule();
 
-    // Repetitive helpers for test cases
+    // Repetitive helpers for test cases dealing with @Issue("JENKINS-69731") and others
     private void sampleRepo1ContentMaster() throws Exception {
         sampleRepo1ContentMaster(null);
     }
@@ -141,6 +141,110 @@ public class SCMSourceRetrieverTest {
         sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something even more special'}");
         sampleRepo.git("add", "vars");
         sampleRepo.git("commit", "--message=library_commit");
+    }
+
+    private void sampleRepo1ContentMasterFeature() throws Exception {
+        sampleRepo1ContentMasterFeature(null);
+    }
+
+    private void sampleRepo1ContentMasterFeature(String subdir) throws Exception {
+        if (subdir != null && !(subdir.endsWith("/"))) subdir += "/";
+        if (subdir == null) subdir = "";
+        sampleRepo.init();
+        sampleRepo.write(subdir + "vars/myecho.groovy", "def call() {echo 'something special'}");
+        sampleRepo.git("add", subdir + "vars");
+        sampleRepo.git("commit", "--message=init");
+        sampleRepo.git("checkout", "-b", "feature");
+        sampleRepo.write(subdir + "vars/myecho.groovy", "def call() {echo 'something very special'}");
+        sampleRepo.git("add", subdir + "vars");
+        sampleRepo.git("commit", "--message=init");
+    }
+
+    private void sampleRepo1ContentMasterFeatureStable() throws Exception {
+        sampleRepo1ContentMasterFeatureStable(null);
+    }
+
+    private void sampleRepo1ContentMasterFeatureStable(String subdir) throws Exception {
+        if (subdir != null && !(subdir.endsWith("/"))) subdir += "/";
+        if (subdir == null) subdir = "";
+        sampleRepo.init();
+        sampleRepo.write(subdir + "vars/myecho.groovy", "def call() {echo 'something special'}");
+        sampleRepo.git("add", subdir + "vars");
+        sampleRepo.git("commit", "--message=init");
+        sampleRepo.git("checkout", "-b", "feature");
+        sampleRepo.write(subdir + "vars/myecho.groovy", "def call() {echo 'something very special'}");
+        sampleRepo.git("add", subdir + "vars");
+        sampleRepo.git("commit", "--message=init");
+        sampleRepo.git("checkout", "-b", "stable");
+        sampleRepo.write(subdir + "vars/myecho.groovy", "def call() {echo 'something reliable'}");
+        sampleRepo.git("add", subdir + "vars");
+        sampleRepo.git("commit", "--message=init");
+    }
+
+    private void sampleRepo2ContentMasterFeature() throws Exception {
+        sampleRepo2ContentMasterFeature(null);
+    }
+
+    private void sampleRepo2ContentMasterFeature(String subdir) throws Exception {
+        if (subdir != null && !(subdir.endsWith("/"))) subdir += "/";
+        if (subdir == null) subdir = "";
+        sampleRepo2.init();
+        sampleRepo2.write(subdir + "vars/myecho2.groovy", "def call() {echo 'something weird'}");
+        sampleRepo2.git("add", subdir + "vars");
+        sampleRepo2.git("commit", "--message=init");
+        sampleRepo2.git("checkout", "-b", "feature");
+        sampleRepo2.write(subdir + "vars/myecho2.groovy", "def call() {echo 'something wonderful'}");
+        sampleRepo2.git("add", subdir + "vars");
+        sampleRepo2.git("commit", "--message=init");
+    }
+
+    private void sampleRepo2ContentSameMasterFeatureBogus_BRANCH_NAME() throws Exception {
+        sampleRepo2ContentSameMasterFeatureBogus_BRANCH_NAME(null, false);
+    }
+
+    private void sampleRepo2ContentSameMasterFeatureBogus_BRANCH_NAME(Boolean addJenkinsfileStatic) throws Exception {
+        sampleRepo2ContentSameMasterFeatureBogus_BRANCH_NAME(null, addJenkinsfileStatic);
+    }
+
+    private void sampleRepo2ContentSameMasterFeatureBogus_BRANCH_NAME(String subdir) throws Exception {
+        sampleRepo2ContentSameMasterFeatureBogus_BRANCH_NAME(subdir, false);
+    }
+
+    private void sampleRepo2ContentSameMasterFeatureBogus_BRANCH_NAME(String subdir, Boolean addJenkinsfileStatic) throws Exception {
+        if (subdir != null && !(subdir.endsWith("/"))) subdir += "/";
+        if (subdir == null) subdir = "";
+        sampleRepo2.init();
+        sampleRepo2.write(subdir + "Jenkinsfile", "@Library('branchylib@${BRANCH_NAME}') import myecho; myecho()");
+        if (addJenkinsfileStatic) {
+            sampleRepo2.write("Jenkinsfile-static", "@Library('branchylib@stable') import myecho; myecho()");
+            sampleRepo2.git("add", subdir + "Jenkinsfile*");
+        } else {
+            sampleRepo2.git("add", subdir + "Jenkinsfile");
+        }
+        sampleRepo2.git("commit", "--message=init");
+        sampleRepo2.git("branch", "feature");
+        sampleRepo2.git("branch", "bogus");
+    }
+
+    private void sampleRepo2ContentUniqueMasterFeatureBogus_staticStrings() throws Exception {
+        sampleRepo2ContentUniqueMasterFeatureBogus_staticStrings(null);
+    }
+
+    private void sampleRepo2ContentUniqueMasterFeatureBogus_staticStrings(String subdir) throws Exception {
+        if (subdir != null && !(subdir.endsWith("/"))) subdir += "/";
+        if (subdir == null) subdir = "";
+        sampleRepo2.init();
+        sampleRepo2.write(subdir + "Jenkinsfile", "@Library('branchylib@master') import myecho; myecho()");
+        sampleRepo2.git("add", subdir + "Jenkinsfile");
+        sampleRepo2.git("commit", "--message=master");
+        sampleRepo2.git("checkout", "-b", "feature");
+        sampleRepo2.write(subdir + "Jenkinsfile", "@Library('branchylib@feature') import myecho; myecho()");
+        sampleRepo2.git("add", subdir + "Jenkinsfile");
+        sampleRepo2.git("commit", "--message=feature");
+        sampleRepo2.git("checkout", "-b", "bogus");
+        sampleRepo2.write(subdir + "Jenkinsfile", "@Library('branchylib@bogus') import myecho; myecho()");
+        sampleRepo2.git("add", subdir + "Jenkinsfile");
+        sampleRepo2.git("commit", "--message=bogus");
     }
 
     @Issue("JENKINS-40408")
@@ -255,14 +359,7 @@ public class SCMSourceRetrieverTest {
 
     @Issue("JENKINS-69731")
     @Test public void checkDefaultVersion_inline_staticStrings() throws Exception {
-        sampleRepo.init();
-        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something special'}");
-        sampleRepo.git("add", "vars");
-        sampleRepo.git("commit", "--message=init");
-        sampleRepo.git("checkout", "-b", "feature");
-        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something very special'}");
-        sampleRepo.git("add", "vars");
-        sampleRepo.git("commit", "--message=init");
+        sampleRepo1ContentMasterFeature();
         SCMSourceRetriever scm = new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true));
         LibraryConfiguration lc = new LibraryConfiguration("branchylib", scm);
         lc.setDefaultVersion("master");
@@ -312,14 +409,7 @@ public class SCMSourceRetrieverTest {
         assumeFalse("An externally provided BRANCH_NAME envvar interferes with tested logic",
                 System.getenv("BRANCH_NAME") != null);
 
-        sampleRepo.init();
-        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something special'}");
-        sampleRepo.git("add", "vars");
-        sampleRepo.git("commit", "--message=init");
-        sampleRepo.git("checkout", "-b", "feature");
-        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something very special'}");
-        sampleRepo.git("add", "vars");
-        sampleRepo.git("commit", "--message=init");
+        sampleRepo1ContentMasterFeature();
         SCMSourceRetriever scm = new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true));
         LibraryConfiguration lc = new LibraryConfiguration("branchylib", scm);
         lc.setDefaultVersion("master");
@@ -328,14 +418,7 @@ public class SCMSourceRetrieverTest {
         lc.setAllowBRANCH_NAME(true);
         lc.setTraceDefaultedVersion(true);
 
-        sampleRepo2.init();
-        sampleRepo2.write("vars/myecho2.groovy", "def call() {echo 'something weird'}");
-        sampleRepo2.git("add", "vars");
-        sampleRepo2.git("commit", "--message=init");
-        sampleRepo2.git("checkout", "-b", "feature");
-        sampleRepo2.write("vars/myecho2.groovy", "def call() {echo 'something wonderful'}");
-        sampleRepo2.git("add", "vars");
-        sampleRepo2.git("commit", "--message=init");
+        sampleRepo2ContentMasterFeature();
         SCMSourceRetriever scm2 = new SCMSourceRetriever(new GitSCMSource(null, sampleRepo2.toString(), "", "*", "", true));
         LibraryConfiguration lc2 = new LibraryConfiguration("branchylib2", scm2);
         lc2.setDefaultVersion("master");
@@ -379,14 +462,7 @@ public class SCMSourceRetrieverTest {
         // does not interfere with tested logic, since MBP
         // sets the value for launched builds.
 
-        sampleRepo.init();
-        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something special'}");
-        sampleRepo.git("add", "vars");
-        sampleRepo.git("commit", "--message=init");
-        sampleRepo.git("checkout", "-b", "feature");
-        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something very special'}");
-        sampleRepo.git("add", "vars");
-        sampleRepo.git("commit", "--message=init");
+        sampleRepo1ContentMasterFeature();
         SCMSourceRetriever scm = new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true));
         LibraryConfiguration lc = new LibraryConfiguration("branchylib", scm);
         lc.setDefaultVersion("master");
@@ -397,12 +473,7 @@ public class SCMSourceRetrieverTest {
 
         // Inspired in part by tests like
         // https://github.com/jenkinsci/workflow-multibranch-plugin/blob/master/src/test/java/org/jenkinsci/plugins/workflow/multibranch/NoTriggerBranchPropertyWorkflowTest.java#L132
-        sampleRepo2.init();
-        sampleRepo2.write("Jenkinsfile", "@Library('branchylib@${BRANCH_NAME}') import myecho; myecho()");
-        sampleRepo2.git("add", "Jenkinsfile");
-        sampleRepo2.git("commit", "--message=init");
-        sampleRepo2.git("branch", "feature");
-        sampleRepo2.git("branch", "bogus");
+        sampleRepo2ContentSameMasterFeatureBogus_BRANCH_NAME();
 
         WorkflowMultiBranchProject mbp = r.jenkins.createProject(WorkflowMultiBranchProject.class, "mbp");
         BranchSource branchSource = new BranchSource(new GitSCMSource("source-id", sampleRepo2.toString(), "", "*", "", false));
@@ -449,14 +520,7 @@ public class SCMSourceRetrieverTest {
         // preclude fixed branch names (they should work),
         // like @Library('branchylib@master')
 
-        sampleRepo.init();
-        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something special'}");
-        sampleRepo.git("add", "vars");
-        sampleRepo.git("commit", "--message=init");
-        sampleRepo.git("checkout", "-b", "feature");
-        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something very special'}");
-        sampleRepo.git("add", "vars");
-        sampleRepo.git("commit", "--message=init");
+        sampleRepo1ContentMasterFeature();
         SCMSourceRetriever scm = new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true));
         LibraryConfiguration lc = new LibraryConfiguration("branchylib", scm);
         lc.setDefaultVersion("master");
@@ -468,19 +532,7 @@ public class SCMSourceRetrieverTest {
 
         // Inspired in part by tests like
         // https://github.com/jenkinsci/workflow-multibranch-plugin/blob/master/src/test/java/org/jenkinsci/plugins/workflow/multibranch/NoTriggerBranchPropertyWorkflowTest.java#L132
-        sampleRepo2.init();
-        sampleRepo2.write("Jenkinsfile", "@Library('branchylib@master') import myecho; myecho()");
-        sampleRepo2.git("add", "Jenkinsfile");
-        sampleRepo2.git("commit", "--message=master");
-        sampleRepo2.git("checkout", "-b", "feature");
-        sampleRepo2.write("Jenkinsfile", "@Library('branchylib@feature') import myecho; myecho()");
-        sampleRepo2.git("add", "Jenkinsfile");
-        sampleRepo2.git("commit", "--message=feature");
-        sampleRepo2.git("checkout", "-b", "bogus");
-        sampleRepo2.write("Jenkinsfile", "@Library('branchylib@bogus') import myecho; myecho()");
-        sampleRepo2.git("add", "Jenkinsfile");
-        sampleRepo2.git("commit", "--message=bogus");
-
+        sampleRepo2ContentUniqueMasterFeatureBogus_staticStrings();
         WorkflowMultiBranchProject mbp = r.jenkins.createProject(WorkflowMultiBranchProject.class, "mbp");
         BranchSource branchSource = new BranchSource(new GitSCMSource("source-id", sampleRepo2.toString(), "", "*", "", false));
         mbp.getSourcesList().add(branchSource);
@@ -526,14 +578,7 @@ public class SCMSourceRetrieverTest {
         // (not treated as a "version override" for funny
         // branch name that is literally "${BRANCH_NAME}").
 
-        sampleRepo.init();
-        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something special'}");
-        sampleRepo.git("add", "vars");
-        sampleRepo.git("commit", "--message=init");
-        sampleRepo.git("checkout", "-b", "feature");
-        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something very special'}");
-        sampleRepo.git("add", "vars");
-        sampleRepo.git("commit", "--message=init");
+        sampleRepo1ContentMasterFeature();
         SCMSourceRetriever scm = new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true));
         LibraryConfiguration lc = new LibraryConfiguration("branchylib", scm);
         lc.setDefaultVersion("master");
@@ -545,13 +590,7 @@ public class SCMSourceRetrieverTest {
 
         // Inspired in part by tests like
         // https://github.com/jenkinsci/workflow-multibranch-plugin/blob/master/src/test/java/org/jenkinsci/plugins/workflow/multibranch/NoTriggerBranchPropertyWorkflowTest.java#L132
-        sampleRepo2.init();
-        sampleRepo2.write("Jenkinsfile", "@Library('branchylib@${BRANCH_NAME}') import myecho; myecho()");
-        sampleRepo2.git("add", "Jenkinsfile");
-        sampleRepo2.git("commit", "--message=init");
-        sampleRepo2.git("branch", "feature");
-        sampleRepo2.git("branch", "bogus");
-
+        sampleRepo2ContentSameMasterFeatureBogus_BRANCH_NAME();
         WorkflowMultiBranchProject mbp = r.jenkins.createProject(WorkflowMultiBranchProject.class, "mbp");
         BranchSource branchSource = new BranchSource(new GitSCMSource("source-id", sampleRepo2.toString(), "", "*", "", false));
         mbp.getSourcesList().add(branchSource);
@@ -596,14 +635,7 @@ public class SCMSourceRetrieverTest {
         // for MBP with "Single repository and branch" as
         // the SCM source.
 
-        sampleRepo.init();
-        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something special'}");
-        sampleRepo.git("add", "vars");
-        sampleRepo.git("commit", "--message=init");
-        sampleRepo.git("checkout", "-b", "feature");
-        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something very special'}");
-        sampleRepo.git("add", "vars");
-        sampleRepo.git("commit", "--message=init");
+        sampleRepo1ContentMasterFeature();
         SCMSourceRetriever scm = new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true));
         LibraryConfiguration lc = new LibraryConfiguration("branchylib", scm);
         lc.setDefaultVersion("master");
@@ -615,19 +647,7 @@ public class SCMSourceRetrieverTest {
 
         // Inspired in part by tests like
         // https://github.com/jenkinsci/workflow-multibranch-plugin/blob/master/src/test/java/org/jenkinsci/plugins/workflow/multibranch/NoTriggerBranchPropertyWorkflowTest.java#L132
-        sampleRepo2.init();
-        sampleRepo2.write("Jenkinsfile", "@Library('branchylib@master') import myecho; myecho()");
-        sampleRepo2.git("add", "Jenkinsfile");
-        sampleRepo2.git("commit", "--message=master");
-        sampleRepo2.git("checkout", "-b", "feature");
-        sampleRepo2.write("Jenkinsfile", "@Library('branchylib@feature') import myecho; myecho()");
-        sampleRepo2.git("add", "Jenkinsfile");
-        sampleRepo2.git("commit", "--message=feature");
-        sampleRepo2.git("checkout", "-b", "bogus");
-        sampleRepo2.write("Jenkinsfile", "@Library('branchylib@bogus') import myecho; myecho()");
-        sampleRepo2.git("add", "Jenkinsfile");
-        sampleRepo2.git("commit", "--message=bogus");
-
+        sampleRepo2ContentUniqueMasterFeatureBogus_staticStrings();
         WorkflowMultiBranchProject mbp = r.jenkins.createProject(WorkflowMultiBranchProject.class, "mbp");
         GitSCM gitSCM = new GitSCM(
                 GitSCM.createRepoList(sampleRepo2.toString(), null),
@@ -703,14 +723,7 @@ public class SCMSourceRetrieverTest {
         // also for MBP with "Single repository and branch" as
         // the SCM source.
 
-        sampleRepo.init();
-        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something special'}");
-        sampleRepo.git("add", "vars");
-        sampleRepo.git("commit", "--message=init");
-        sampleRepo.git("checkout", "-b", "feature");
-        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something very special'}");
-        sampleRepo.git("add", "vars");
-        sampleRepo.git("commit", "--message=init");
+        sampleRepo1ContentMasterFeature();
         SCMSourceRetriever scm = new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true));
         LibraryConfiguration lc = new LibraryConfiguration("branchylib", scm);
         lc.setDefaultVersion("master");
@@ -722,13 +735,7 @@ public class SCMSourceRetrieverTest {
 
         // Inspired in part by tests like
         // https://github.com/jenkinsci/workflow-multibranch-plugin/blob/master/src/test/java/org/jenkinsci/plugins/workflow/multibranch/NoTriggerBranchPropertyWorkflowTest.java#L132
-        sampleRepo2.init();
-        sampleRepo2.write("Jenkinsfile", "@Library('branchylib@${BRANCH_NAME}') import myecho; myecho()");
-        sampleRepo2.git("add", "Jenkinsfile");
-        sampleRepo2.git("commit", "--message=init");
-        sampleRepo2.git("branch", "feature");
-        sampleRepo2.git("branch", "bogus");
-
+        sampleRepo2ContentSameMasterFeatureBogus_BRANCH_NAME();
         WorkflowMultiBranchProject mbp = r.jenkins.createProject(WorkflowMultiBranchProject.class, "mbp");
         GitSCM gitSCM = new GitSCM(
                 GitSCM.createRepoList(sampleRepo2.toString(), null),
@@ -815,14 +822,7 @@ public class SCMSourceRetrieverTest {
         // like @Library('branchylib@master') when used for
         // a simple "Pipeline" job with static SCM source.
 
-        sampleRepo.init();
-        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something special'}");
-        sampleRepo.git("add", "vars");
-        sampleRepo.git("commit", "--message=init");
-        sampleRepo.git("checkout", "-b", "feature");
-        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something very special'}");
-        sampleRepo.git("add", "vars");
-        sampleRepo.git("commit", "--message=init");
+        sampleRepo1ContentMasterFeature();
         SCMSourceRetriever scm = new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true));
         LibraryConfiguration lc = new LibraryConfiguration("branchylib", scm);
         lc.setDefaultVersion("master");
@@ -834,19 +834,7 @@ public class SCMSourceRetrieverTest {
 
         // Inspired in part by tests like
         // https://github.com/jenkinsci/workflow-multibranch-plugin/blob/master/src/test/java/org/jenkinsci/plugins/workflow/multibranch/NoTriggerBranchPropertyWorkflowTest.java#L132
-        sampleRepo2.init();
-        sampleRepo2.write("Jenkinsfile", "@Library('branchylib@master') import myecho; myecho()");
-        sampleRepo2.git("add", "Jenkinsfile");
-        sampleRepo2.git("commit", "--message=master");
-        sampleRepo2.git("checkout", "-b", "feature");
-        sampleRepo2.write("Jenkinsfile", "@Library('branchylib@feature') import myecho; myecho()");
-        sampleRepo2.git("add", "Jenkinsfile");
-        sampleRepo2.git("commit", "--message=feature");
-        sampleRepo2.git("checkout", "-b", "bogus");
-        sampleRepo2.write("Jenkinsfile", "@Library('branchylib@bogus') import myecho; myecho()");
-        sampleRepo2.git("add", "Jenkinsfile");
-        sampleRepo2.git("commit", "--message=bogus");
-
+        sampleRepo2ContentUniqueMasterFeatureBogus_staticStrings();
         //GitSCM gitSCM = new GitSCM(sampleRepo2.toString());
         GitSCM gitSCM = new GitSCM(
                 GitSCM.createRepoList(sampleRepo2.toString(), null),
@@ -873,14 +861,7 @@ public class SCMSourceRetrieverTest {
         assumeFalse("An externally provided BRANCH_NAME envvar interferes with tested logic",
             System.getenv("BRANCH_NAME") != null);
 
-        sampleRepo.init();
-        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something special'}");
-        sampleRepo.git("add", "vars");
-        sampleRepo.git("commit", "--message=init");
-        sampleRepo.git("checkout", "-b", "feature");
-        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something very special'}");
-        sampleRepo.git("add", "vars");
-        sampleRepo.git("commit", "--message=init");
+        sampleRepo1ContentMasterFeature();
         SCMSourceRetriever scm = new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true));
         LibraryConfiguration lc = new LibraryConfiguration("branchylib", scm);
         lc.setDefaultVersion("master");
@@ -892,12 +873,7 @@ public class SCMSourceRetrieverTest {
 
         // Inspired in part by tests like
         // https://github.com/jenkinsci/workflow-multibranch-plugin/blob/master/src/test/java/org/jenkinsci/plugins/workflow/multibranch/NoTriggerBranchPropertyWorkflowTest.java#L132
-        sampleRepo2.init();
-        sampleRepo2.write("Jenkinsfile", "@Library('branchylib@${BRANCH_NAME}') import myecho; myecho()");
-        sampleRepo2.git("add", "Jenkinsfile");
-        sampleRepo2.git("commit", "--message=init");
-        sampleRepo2.git("branch", "feature");
-        sampleRepo2.git("branch", "bogus");
+        sampleRepo2ContentSameMasterFeatureBogus_BRANCH_NAME();
 
         // Get a non-default branch loaded for this single-branch build:
         GitSCM gitSCM = new GitSCM(
@@ -935,18 +911,7 @@ public class SCMSourceRetrieverTest {
         assumeFalse("An externally provided BRANCH_NAME envvar interferes with tested logic",
                 System.getenv("BRANCH_NAME") != null);
 
-        sampleRepo.init();
-        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something special'}");
-        sampleRepo.git("add", "vars");
-        sampleRepo.git("commit", "--message=init");
-        sampleRepo.git("checkout", "-b", "feature");
-        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something very special'}");
-        sampleRepo.git("add", "vars");
-        sampleRepo.git("commit", "--message=init");
-        sampleRepo.git("checkout", "-b", "stable");
-        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something reliable'}");
-        sampleRepo.git("add", "vars");
-        sampleRepo.git("commit", "--message=init");
+        sampleRepo1ContentMasterFeatureStable();
         SCMSourceRetriever scm = new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true));
         LibraryConfiguration lc = new LibraryConfiguration("branchylib", scm);
         lc.setDefaultVersion("master");
@@ -958,13 +923,7 @@ public class SCMSourceRetrieverTest {
 
         // Inspired in part by tests like
         // https://github.com/jenkinsci/workflow-multibranch-plugin/blob/master/src/test/java/org/jenkinsci/plugins/workflow/multibranch/NoTriggerBranchPropertyWorkflowTest.java#L132
-        sampleRepo2.init();
-        sampleRepo2.write("Jenkinsfile", "@Library('branchylib@${BRANCH_NAME}') import myecho; myecho()");
-        sampleRepo2.write("Jenkinsfile-static", "@Library('branchylib@stable') import myecho; myecho()");
-        sampleRepo2.git("add", "Jenkinsfile*");
-        sampleRepo2.git("commit", "--message=init");
-        sampleRepo2.git("branch", "feature");
-        sampleRepo2.git("branch", "bogus");
+        sampleRepo2ContentSameMasterFeatureBogus_BRANCH_NAME(true);
 
         // Get a non-default branch loaded for this single-branch build:
         GitSCM gitSCM = new GitSCM(
@@ -1069,14 +1028,7 @@ public class SCMSourceRetrieverTest {
         assumeFalse("An externally provided BRANCH_NAME envvar interferes with tested logic",
                 System.getenv("BRANCH_NAME") != null);
 
-        sampleRepo.init();
-        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something special'}");
-        sampleRepo.git("add", "vars");
-        sampleRepo.git("commit", "--message=init");
-        sampleRepo.git("checkout", "-b", "feature");
-        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something very special'}");
-        sampleRepo.git("add", "vars");
-        sampleRepo.git("commit", "--message=init");
+        sampleRepo1ContentMasterFeature();
         SCMSourceRetriever scm = new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true));
         LibraryConfiguration lc = new LibraryConfiguration("branchylib", scm);
         lc.setDefaultVersion("master");
@@ -1138,18 +1090,7 @@ public class SCMSourceRetrieverTest {
         assumeFalse("An externally provided TEST_VAR_NAME envvar interferes with tested logic",
                 System.getenv("TEST_VAR_NAME") != null);
 
-        sampleRepo.init();
-        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something special'}");
-        sampleRepo.git("add", "vars");
-        sampleRepo.git("commit", "--message=init");
-        sampleRepo.git("checkout", "-b", "feature");
-        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something very special'}");
-        sampleRepo.git("add", "vars");
-        sampleRepo.git("commit", "--message=init");
-        sampleRepo.git("checkout", "-b", "stable");
-        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something reliable'}");
-        sampleRepo.git("add", "vars");
-        sampleRepo.git("commit", "--message=init");
+        sampleRepo1ContentMasterFeatureStable();
         SCMSourceRetriever scm = new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true));
         LibraryConfiguration lc = new LibraryConfiguration("branchylib", scm);
         lc.setDefaultVersion("master");
