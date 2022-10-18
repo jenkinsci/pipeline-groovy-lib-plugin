@@ -224,14 +224,157 @@ public class LibraryConfiguration extends AbstractDescribableImpl<LibraryConfigu
      * and have those SCMs tell us what we want here. But that's a job
      * for another day.
      */
+    private boolean isDefaultedVersionSCMSupported(SCM scm) {
+        // Return "true" if we can extractDefaultedVersionSCM() from this SCM
+        return ("hudson.plugins.git.GitSCM".equals(scm.getClass().getName()));
+    }
+
+
+    private String extractDefaultedVersionGitSCM(@NonNull SCM scm, @NonNull Run<?, ?> run, @NonNull TaskListener listener, PrintStream logger) {
+        if (!("hudson.plugins.git.GitSCM".equals(scm.getClass().getName())))
+            return null;
+
+        String runVersion = null;
+
+        // Avoid importing GitSCM and so requiring that
+        // it is always installed even if not used by
+        // particular Jenkins deployment (using e.g.
+        // SVN, Gerritt, etc.). Our aim is to query this:
+        //   runVersion = scm0.getBranches().first().getExpandedName(run.getEnvironment(listener));
+        // https://mkyong.com/java/how-to-use-reflection-to-call-java-method-at-runtime/
+        Class noparams[] = {};
+        Class[] paramEnvVars = new Class[1];
+        paramEnvVars[0] = EnvVars.class;
+
+        // https://javadoc.jenkins.io/plugin/git/hudson/plugins/git/GitSCM.html#getBranches() =>
+        // https://javadoc.jenkins.io/plugin/git/hudson/plugins/git/BranchSpec.html#toString()
+        Method methodGetBranches = null;
+        try {
+            methodGetBranches = scm.getClass().getDeclaredMethod("getBranches", noparams);
+        } catch (Exception x) {
+            // NoSuchMethodException | SecurityException | NullPointerException
+            methodGetBranches = null;
+        }
+        if (methodGetBranches != null) {
+            Object branchList = null;
+            try {
+                branchList = methodGetBranches.invoke(scm);
+            } catch (Exception x) {
+                // InvocationTargetException | IllegalAccessException
+                branchList = null;
+            }
+            if (branchList != null && branchList instanceof List) {
+                Object branch0 = ((List<Object>) branchList).get(0);
+                if (branch0 != null && "hudson.plugins.git.BranchSpec".equals(branch0.getClass().getName())) {
+                    Method methodGetExpandedName = null;
+                    try {
+                        methodGetExpandedName = branch0.getClass().getDeclaredMethod("getExpandedName", paramEnvVars);
+                    } catch (Exception x) {
+                        methodGetExpandedName = null;
+                    }
+                    if (methodGetExpandedName != null) {
+                        // Handle possible shell-templated branch specs:
+                        Object expandedBranchName = null;
+                        try {
+                            expandedBranchName = methodGetExpandedName.invoke(branch0, run.getEnvironment(listener));
+                        } catch (Exception x) {
+                            // IllegalAccessException | IOException
+                            expandedBranchName = null;
+                        }
+                        if (expandedBranchName != null) {
+                            runVersion = expandedBranchName.toString();
+                        }
+                    } else {
+                        if (logger != null) {
+                            logger.println("defaultedVersion(): " +
+                                    "did not find method BranchSpec.getExpandedName()");
+                        }
+                    }
+                    if (runVersion == null || "".equals(runVersion)) {
+                        runVersion = branch0.toString();
+                    }
+                } else {
+                    // unknown branchspec class, make no blind guesses
+                    if (logger != null) {
+                        logger.println("defaultedVersion(): " +
+                                "list of branches did not return a " +
+                                "BranchSpec class instance, but " +
+                                (branch0 == null ? "null" :
+                                        branch0.getClass().getName()));
+                    }
+                }
+            } else {
+                if (logger != null) {
+                    logger.println("defaultedVersion(): " +
+                            "getBranches() did not return a " +
+                            "list of branches: " +
+                            (branchList == null ? "null" :
+                                    branchList.getClass().getName()));
+                }
+            }
+        } else {
+            // not really the GitSCM we know?
+            if (logger != null) {
+                logger.println("defaultedVersion(): " +
+                        "did not find method GitSCM.getBranches()");
+            }
+        }
+
+        // Still alive? Chop off leading '*/'
+        // (if any) from single-branch MBP and
+        // plain "Pipeline" job definitions.
+        if (runVersion != null) {
+            runVersion = runVersion.replaceFirst("^\\*/", "");
+            if (logger != null) {
+                logger.println("defaultedVersion(): " +
+                        "Discovered runVersion '" + runVersion +
+                        "' in GitSCM source of the pipeline");
+            }
+        }
+
+        return runVersion;
+    }
+
+    private String extractDefaultedVersionSCM(@NonNull SCM scm, @NonNull Run<?, ?> run, @NonNull TaskListener listener, PrintStream logger) {
+        String runVersion = null;
+
+        if (logger != null) {
+            logger.println("defaultedVersion(): " +
+                    "inspecting first listed SCM: " +
+                    scm.toString());
+        }
+
+        // TODO: If this hack gets traction, try available methods
+        // until a non-null result.
+        // Ideally SCM API itself would have all classes return this
+        // value (or null if branch concept is not supported there):
+        runVersion = extractDefaultedVersionGitSCM(scm, run, listener, logger);
+
+        if (runVersion == null) {
+            // got SVN, Gerritt or some other SCM -
+            // add handling when needed and known how
+            // or rely on BRANCH_NAME (if set) below...
+            if (logger != null) {
+                logger.println("defaultedVersion(): " +
+                        "the first listed SCM was not of currently " +
+                        "supported class with recognized branch support: " +
+                        scm.getClass().getName());
+            }
+        }
+
+        return runVersion;
+    }
+
     private String defaultedVersionSCM(@NonNull Run<?, ?> run, @NonNull TaskListener listener, PrintStream logger) {
+        // Ask for SCM source of the pipeline (if any),
+        // as the most authoritative source of the branch
+        // name we want. If we get an SCM class we can
+        // query deeper (supports branch concept), then
+        // extract the branch name of the script source.
+        SCM scm0 = null;
         String runVersion = null;
         Item runParent = run.getParent();
 
-        // Ask for SCM source of the pipeline (if any),
-        // as the most authoritative source of the branch
-        // name we want:
-        SCM scm0 = null;
         if (runParent != null && runParent instanceof WorkflowJob) {
             // This covers both "Multibranch Pipeline"
             // and "Pipeline script from SCM" jobs;
@@ -263,11 +406,11 @@ public class LibraryConfiguration extends AbstractDescribableImpl<LibraryConfigu
                                     csfd.getClass().getName() +
                                     "' is not associated with an SCM");
                         }
-                    } else if (!("hudson.plugins.git.GitSCM".equals(scm0.getClass().getName()))) {
+                    } else if (!isDefaultedVersionSCMSupported(scm0)) {
                         if (logger != null) {
                             logger.println("defaultedVersion(): CpsScmFlowDefinition '" +
                                     csfd.getClass().getName() +
-                                    "' is associated with an SCM we can not query: " +
+                                    "' is associated with an SCM class we can not query for branches: " +
                                     scm0.toString());
                         }
                         scm0 = null;
@@ -294,7 +437,7 @@ public class LibraryConfiguration extends AbstractDescribableImpl<LibraryConfigu
                                         scmN.getClass().getName() +
                                         "': " + scmN.toString());
                             }
-                            if ("hudson.plugins.git.GitSCM".equals(scmN.getClass().getName())) {
+                            if (isDefaultedVersionSCMSupported(scmN)) {
                                 // The best we can do here is accept
                                 // the first seen SCM (with branch
                                 // support which we know how to query).
@@ -364,119 +507,8 @@ public class LibraryConfiguration extends AbstractDescribableImpl<LibraryConfigu
 
         // Got some hit? Drill deeper!
         if (scm0 != null) {
-            // Avoid importing GitSCM and so requiring that
-            // it is always installed even if not used by
-            // particular Jenkins deployment (using e.g.
-            // SVN, Gerritt, etc.). Our aim is to query this:
-            //   runVersion = scm0.getBranches().first().getExpandedName(run.getEnvironment(listener));
-            // https://mkyong.com/java/how-to-use-reflection-to-call-java-method-at-runtime/
-            if (logger != null) {
-                logger.println("defaultedVersion(): " +
-                        "inspecting first listed SCM: " +
-                        scm0.toString());
-            }
-
-            Class noparams[] = {};
-            Class[] paramEnvVars = new Class[1];
-            paramEnvVars[0] = EnvVars.class;
-            if ("hudson.plugins.git.GitSCM".equals(scm0.getClass().getName())) {
-                // https://javadoc.jenkins.io/plugin/git/hudson/plugins/git/GitSCM.html#getBranches() =>
-                // https://javadoc.jenkins.io/plugin/git/hudson/plugins/git/BranchSpec.html#toString()
-                Method methodGetBranches = null;
-                try {
-                    methodGetBranches = scm0.getClass().getDeclaredMethod("getBranches", noparams);
-                } catch (Exception x) {
-                    // NoSuchMethodException | SecurityException | NullPointerException
-                    methodGetBranches = null;
-                }
-                if (methodGetBranches != null) {
-                    Object branchList = null;
-                    try {
-                        branchList = methodGetBranches.invoke(scm0);
-                    } catch (Exception x) {
-                        // InvocationTargetException | IllegalAccessException
-                        branchList = null;
-                    }
-                    if (branchList != null && branchList instanceof List) {
-                        Object branch0 = ((List<Object>) branchList).get(0);
-                        if (branch0 != null && "hudson.plugins.git.BranchSpec".equals(branch0.getClass().getName())) {
-                            Method methodGetExpandedName = null;
-                            try {
-                                methodGetExpandedName = branch0.getClass().getDeclaredMethod("getExpandedName", paramEnvVars);
-                            } catch (Exception x) {
-                                methodGetExpandedName = null;
-                            }
-                            if (methodGetExpandedName != null) {
-                                // Handle possible shell-templated branch specs:
-                                Object expandedBranchName = null;
-                                try {
-                                    expandedBranchName = methodGetExpandedName.invoke(branch0, run.getEnvironment(listener));
-                                } catch (Exception x) {
-                                    // IllegalAccessException | IOException
-                                    expandedBranchName = null;
-                                }
-                                if (expandedBranchName != null) {
-                                    runVersion = expandedBranchName.toString();
-                                }
-                            } else {
-                                if (logger != null) {
-                                    logger.println("defaultedVersion(): " +
-                                            "did not find method BranchSpec.getExpandedName()");
-                                }
-                            }
-                            if (runVersion == null || "".equals(runVersion)) {
-                                runVersion = branch0.toString();
-                            }
-                        } else {
-                            // unknown branchspec class, make no blind guesses
-                            if (logger != null) {
-                                logger.println("defaultedVersion(): " +
-                                        "list of branches did not return a " +
-                                        "BranchSpec class instance, but " +
-                                        (branch0 == null ? "null" :
-                                                branch0.getClass().getName()));
-                            }
-                        }
-                    } else {
-                        if (logger != null) {
-                            logger.println("defaultedVersion(): " +
-                                    "getBranches() did not return a " +
-                                    "list of branches: " +
-                                    (branchList == null ? "null" :
-                                            branchList.getClass().getName()));
-                        }
-                    }
-                } else {
-                    // not really the GitSCM we know?
-                    if (logger != null) {
-                        logger.println("defaultedVersion(): " +
-                                "did not find method GitSCM.getBranches()");
-                    }
-                }
-
-                // Still alive? Chop off leading '*/'
-                // (if any) from single-branch MBP and
-                // plain "Pipeline" job definitions.
-                if (runVersion != null) {
-                    runVersion = runVersion.replaceFirst("^\\*/", "");
-                    if (logger != null) {
-                        logger.println("defaultedVersion(): " +
-                                "Discovered runVersion '" + runVersion +
-                                "' in SCM source of the pipeline");
-                    }
-                }
-            } else {
-                // else SVN, Gerritt or some other SCM -
-                // add handling when needed and known how
-                // or rely on BRANCH_NAME (if set) below...
-                if (logger != null) {
-                    logger.println("defaultedVersion(): " +
-                            "the first listed SCM was not of currently " +
-                            "supported class with recognized branch support: " +
-                            scm0.getClass().getName());
-                }
-            }
-        } // if (scm0 != null)
+            runVersion = extractDefaultedVersionSCM(scm0, run, listener, logger);
+        }
 
         return runVersion;
     }
