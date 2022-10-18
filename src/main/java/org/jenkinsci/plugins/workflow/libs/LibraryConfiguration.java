@@ -39,6 +39,9 @@ import hudson.scm.SCM;
 import hudson.util.FormValidation;
 import jenkins.branch.Branch;
 import jenkins.model.Jenkins;
+import jenkins.scm.api.SCMFileSystem;
+import jenkins.scm.api.SCMHead;
+import jenkins.scm.api.SCMRevision;
 import jenkins.scm.api.SCMSourceOwner;
 import org.jenkinsci.plugins.workflow.cps.CpsScmFlowDefinition;
 import org.jenkinsci.plugins.workflow.flow.FlowDefinition;
@@ -335,6 +338,59 @@ public class LibraryConfiguration extends AbstractDescribableImpl<LibraryConfigu
         return runVersion;
     }
 
+    private String extractDefaultedVersionSCMFS(@NonNull SCM scm, @NonNull Run<?, ?> run, @NonNull TaskListener listener, PrintStream logger) {
+        String runVersion = null;
+        Item runParent = run.getParent();
+        if (runParent == null)
+            return null;
+
+        SCMFileSystem fs;
+        try {
+            fs = SCMFileSystem.of(runParent, scm);
+            if (fs == null && logger != null) {
+                logger.println("defaultedVersion(): " +
+                        "got no SCMFileSystem: " +
+                        "method of() returned null");
+            }
+        } catch (Exception x) {
+            fs = null;
+            if (logger != null) {
+                logger.println("defaultedVersion(): " +
+                        "failed to get SCMFileSystem: " +
+                        x.getMessage());
+            }
+        }
+        if (fs == null)
+            return null;
+
+        SCMRevision rev = fs.getRevision();
+        if (rev == null) {
+            if (logger != null) {
+                logger.println("defaultedVersion(): " +
+                        "got no SCMRevision from SCMFileSystem");
+            }
+            return null;
+        }
+
+        SCMHead head = rev.getHead();
+        if (head == null) {
+            if (logger != null) {
+                logger.println("defaultedVersion(): " +
+                        "got no SCMHead of SCMRevision from SCMFileSystem");
+            }
+            return null;
+        }
+
+        if (logger != null) {
+            logger.println("defaultedVersion(): " +
+                    "got SCMHead of SCMRevision from SCMFileSystem: " +
+                    "name='" + head.getName() + "' " +
+                    "toString='" + head.toString() + "'");
+        }
+
+        return runVersion;
+    }
+
     private String extractDefaultedVersionSCM(@NonNull SCM scm, @NonNull Run<?, ?> run, @NonNull TaskListener listener, PrintStream logger) {
         String runVersion = null;
 
@@ -348,7 +404,10 @@ public class LibraryConfiguration extends AbstractDescribableImpl<LibraryConfigu
         // until a non-null result.
         // Ideally SCM API itself would have all classes return this
         // value (or null if branch concept is not supported there):
-        runVersion = extractDefaultedVersionGitSCM(scm, run, listener, logger);
+        runVersion = extractDefaultedVersionSCMFS(scm, run, listener, logger);
+        if (runVersion == null) {
+            runVersion = extractDefaultedVersionGitSCM(scm, run, listener, logger);
+        }
 
         if (runVersion == null) {
             // got SVN, Gerritt or some other SCM -
