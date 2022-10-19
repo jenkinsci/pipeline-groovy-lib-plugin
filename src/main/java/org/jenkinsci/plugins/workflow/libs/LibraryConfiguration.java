@@ -376,6 +376,10 @@ public class LibraryConfiguration extends AbstractDescribableImpl<LibraryConfigu
                     "toString='" + head.toString() + "'");
         }
 
+        // TODO: Never saw this succeed getting an SCMRevision,
+        // so currently not blindly assigning runVersion:
+        //runVersion = head.getName();
+
         return runVersion;
     }
 
