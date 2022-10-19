@@ -338,9 +338,7 @@ public class LibraryConfiguration extends AbstractDescribableImpl<LibraryConfigu
 
     private String extractDefaultedVersionSCMFS(@NonNull SCM scm, @NonNull Run<?, ?> run, @NonNull TaskListener listener, PrintStream logger) {
         String runVersion = null;
-        Item runParent = run.getParent();
-        if (runParent == null)
-            return null;
+        Item runParent = run.getParent(); // never returns null
 
         SCMFileSystem fs;
         try {
@@ -370,15 +368,7 @@ public class LibraryConfiguration extends AbstractDescribableImpl<LibraryConfigu
             return null;
         }
 
-        SCMHead head = rev.getHead();
-        if (head == null) {
-            if (logger != null) {
-                logger.println("defaultedVersion(): " +
-                        "got no SCMHead of SCMRevision from SCMFileSystem");
-            }
-            return null;
-        }
-
+        SCMHead head = rev.getHead(); // never returns null
         if (logger != null) {
             logger.println("defaultedVersion(): " +
                     "got SCMHead of SCMRevision from SCMFileSystem: " +
