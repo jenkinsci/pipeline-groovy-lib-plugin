@@ -65,7 +65,7 @@
         <changelist>999999-SNAPSHOT</changelist>
         <jenkins.version>2.346.1</jenkins.version>
         <gitHubRepo>jenkinsci/${project.artifactId}-plugin</gitHubRepo>
-        <workflow-cps-plugin.version>2803.v1a_f77ffcc773</workflow-cps-plugin.version>
+        <workflow-cps-plugin.version>3520.va_8fc49e2f96f</workflow-cps-plugin.version>
     </properties>
     <dependencyManagement>
         <dependencies>
