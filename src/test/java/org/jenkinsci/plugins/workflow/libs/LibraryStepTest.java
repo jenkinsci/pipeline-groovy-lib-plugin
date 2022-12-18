@@ -85,7 +85,11 @@ public class LibraryStepTest {
             null, null, Collections.<GitSCMExtension>emptyList())));
         s.setChangelog(false);
         r.assertEqualDataBoundBeans(s, stepTester.configRoundTrip(s));
-        snippetizerTester.assertRoundTrip(s, "library changelog: false, identifier: 'foo@master', retriever: legacySCM([$class: 'GitSCM', branches: [[name: '${library.foo.version}']], extensions: [], userRemoteConfigs: [[url: 'https://nowhere.net/']]])");
+        if (r.jenkins.get().getPlugin("git").getWrapper().getVersion().startsWith("4.")) {
+            snippetizerTester.assertRoundTrip(s, "library changelog: false, identifier: 'foo@master', retriever: legacySCM([$class: 'GitSCM', branches: [[name: '${library.foo.version}']], extensions: [], userRemoteConfigs: [[url: 'https://nowhere.net/']]])");
+        } else {
+            snippetizerTester.assertRoundTrip(s, "library changelog: false, identifier: 'foo@master', retriever: legacySCM(scmGit(branches: [[name: '${library.foo.version}']], extensions: [], userRemoteConfigs: [[url: 'https://nowhere.net/']]))");
+        }
     }
 
     @Test public void vars() throws Exception {
