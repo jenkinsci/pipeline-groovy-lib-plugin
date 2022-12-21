@@ -172,7 +172,6 @@ public class SCMSourceRetriever extends LibraryRetriever {
         return ret;
     }
 
-    @SuppressFBWarnings(value = "RCN_REDUNDANT_NULLCHECK_WOULD_HAVE_BEEN_A_NPE", justification = "apparently bogus complaint about redundant nullcheck in try-with-resources")
     static void doRetrieve(String name, boolean changelog, @NonNull SCM scm, String libraryPath, FilePath target, Run<?, ?> run, TaskListener listener) throws Exception {
         // Adapted from CpsScmFlowDefinition:
         SCMStep delegate = new GenericSCMStep(scm);
