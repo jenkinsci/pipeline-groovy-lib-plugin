@@ -59,6 +59,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import edu.umd.cs.findbugs.annotations.CheckForNull;
 import edu.umd.cs.findbugs.annotations.NonNull;
+import groovy.lang.MissingPropertyException;
 import javax.inject.Inject;
 import jenkins.model.Jenkins;
 import jenkins.scm.impl.SingleSCMSource;
@@ -75,6 +76,8 @@ import org.jenkinsci.plugins.workflow.steps.AbstractSynchronousNonBlockingStepEx
 import org.jenkinsci.plugins.workflow.steps.StepContextParameter;
 import org.kohsuke.accmod.Restricted;
 import org.kohsuke.accmod.restrictions.DoNotUse;
+import org.kohsuke.groovy.sandbox.GroovyInterceptor;
+import org.kohsuke.groovy.sandbox.impl.Checker;
 import org.kohsuke.stapler.AncestorInPath;
 import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.DataBoundSetter;
@@ -270,11 +273,15 @@ public class LibraryStep extends AbstractStepImpl {
             if (clazz != null) {
                 // Field access?
                 try {
-                    // not doing a Whitelist check since GroovyClassLoaderWhitelist would be allowing it anyway
+                    if (isSandboxed()) {
+                        return Checker.checkedGetAttribute(loadClass(prefix + clazz), false, false, property);
+                    }
                     return loadClass(prefix + clazz).getField(property).get(null);
-                } catch (NoSuchFieldException x) {
+                } catch (MissingPropertyException | NoSuchFieldException x) {
                     // guessed wrong
-                } catch (IllegalAccessException x) {
+                } catch (SecurityException x) {
+                    throw x;
+                } catch (Throwable x) {
                     throw new GroovyRuntimeException(x);
                 }
             }
@@ -284,6 +291,8 @@ public class LibraryStep extends AbstractStepImpl {
                 loadClass(prefix + fullClazz);
                 // OK, class really exists, stash it and await methods
                 return new LoadedClasses(library, trusted, changelog, prefix, fullClazz, srcUrl);
+            } else if (clazz != null) {
+                throw new MissingPropertyException(property, loadClass(prefix + clazz));
             } else {
                 // Still selecting package components.
                 return new LoadedClasses(library, trusted, changelog, prefix + property + '.', null, srcUrl);
@@ -293,11 +302,41 @@ public class LibraryStep extends AbstractStepImpl {
         @Override public Object invokeMethod(String name, Object _args) {
             Class<?> c = loadClass(prefix + clazz);
             Object[] args = _args instanceof Object[] ? (Object[]) _args : new Object[] {_args}; // TODO why does Groovy not just pass an Object[] to begin with?!
+            if (isSandboxed()) {
+                try {
+                    if (name.equals("new")) {
+                        return Checker.checkedConstructor(c, args);
+                    } else {
+                        return Checker.checkedStaticCall(c, name, args);
+                    }
+                } catch (SecurityException x) {
+                    throw x;
+                } catch (Throwable x) {
+                    throw new GroovyRuntimeException(x);
+                }
+            }
             if (name.equals("new")) {
                 return InvokerHelper.invokeConstructorOf(c, args);
             } else {
                 return InvokerHelper.invokeStaticMethod(c, name, args);
             }
+        }
+
+        /**
+         * Check whether the current thread has at least one active {@link GroovyInterceptor}.
+         * <p>
+         * Typically, {@code GroovyClassLoaderWhitelist} will allow access to everything defined in a class in a
+         * library, but there are some synthetic constructors, fields, and methods which should not be accessible.
+         * <p>
+         * As a result, when getting properties or invoking methods using this class, we need to apply sandbox
+         * protection if the Pipeline code performing the operation is sandbox-transformed. Unfortunately, it is
+         * difficult to detect that case specifically, so we instead intercept all calls if the Pipeline itself is
+         * sandboxed. This results in a false positive {@code RejectedAccessException} being thrown if a trusted
+         * library uses the {@code library} step and tries to access static fields or methods that are not permitted to
+         * be used in the sandbox.
+         */
+        private static boolean isSandboxed() {
+            return !GroovyInterceptor.getApplicableInterceptors().isEmpty();
         }
 
         // TODO putProperty for static field set
