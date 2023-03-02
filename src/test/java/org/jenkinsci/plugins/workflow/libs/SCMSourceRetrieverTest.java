@@ -60,6 +60,9 @@ import org.jenkinsci.plugins.workflow.job.WorkflowJob;
 import org.jenkinsci.plugins.workflow.job.WorkflowRun;
 
 import static hudson.ExtensionList.lookupSingleton;
+import hudson.plugins.git.extensions.impl.CloneOption;
+import jenkins.plugins.git.traits.CloneOptionTrait;
+import jenkins.scm.api.trait.SCMSourceTrait;
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.instanceOf;
@@ -81,6 +84,7 @@ import static org.hamcrest.Matchers.matchesPattern;
 import static org.hamcrest.Matchers.nullValue;
 import static org.jenkinsci.plugins.workflow.libs.SCMSourceRetriever.PROHIBITED_DOUBLE_DOT;
 import static org.junit.Assume.assumeFalse;
+import org.jvnet.hudson.test.FlagRule;
 
 public class SCMSourceRetrieverTest {
 
@@ -88,6 +92,7 @@ public class SCMSourceRetrieverTest {
     @Rule public JenkinsRule r = new JenkinsRule();
     @Rule public GitSampleRepoRule sampleRepo = new GitSampleRepoRule();
     @Rule public SubversionSampleRepoRule sampleRepoSvn = new SubversionSampleRepoRule();
+    @Rule public FlagRule<Boolean> includeSrcTest = new FlagRule<>(() -> SCMSourceRetriever.INCLUDE_SRC_TEST_IN_LIBRARIES, v -> SCMSourceRetriever.INCLUDE_SRC_TEST_IN_LIBRARIES = v);
 
     @Issue("JENKINS-40408")
     @Test public void lease() throws Exception {
@@ -364,6 +369,107 @@ public class SCMSourceRetrieverTest {
         assertTrue(ws.exists());
         p.delete();
         assertFalse(ws.exists());
+    }
+
+    @Test public void cloneMode() throws Exception {
+        sampleRepo.init();
+        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something special'}");
+        sampleRepo.write("README.md", "Summary");
+        sampleRepo.git("rm", "file");
+        sampleRepo.git("add", ".");
+        sampleRepo.git("commit", "--message=init");
+        GitSCMSource src = new GitSCMSource(sampleRepo.toString());
+        src.setTraits(List.<SCMSourceTrait>of(new CloneOptionTrait(new CloneOption(true, null, null))));
+        SCMSourceRetriever scm = new SCMSourceRetriever(src);
+        LibraryConfiguration lc = new LibraryConfiguration("echoing", scm);
+        lc.setIncludeInChangesets(false);
+        scm.setClone(true);
+        GlobalLibraries.get().setLibraries(Collections.singletonList(lc));
+        WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "p");
+        p.setDefinition(new CpsFlowDefinition("@Library('echoing@master') import myecho; myecho()", true));
+        WorkflowRun b = r.buildAndAssertSuccess(p);
+        assertFalse(r.jenkins.getWorkspaceFor(p).withSuffix("@libs").isDirectory());
+        r.assertLogContains("something special", b);
+        r.assertLogContains("Deleted .git, README.md", b);
+        r.assertLogContains("Using shallow clone with depth 1", b);
+    }
+
+    @Test public void cloneModeLibraryPath() throws Exception {
+        sampleRepo.init();
+        sampleRepo.write("sub/path/vars/myecho.groovy", "def call() {echo 'something special'}");
+        sampleRepo.git("add", "sub");
+        sampleRepo.git("commit", "--message=init");
+        SCMSourceRetriever scm = new SCMSourceRetriever(new GitSCMSource(sampleRepo.toString()));
+        LibraryConfiguration lc = new LibraryConfiguration("root_sub_path", scm);
+        lc.setIncludeInChangesets(false);
+        scm.setLibraryPath("sub/path/");
+        scm.setClone(true);
+        GlobalLibraries.get().setLibraries(Collections.singletonList(lc));
+        WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "p");
+        p.setDefinition(new CpsFlowDefinition("@Library('root_sub_path@master') import myecho; myecho()", true));
+        WorkflowRun b = r.buildAndAssertSuccess(p);
+        r.assertLogContains("something special", b);
+        r.assertLogContains("Moving vars to top level", b);
+        r.assertLogContains("Deleted root", b);
+    }
+
+    @Test public void cloneModeLibraryPathSecurity() throws Exception {
+        sampleRepo.init();
+        sampleRepo.write("sub/path/vars/myecho.groovy", "def call() {echo 'something special'}");
+        sampleRepo.git("add", "sub");
+        sampleRepo.git("commit", "--message=init");
+        SCMSourceRetriever scm = new SCMSourceRetriever(new GitSCMSource(sampleRepo.toString()));
+        LibraryConfiguration lc = new LibraryConfiguration("root_sub_path", scm);
+        lc.setIncludeInChangesets(false);
+        scm.setLibraryPath("sub/path/../../../jenkins_home/foo");
+        scm.setClone(true);
+        GlobalLibraries.get().setLibraries(Collections.singletonList(lc));
+        WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "p");
+        p.setDefinition(new CpsFlowDefinition("@Library('root_sub_path@master') import myecho; myecho()", true));
+        WorkflowRun b = r.assertBuildStatus(Result.FAILURE, p.scheduleBuild2(0));
+        r.assertLogContains("Library path may not contain '..'", b);
+    }
+
+    @Test public void cloneModeExcludeSrcTest() throws Exception {
+        sampleRepo.init();
+        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something special'}");
+        sampleRepo.write("src/test/X.groovy", "// irrelevant");
+        sampleRepo.write("README.md", "Summary");
+        sampleRepo.git("add", ".");
+        sampleRepo.git("commit", "--message=init");
+        SCMSourceRetriever scm = new SCMSourceRetriever(new GitSCMSource(sampleRepo.toString()));
+        LibraryConfiguration lc = new LibraryConfiguration("echoing", scm);
+        lc.setIncludeInChangesets(false);
+        scm.setClone(true);
+        GlobalLibraries.get().setLibraries(Collections.singletonList(lc));
+        WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "p");
+        p.setDefinition(new CpsFlowDefinition("@Library('echoing@master') import myecho; myecho()", true));
+        SCMSourceRetriever.INCLUDE_SRC_TEST_IN_LIBRARIES = false;
+        WorkflowRun b = r.buildAndAssertSuccess(p);
+        assertFalse(r.jenkins.getWorkspaceFor(p).withSuffix("@libs").isDirectory());
+        r.assertLogContains("something special", b);
+        r.assertLogContains("Excluding src/test/ from checkout", b);
+    }
+
+    @Test public void cloneModeIncludeSrcTest() throws Exception {
+        sampleRepo.init();
+        sampleRepo.write("vars/myecho.groovy", "def call() {echo(/got ${new test.X().m()}/)}");
+        sampleRepo.write("src/test/X.groovy", "package test; class X {def m() {'something special'}}");
+        sampleRepo.write("README.md", "Summary");
+        sampleRepo.git("add", ".");
+        sampleRepo.git("commit", "--message=init");
+        SCMSourceRetriever scm = new SCMSourceRetriever(new GitSCMSource(sampleRepo.toString()));
+        LibraryConfiguration lc = new LibraryConfiguration("echoing", scm);
+        lc.setIncludeInChangesets(false);
+        scm.setClone(true);
+        GlobalLibraries.get().setLibraries(Collections.singletonList(lc));
+        WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "p");
+        p.setDefinition(new CpsFlowDefinition("@Library('echoing@master') import myecho; myecho()", true));
+        SCMSourceRetriever.INCLUDE_SRC_TEST_IN_LIBRARIES = true;
+        WorkflowRun b = r.buildAndAssertSuccess(p);
+        assertFalse(r.jenkins.getWorkspaceFor(p).withSuffix("@libs").isDirectory());
+        r.assertLogContains("got something special", b);
+        r.assertLogNotContains("Excluding src/test/ from checkout", b);
     }
 
     @Issue("SECURITY-2441")

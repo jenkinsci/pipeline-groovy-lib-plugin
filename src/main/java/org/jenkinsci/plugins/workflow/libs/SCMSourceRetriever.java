@@ -60,11 +60,14 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import edu.umd.cs.findbugs.annotations.NonNull;
 import edu.umd.cs.findbugs.annotations.CheckForNull;
+import java.util.Set;
+import java.util.TreeSet;
 import jenkins.model.Jenkins;
 import jenkins.scm.api.SCMRevision;
 import jenkins.scm.api.SCMSource;
 import jenkins.scm.api.SCMSourceDescriptor;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 import org.jenkinsci.Symbol;
 import org.jenkinsci.plugins.structs.describable.CustomDescribableModel;
 import org.jenkinsci.plugins.structs.describable.UninstantiatedDescribable;
@@ -96,6 +99,8 @@ public class SCMSourceRetriever extends LibraryRetriever {
 
     private final SCMSource scm;
 
+    private boolean clone;
+
     /**
      * The path to the library inside of the SCM.
      *
@@ -117,6 +122,14 @@ public class SCMSourceRetriever extends LibraryRetriever {
         return scm;
     }
 
+    public boolean isClone() {
+        return clone;
+    }
+
+    @DataBoundSetter public void setClone(boolean clone) {
+        this.clone = clone;
+    }
+
     public String getLibraryPath() {
         return libraryPath;
     }
@@ -134,7 +147,14 @@ public class SCMSourceRetriever extends LibraryRetriever {
         if (revision == null) {
             throw new AbortException("No version " + version + " found for library " + name);
         }
-        doRetrieve(name, changelog, scm.build(revision.getHead(), revision), libraryPath, target, run, listener);
+        if (clone) {
+            if (changelog) {
+                listener.getLogger().println("WARNING: ignoring request to compute changelog in clone mode");
+            }
+            doClone(scm.build(revision.getHead(), revision), libraryPath, target, run, listener);
+        } else {
+            doRetrieve(name, changelog, scm.build(revision.getHead(), revision), libraryPath, target, run, listener);
+        }
     }
 
     @Override public void retrieve(String name, String version, FilePath target, Run<?, ?> run, TaskListener listener) throws Exception {
@@ -219,6 +239,72 @@ public class SCMSourceRetriever extends LibraryRetriever {
     // TODO there is WorkspaceList.tempDir but no API to make other variants
     private static String getFilePathSuffix() {
         return System.getProperty(WorkspaceList.class.getName(), "@");
+    }
+
+    /**
+     * Similar to {@link #doRetrieve} but used in {@link #clone} mode.
+     */
+    private static void doClone(@NonNull SCM scm, String libraryPath, FilePath target, Run<?, ?> run, TaskListener listener) throws Exception {
+        SCMStep delegate = new GenericSCMStep(scm);
+        delegate.setPoll(false);
+        delegate.setChangelog(false);
+        if (libraryPath == null) {
+            retrySCMOperation(listener, () -> {
+                delegate.checkout(run, target, listener, Jenkins.get().createLauncher(listener));
+                return null;
+            });
+        } else {
+            if (PROHIBITED_DOUBLE_DOT.matcher(libraryPath).matches()) {
+                throw new AbortException("Library path may not contain '..'");
+            }
+            FilePath root = target.child("root");
+            retrySCMOperation(listener, () -> {
+                delegate.checkout(run, root, listener, Jenkins.get().createLauncher(listener));
+                return null;
+            });
+            FilePath subdir = root.child(libraryPath);
+            if (!subdir.isDirectory()) {
+                throw new AbortException("Did not find " + libraryPath + " in checkout");
+            }
+            for (String content : List.of("src", "vars", "resources")) {
+                FilePath contentDir = subdir.child(content);
+                if (contentDir.isDirectory()) {
+                    listener.getLogger().println("Moving " + content + " to top level");
+                    contentDir.renameTo(target.child(content));
+                }
+            }
+            // root itself will be deleted below
+        }
+        Set<String> deleted = new TreeSet<>();
+        if (!INCLUDE_SRC_TEST_IN_LIBRARIES) {
+            FilePath srcTest = target.child("src/test");
+            if (srcTest.isDirectory()) {
+                listener.getLogger().println("Excluding src/test/ from checkout of " + scm.getKey() + " so that library test code cannot be accessed by Pipelines.");
+                listener.getLogger().println("To remove this log message, move the test code outside of src/. To restore the previous behavior that allowed access to files in src/test/, pass -D" + SCMSourceRetriever.class.getName() + ".INCLUDE_SRC_TEST_IN_LIBRARIES=true to the java command used to start Jenkins.");
+                srcTest.deleteRecursive();
+                deleted.add("src/test");
+            }
+        }
+        for (FilePath child : target.list()) {
+            String name = child.getName();
+            switch (name) {
+            case "src":
+                // TODO delete everything that is not *.groovy
+                break;
+            case "vars":
+                // TODO delete everything that is not *.groovy or *.txt, incl. subdirs
+                break;
+            case "resources":
+                // OK, leave it all
+                break;
+            default:
+                deleted.add(name);
+                child.deleteRecursive();
+            }
+        }
+        if (!deleted.isEmpty()) {
+            listener.getLogger().println("Deleted " + deleted.stream().collect(Collectors.joining(", ")));
+        }
     }
 
     @Override public FormValidation validateVersion(String name, String version, Item context) {
