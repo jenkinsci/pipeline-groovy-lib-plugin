@@ -151,7 +151,7 @@ public class SCMSourceRetriever extends LibraryRetriever {
             if (changelog) {
                 listener.getLogger().println("WARNING: ignoring request to compute changelog in clone mode");
             }
-            doClone(scm.build(revision.getHead(), revision), libraryPath, target, run, listener);
+            doClone(name, scm.build(revision.getHead(), revision), libraryPath, target, run, listener);
         } else {
             doRetrieve(name, changelog, scm.build(revision.getHead(), revision), libraryPath, target, run, listener);
         }
@@ -228,7 +228,7 @@ public class SCMSourceRetriever extends LibraryRetriever {
             }
             // Cannot add WorkspaceActionImpl to private CpsFlowExecution.flowStartNodeActions; do we care?
             // Copy sources with relevant files from the checkout:
-            LibraryRetriever.dir2Jar(lease.path.child(libraryPath), target);
+            LibraryRetriever.dir2Jar(name, lease.path.child(libraryPath), target);
         }
     }
 
@@ -240,7 +240,7 @@ public class SCMSourceRetriever extends LibraryRetriever {
     /**
      * Similar to {@link #doRetrieve} but used in {@link #clone} mode.
      */
-    private static void doClone(@NonNull SCM scm, String libraryPath, FilePath target, Run<?, ?> run, TaskListener listener) throws Exception {
+    private static void doClone(@NonNull String name, @NonNull SCM scm, String libraryPath, FilePath target, Run<?, ?> run, TaskListener listener) throws Exception {
         // TODO merge into doRetrieve
         SCMStep delegate = new GenericSCMStep(scm);
         delegate.setPoll(false);
@@ -261,7 +261,7 @@ public class SCMSourceRetriever extends LibraryRetriever {
                 root = tmp.child(libraryPath);
             }
             // TODO handle INCLUDE_SRC_TEST_IN_LIBRARIES
-            LibraryRetriever.dir2Jar(root, target);
+            LibraryRetriever.dir2Jar(name, root, target);
         } finally {
             tmp.deleteRecursive();
             WorkspaceList.tempDir(tmp).deleteRecursive();

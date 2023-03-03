@@ -79,7 +79,7 @@ import org.jvnet.hudson.test.TestExtension;
 import org.jvnet.hudson.test.WithoutJenkins;
 
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.arrayContainingInAnyOrder;
+import static org.hamcrest.Matchers.arrayContaining;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.matchesPattern;
 import static org.hamcrest.Matchers.nullValue;
@@ -392,7 +392,7 @@ public class SCMSourceRetrieverTest {
         r.assertLogContains("something special", b);
         r.assertLogContains("Using shallow clone with depth 1", b);
         // Fails to reproduce presence of *.jar.tmp@tmp; probably specific to use of GIT_ASKPASS:
-        assertThat(new File(b.getRootDir(), "libs").list(), arrayContainingInAnyOrder(matchesPattern("[0-9a-f]{64}[.]jar"), matchesPattern("[0-9a-f]{64}-name[.]txt")));
+        assertThat(new File(b.getRootDir(), "libs").list(), arrayContaining(matchesPattern("[0-9a-f]{64}[.]jar")));
     }
 
     @Test public void cloneModeLibraryPath() throws Exception {

@@ -10,17 +10,15 @@ import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.QueryParameter;
 
 import java.io.IOException;
-import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.util.jar.JarFile;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang.StringUtils;
 
 public final class LibraryCachingConfiguration extends AbstractDescribableImpl<LibraryCachingConfiguration> {
@@ -94,26 +92,22 @@ public final class LibraryCachingConfiguration extends AbstractDescribableImpl<L
 
             try {
                 if (LibraryCachingConfiguration.getGlobalLibrariesCacheDir().exists()) {
-                    for (FilePath libraryNamePath : LibraryCachingConfiguration.getGlobalLibrariesCacheDir().list("*-name.txt")) {
+                    for (FilePath libraryCachePath : LibraryCachingConfiguration.getGlobalLibrariesCacheDir().list("*.jar")) {
                         // Libraries configured in distinct locations may have the same name. Since only admins are allowed here, this is not a huge issue, but it is probably unexpected.
                         String cacheName;
-                        try (InputStream stream = libraryNamePath.read()) {
-                            cacheName = IOUtils.toString(stream, StandardCharsets.UTF_8);
+                        try (JarFile jf = new JarFile(libraryCachePath.getRemote())) {
+                            cacheName = jf.getManifest().getMainAttributes().getValue(LibraryRetriever.ATTR_LIBRARY_NAME);
                         }
                         if (cacheName.equals(name)) {
-                            FilePath libraryCachePath = LibraryCachingConfiguration.getGlobalLibrariesCacheDir()
-                                    .child(libraryNamePath.getName().replace("-name.txt", ""));
                             if (forceDelete) {
                                 LOGGER.log(Level.FINER, "Force deleting cache for {0}", name);
-                                libraryCachePath.deleteRecursive();
-                                libraryNamePath.delete();
+                                libraryCachePath.delete();
                             } else {
                                 LOGGER.log(Level.FINER, "Safe deleting cache for {0}", name);
                                 ReentrantReadWriteLock retrieveLock = LibraryAdder.getReadWriteLockFor(libraryCachePath.getName());
                                 if (retrieveLock.writeLock().tryLock(10, TimeUnit.SECONDS)) {
                                     try {
-                                        libraryCachePath.deleteRecursive();
-                                        libraryNamePath.delete();
+                                        libraryCachePath.delete();
                                     } finally {
                                         retrieveLock.writeLock().unlock();
                                     }

@@ -228,7 +228,6 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
                               listener.getLogger().println("Library " + name + "@" + version + " is due for a refresh after " + cachingMinutes + " minutes, clearing.");
                                 if (versionCacheJar.exists()) {
                                     versionCacheJar.delete();
-                                    versionCacheJar.sibling(record.getDirectoryName() + "-name.txt").delete();
                                 }
                                 retrieve = true;
                                 break;
@@ -247,7 +246,6 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
                 }
   
                 lastReadFile.touch(System.currentTimeMillis());
-                versionCacheJar.sibling(record.getDirectoryName() + "-name.txt").write(name, "UTF-8");
                 versionCacheJar.copyTo(libJar);
             } finally {
               retrieveLock.readLock().unlock();
@@ -255,8 +253,6 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
         } else {
             retriever.retrieveJar(name, version, changelog, libJar, run, listener);
         }
-        // Write the user-provided name to a file as a debugging aid.
-        libJar.sibling(record.getDirectoryName() + "-name.txt").write(name, "UTF-8");
 
         // Replace any classes requested for replay:
         if (!record.trusted) {

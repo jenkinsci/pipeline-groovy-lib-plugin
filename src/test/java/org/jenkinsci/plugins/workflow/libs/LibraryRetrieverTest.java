@@ -60,12 +60,13 @@ public class LibraryRetrieverTest {
             dir.child(input).write("xxx", null);
         }
         FilePath jar = work.child("x.jar");
-        LibraryRetriever.dir2Jar(dir, jar);
+        LibraryRetriever.dir2Jar("mylib", dir, jar);
         Set<String> actualOutputs = new TreeSet<>();
         try (JarFile jf = new JarFile(jar.getRemote())) {
+            assertThat(jf.getManifest().getMainAttributes().getValue(LibraryRetriever.ATTR_LIBRARY_NAME), is("mylib"));
             jf.stream().forEach(e -> {
                 String name = e.getName();
-                if (!name.endsWith("/")) {
+                if (!name.endsWith("/") && !name.startsWith("META-INF/")) {
                     actualOutputs.add(name);
                 }
             });

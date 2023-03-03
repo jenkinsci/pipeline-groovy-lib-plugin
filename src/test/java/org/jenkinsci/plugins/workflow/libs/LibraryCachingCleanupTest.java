@@ -39,7 +39,6 @@ import org.jvnet.hudson.test.JenkinsRule;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.not;
-import static org.hamcrest.io.FileMatchers.anExistingDirectory;
 import static org.hamcrest.io.FileMatchers.anExistingFile;
 
 public class LibraryCachingCleanupTest {
@@ -67,28 +66,16 @@ public class LibraryCachingCleanupTest {
         WorkflowRun b = r.buildAndAssertSuccess(p);
         LibrariesAction action = b.getAction(LibrariesAction.class);
         LibraryRecord record = action.getLibraries().get(0);
-        FilePath cache = LibraryCachingConfiguration.getGlobalLibrariesCacheDir().child(record.getDirectoryName());
-        assertThat(new File(cache.getRemote()), anExistingDirectory());
+        FilePath cache = LibraryCachingConfiguration.getGlobalLibrariesCacheDir().child(record.getDirectoryName() + ".jar");
+        assertThat(new File(cache.getRemote()), anExistingFile());
         // Run LibraryCachingCleanup and show that cache is not deleted.
         ExtensionList.lookupSingleton(LibraryCachingCleanup.class).execute(StreamTaskListener.fromStderr());
-        assertThat(new File(cache.getRemote()), anExistingDirectory());
-        assertThat(new File(cache.withSuffix("-name.txt").getRemote()), anExistingFile());
+        assertThat(new File(cache.getRemote()), anExistingFile());
         // Run LibraryCachingCleanup after modifying LAST_READ_FILE to be an old date and and show that cache is deleted.
         long oldMillis = ZonedDateTime.now().minusDays(LibraryCachingCleanup.EXPIRE_AFTER_READ_DAYS + 1).toInstant().toEpochMilli();
-        cache.child(LibraryCachingConfiguration.LAST_READ_FILE).touch(oldMillis);
+        cache.sibling(cache.getBaseName() + "." + LibraryCachingConfiguration.LAST_READ_FILE).touch(oldMillis);
         ExtensionList.lookupSingleton(LibraryCachingCleanup.class).execute(StreamTaskListener.fromStderr());
-        assertThat(new File(cache.getRemote()), not(anExistingDirectory()));
-        assertThat(new File(cache.withSuffix("-name.txt").getRemote()), not(anExistingDirectory()));
-    }
-
-    @Test
-    public void preSecurity2586() throws Throwable {
-        FilePath cache = LibraryCachingConfiguration.getGlobalLibrariesCacheDir().child("name").child("version");
-        cache.mkdirs();
-        cache.child(LibraryCachingConfiguration.LAST_READ_FILE).touch(System.currentTimeMillis());
-        ExtensionList.lookupSingleton(LibraryCachingCleanup.class).execute(StreamTaskListener.fromStderr());
-        assertThat(new File(cache.getRemote()), not(anExistingDirectory()));
-        assertThat(new File(cache.getParent().getRemote()), not(anExistingDirectory()));
+        assertThat(new File(cache.getRemote()), not(anExistingFile()));
     }
 
 }

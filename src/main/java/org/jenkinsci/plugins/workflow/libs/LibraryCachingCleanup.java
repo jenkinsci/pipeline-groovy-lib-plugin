@@ -9,6 +9,7 @@ import hudson.model.TaskListener;
 import java.io.IOException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import jenkins.model.Jenkins;
 
 import jenkins.util.SystemProperties;
 
@@ -27,41 +28,28 @@ import jenkins.util.SystemProperties;
 
     @Override protected void execute(TaskListener listener) throws IOException, InterruptedException {
         FilePath globalCacheDir = LibraryCachingConfiguration.getGlobalLibrariesCacheDir();
-        for (FilePath library : globalCacheDir.list()) {
-            if (!removeIfExpiredCacheDirectory(library)) {
-                // Prior to the SECURITY-2586 fix, library caches had a two-level directory structure.
-                // These caches will never be used again, so we delete any that we find.
-                for (FilePath version: library.list()) {
-                    if (version.child(LibraryCachingConfiguration.LAST_READ_FILE).exists()) {
-                        library.deleteRecursive();
-                        break;
-                    }
-                }
-            }
+        for (FilePath libJar : globalCacheDir.list()) {
+            removeIfExpiredCacheJar(libJar);
         }
+        // Old cache directory; format has changed, so just delete it:
+        Jenkins.get().getRootPath().child("global-libraries-cache").deleteRecursive();
     }
 
     /**
-     * Delete the specified cache directory if it is outdated.
-     * @return true if specified directory is a cache directory, regardless of whether it was outdated. Used to detect
-     * whether the cache was created before or after the fix for SECURITY-2586.
+     * Delete the specified cache JAR if it is outdated.
      */
-    private boolean removeIfExpiredCacheDirectory(FilePath library) throws IOException, InterruptedException {
-        final FilePath lastReadFile = new FilePath(library, LibraryCachingConfiguration.LAST_READ_FILE);
+    private void removeIfExpiredCacheJar(FilePath libJar) throws IOException, InterruptedException {
+        final FilePath lastReadFile = libJar.sibling(libJar.getBaseName() + "." + LibraryCachingConfiguration.LAST_READ_FILE);
         if (lastReadFile.exists()) {
-            ReentrantReadWriteLock retrieveLock = LibraryAdder.getReadWriteLockFor(library.getName());
+            ReentrantReadWriteLock retrieveLock = LibraryAdder.getReadWriteLockFor(libJar.getBaseName());
             retrieveLock.writeLock().lockInterruptibly();
             try {
                 if (System.currentTimeMillis() - lastReadFile.lastModified() > TimeUnit.DAYS.toMillis(EXPIRE_AFTER_READ_DAYS)) {
-                
-                    library.deleteRecursive();
-                    library.withSuffix("-name.txt").delete();
+                    libJar.delete();
                 }
             } finally {
                 retrieveLock.writeLock().unlock();
             }
-            return true;
         }
-        return false;
     }
 }

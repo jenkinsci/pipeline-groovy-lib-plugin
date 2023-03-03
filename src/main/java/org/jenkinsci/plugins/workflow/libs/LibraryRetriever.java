@@ -39,11 +39,19 @@ import hudson.slaves.WorkspaceList;
 import hudson.util.io.ArchiverFactory;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.util.jar.Attributes;
+import java.util.jar.JarFile;
+import java.util.jar.Manifest;
 
 /**
  * A way in which a library can be physically obtained for use in a build.
  */
 public abstract class LibraryRetriever extends AbstractDescribableImpl<LibraryRetriever> implements ExtensionPoint {
+
+    /**
+     * JAR manifest attribute giving original library name.
+     */
+    static final String ATTR_LIBRARY_NAME = "Jenkins-Library-Name";
 
     /**
      * Obtains library sources.
@@ -60,7 +68,7 @@ public abstract class LibraryRetriever extends AbstractDescribableImpl<LibraryRe
             FilePath tmp = target.sibling(target.getBaseName() + "-checkout");
             try {
                 retrieve(name, version, changelog, tmp, run, listener);
-                dir2Jar(tmp, target);
+                dir2Jar(name, tmp, target);
             } finally {
                 tmp.deleteRecursive();
                 WorkspaceList.tempDir(tmp).deleteRecursive();
@@ -74,28 +82,35 @@ public abstract class LibraryRetriever extends AbstractDescribableImpl<LibraryRe
      * Translates a historical directory with {@code src/} and/or {@code vars/} and/or {@code resources/} subdirectories
      * into a JAR file with Groovy in classpath orientation and {@code resources/} as a ZIP folder.
      */
-    static void dir2Jar(@NonNull FilePath dir, @NonNull FilePath jar) throws IOException, InterruptedException {
+    static void dir2Jar(@NonNull String name, @NonNull FilePath dir, @NonNull FilePath jar) throws IOException, InterruptedException {
         // TODO do this more efficiently by packing JAR directly
-        FilePath tmp2 = jar.withSuffix(".tmp2");
-        tmp2.mkdirs();
+        FilePath tmp = jar.sibling(jar.getBaseName() + "-repack");
+        tmp.mkdirs();
         try {
             FilePath src = dir.child("src");
             if (src.isDirectory()) {
-                src.moveAllChildrenTo(tmp2);
+                src.moveAllChildrenTo(tmp);
             }
             FilePath vars = dir.child("vars");
             if (vars.isDirectory()) {
-                vars.moveAllChildrenTo(tmp2);
+                vars.moveAllChildrenTo(tmp);
             }
             FilePath resources = dir.child("resources");
             if (resources.isDirectory()) {
-                resources.renameTo(tmp2.child("resources"));
+                resources.renameTo(tmp.child("resources"));
+            }
+            try (OutputStream os = tmp.child(JarFile.MANIFEST_NAME).write()) {
+                Manifest m = new Manifest();
+                m.getMainAttributes().put(Attributes.Name.MANIFEST_VERSION, "1.0");
+                // Informational debugging aid, since the hex JAR basename will be meaningless:
+                m.getMainAttributes().putValue(ATTR_LIBRARY_NAME, name);
+                m.write(os);
             }
             try (OutputStream os = jar.write()) {
-                tmp2.archive(ArchiverFactory.ZIP, os, "**");
+                tmp.archive(ArchiverFactory.ZIP, os, "**");
             }
         } finally {
-            tmp2.deleteRecursive();
+            tmp.deleteRecursive();
         }
     }
 
