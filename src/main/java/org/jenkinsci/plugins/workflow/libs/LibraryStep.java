@@ -251,11 +251,11 @@ public class LibraryStep extends AbstractStepImpl {
         private final @NonNull String prefix;
         /** {@link Class#getName} minus package prefix */
         private final @CheckForNull String clazz;
-        /** {@code file:/…/libs/NAME/src/} */
+        /** {@code jar:file:/…/libs/$hash.jar!/} */
         private final @NonNull String srcUrl;
 
         LoadedClasses(String library, String libraryDirectoryName, boolean trusted, Boolean changelog, Run<?,?> run) {
-            this(library, trusted, changelog, "", null, /* cf. LibraryAdder.retrieve */ new File(run.getRootDir(), "libs/" + libraryDirectoryName + ".jar").toURI().toString());
+            this(library, trusted, changelog, "", null, /* cf. LibraryAdder.retrieve */ "jar:" + new File(run.getRootDir(), "libs/" + libraryDirectoryName + ".jar").toURI() + "!/");
         }
 
         LoadedClasses(String library, boolean trusted, Boolean changelog, String prefix, String clazz, String srcUrl) {
@@ -357,11 +357,8 @@ public class LibraryStep extends AbstractStepImpl {
                     throw new IllegalAccessException(name + " had no defined code source");
                 }
                 String loc = codeSource.getLocation().toString();
-                LOGGER.info(() -> "TODO got " + loc);
-                String actual = canonicalize(loc);
-                String srcUrlC = canonicalize(srcUrl); // do not do this in constructor: path might not actually exist
-                if (!actual.startsWith(srcUrlC)) {
-                    throw new IllegalAccessException(name + " was defined in " + actual + " which was not inside " + srcUrlC);
+                if (!loc.startsWith(srcUrl)) {
+                    throw new IllegalAccessException(name + " was defined in " + loc + " which was not inside " + srcUrl);
                 }
                 if (!Modifier.isPublic(c.getModifiers())) { // unlikely since Groovy makes classes implicitly public
                     throw new IllegalAccessException(c + " is not public");
@@ -374,20 +371,6 @@ public class LibraryStep extends AbstractStepImpl {
             }
         }
 
-        private static String canonicalize(String uri) {
-            if (uri.startsWith("jar:") && uri.contains("!/")) {
-                // See warning in CpsGroovyShell.parseClass.
-                uri = uri.substring(4, uri.indexOf("!/"));
-            }
-            if (uri.startsWith("file:/")) {
-                try {
-                    return Paths.get(new URI(uri)).toRealPath().toUri().toString();
-                } catch (IOException | URISyntaxException x) {
-                    LOGGER.log(Level.WARNING, "could not canonicalize " + uri, x);
-                }
-            }
-            return uri;
-        }
 
     }
 
