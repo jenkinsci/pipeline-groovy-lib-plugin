@@ -35,6 +35,7 @@ import hudson.model.TaskListener;
 import hudson.util.FormValidation;
 import edu.umd.cs.findbugs.annotations.CheckForNull;
 import edu.umd.cs.findbugs.annotations.NonNull;
+import hudson.slaves.WorkspaceList;
 import hudson.util.io.ArchiverFactory;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -56,12 +57,13 @@ public abstract class LibraryRetriever extends AbstractDescribableImpl<LibraryRe
      */
     public void retrieveJar(@NonNull String name, @NonNull String version, boolean changelog, @NonNull FilePath target, @NonNull Run<?,?> run, @NonNull TaskListener listener) throws Exception {
         if (Util.isOverridden(LibraryRetriever.class, getClass(), "retrieve", String.class, String.class, boolean.class, FilePath.class, Run.class, TaskListener.class)) {
-            FilePath tmp = target.withSuffix(".checkout");
+            FilePath tmp = target.sibling(target.getBaseName() + "-checkout");
             try {
                 retrieve(name, version, changelog, tmp, run, listener);
                 dir2Jar(tmp, target);
             } finally {
                 tmp.deleteRecursive();
+                WorkspaceList.tempDir(tmp).deleteRecursive();
             }
         } else {
             throw new AbstractMethodError("Implement retrieveJar");
