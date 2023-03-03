@@ -24,7 +24,6 @@
 
 package org.jenkinsci.plugins.workflow.libs;
 
-import hudson.AbortException;
 import hudson.Extension;
 import hudson.ExtensionList;
 import hudson.FilePath;
@@ -50,6 +49,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import edu.umd.cs.findbugs.annotations.CheckForNull;
 import edu.umd.cs.findbugs.annotations.NonNull;
+import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -299,30 +299,25 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
             Run<?,?> run = (Run) executable;
             LibrariesAction action = run.getAction(LibrariesAction.class);
             if (action != null) {
-                // TODO handle *.jar
                 FilePath libs = new FilePath(run.getRootDir()).child("libs");
                 for (LibraryRecord library : action.getLibraries()) {
-                    FilePath libResources = libs.child(library.getDirectoryName() + "/resources/");
-                    FilePath f = libResources.child(name);
-                    if (!new File(f.getRemote()).getCanonicalFile().toPath().startsWith(new File(libResources.getRemote()).getCanonicalPath())) {
-                        throw new AbortException(name + " references a file that is not contained within the library: " + library.name);
-                    } else if (f.exists()) {
-                        resources.put(library.name, readResource(f, encoding));
+                    FilePath libJar = libs.child(library.getDirectoryName() + ".jar");
+                    try (JarFile jf = new JarFile(libJar.getRemote())) {
+                        JarEntry je = jf.getJarEntry("resources/" + name);
+                        if (je != null) {
+                            try (InputStream in = jf.getInputStream(je)) {
+                                if ("Base64".equals(encoding)) {
+                                    resources.put(library.name, Base64.getEncoder().encodeToString(IOUtils.toByteArray(in)));
+                                } else {
+                                    resources.put(library.name, IOUtils.toString(in, encoding)); // The platform default is used if encoding is null.
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
         return resources;
-    }
-
-    private static String readResource(FilePath file, @CheckForNull String encoding) throws IOException, InterruptedException {
-        try (InputStream in = file.read()) {
-            if ("Base64".equals(encoding)) {
-                return Base64.getEncoder().encodeToString(IOUtils.toByteArray(in));
-            } else {
-                return IOUtils.toString(in, encoding); // The platform default is used if encoding is null.
-            }
-        }
     }
 
     @Extension public static class GlobalVars extends GlobalVariableSet {
