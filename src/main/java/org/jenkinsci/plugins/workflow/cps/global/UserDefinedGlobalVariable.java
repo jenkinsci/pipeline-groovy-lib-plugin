@@ -22,6 +22,7 @@ import jenkins.model.Jenkins;
  */
 // not @Extension because these are instantiated programmatically
 public class UserDefinedGlobalVariable extends GlobalVariable {
+    // TODO switch to URL
     private final File help;
     private final String name;
 

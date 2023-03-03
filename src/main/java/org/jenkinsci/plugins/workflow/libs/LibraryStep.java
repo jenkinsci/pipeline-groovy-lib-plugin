@@ -229,9 +229,7 @@ public class LibraryStep extends AbstractStepImpl {
             listener.getLogger().println("Loading library " + record.name + "@" + record.version);
             CpsFlowExecution exec = (CpsFlowExecution) getContext().get(FlowExecution.class);
             GroovyClassLoader loader = (trusted ? exec.getTrustedShell() : exec.getShell()).getClassLoader();
-            for (URL u : LibraryAdder.retrieve(record, retriever, listener, run, (CpsFlowExecution) getContext().get(FlowExecution.class))) {
-                loader.addURL(u);
-            }
+            loader.addURL(LibraryAdder.retrieve(record, retriever, listener, run, (CpsFlowExecution) getContext().get(FlowExecution.class)));
             run.save(); // persist changes to LibrariesAction.libraries*.variables
             return new LoadedClasses(name, record.getDirectoryName(), trusted, changelog, run);
         }
@@ -257,7 +255,7 @@ public class LibraryStep extends AbstractStepImpl {
         private final @NonNull String srcUrl;
 
         LoadedClasses(String library, String libraryDirectoryName, boolean trusted, Boolean changelog, Run<?,?> run) {
-            this(library, trusted, changelog, "", null, /* cf. LibraryAdder.retrieve */ new File(run.getRootDir(), "libs/" + libraryDirectoryName + "/src").toURI().toString());
+            this(library, trusted, changelog, "", null, /* cf. LibraryAdder.retrieve */ new File(run.getRootDir(), "libs/" + libraryDirectoryName + ".jar").toURI().toString());
         }
 
         LoadedClasses(String library, boolean trusted, Boolean changelog, String prefix, String clazz, String srcUrl) {
@@ -358,7 +356,9 @@ public class LibraryStep extends AbstractStepImpl {
                 if (codeSource == null) {
                     throw new IllegalAccessException(name + " had no defined code source");
                 }
-                String actual = canonicalize(codeSource.getLocation().toString());
+                String loc = codeSource.getLocation().toString();
+                LOGGER.info(() -> "TODO got " + loc);
+                String actual = canonicalize(loc);
                 String srcUrlC = canonicalize(srcUrl); // do not do this in constructor: path might not actually exist
                 if (!actual.startsWith(srcUrlC)) {
                     throw new IllegalAccessException(name + " was defined in " + actual + " which was not inside " + srcUrlC);
@@ -375,6 +375,10 @@ public class LibraryStep extends AbstractStepImpl {
         }
 
         private static String canonicalize(String uri) {
+            if (uri.startsWith("jar:") && uri.contains("!/")) {
+                // See warning in CpsGroovyShell.parseClass.
+                uri = uri.substring(4, uri.indexOf("!/"));
+            }
             if (uri.startsWith("file:/")) {
                 try {
                     return Paths.get(new URI(uri)).toRealPath().toUri().toString();

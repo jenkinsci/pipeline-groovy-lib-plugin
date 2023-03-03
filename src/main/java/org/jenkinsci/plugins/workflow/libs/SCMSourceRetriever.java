@@ -142,7 +142,7 @@ public class SCMSourceRetriever extends LibraryRetriever {
         this.libraryPath = libraryPath;
     }
 
-    @Override public void retrieve(String name, String version, boolean changelog, FilePath target, Run<?, ?> run, TaskListener listener) throws Exception {
+    @Override public void retrieveJar(String name, String version, boolean changelog, FilePath target, Run<?, ?> run, TaskListener listener) throws Exception {
         SCMRevision revision = retrySCMOperation(listener, () -> scm.fetch(version, listener, run.getParent()));
         if (revision == null) {
             throw new AbortException("No version " + version + " found for library " + name);
@@ -155,10 +155,6 @@ public class SCMSourceRetriever extends LibraryRetriever {
         } else {
             doRetrieve(name, changelog, scm.build(revision.getHead(), revision), libraryPath, target, run, listener);
         }
-    }
-
-    @Override public void retrieve(String name, String version, FilePath target, Run<?, ?> run, TaskListener listener) throws Exception {
-        retrieve(name, version, true, target, run, listener);
     }
 
     private static <T> T retrySCMOperation(TaskListener listener, Callable<T> task) throws Exception{
@@ -232,7 +228,7 @@ public class SCMSourceRetriever extends LibraryRetriever {
             }
             // Cannot add WorkspaceActionImpl to private CpsFlowExecution.flowStartNodeActions; do we care?
             // Copy sources with relevant files from the checkout:
-            lease.path.child(libraryPath).copyRecursiveTo("src/**/*.groovy,vars/*.groovy,vars/*.txt,resources/", excludes, target);
+            LibraryRetriever.dir2Jar(lease.path.child(libraryPath), target);
         }
     }
 
@@ -245,65 +241,29 @@ public class SCMSourceRetriever extends LibraryRetriever {
      * Similar to {@link #doRetrieve} but used in {@link #clone} mode.
      */
     private static void doClone(@NonNull SCM scm, String libraryPath, FilePath target, Run<?, ?> run, TaskListener listener) throws Exception {
+        // TODO merge into doRetrieve
         SCMStep delegate = new GenericSCMStep(scm);
         delegate.setPoll(false);
         delegate.setChangelog(false);
-        if (libraryPath == null) {
+        FilePath tmp = target.withSuffix(".tmp");
+        try {
             retrySCMOperation(listener, () -> {
-                delegate.checkout(run, target, listener, Jenkins.get().createLauncher(listener));
+                delegate.checkout(run, tmp, listener, Jenkins.get().createLauncher(listener));
                 return null;
             });
-        } else {
-            if (PROHIBITED_DOUBLE_DOT.matcher(libraryPath).matches()) {
-                throw new AbortException("Library path may not contain '..'");
-            }
-            FilePath root = target.child("root");
-            retrySCMOperation(listener, () -> {
-                delegate.checkout(run, root, listener, Jenkins.get().createLauncher(listener));
-                return null;
-            });
-            FilePath subdir = root.child(libraryPath);
-            if (!subdir.isDirectory()) {
-                throw new AbortException("Did not find " + libraryPath + " in checkout");
-            }
-            for (String content : List.of("src", "vars", "resources")) {
-                FilePath contentDir = subdir.child(content);
-                if (contentDir.isDirectory()) {
-                    listener.getLogger().println("Moving " + content + " to top level");
-                    contentDir.renameTo(target.child(content));
+            FilePath root;
+            if (libraryPath == null) {
+                root = tmp;
+            } else {
+                if (PROHIBITED_DOUBLE_DOT.matcher(libraryPath).matches()) {
+                    throw new AbortException("Library path may not contain '..'");
                 }
+                root = tmp.child(libraryPath);
             }
-            // root itself will be deleted below
-        }
-        Set<String> deleted = new TreeSet<>();
-        if (!INCLUDE_SRC_TEST_IN_LIBRARIES) {
-            FilePath srcTest = target.child("src/test");
-            if (srcTest.isDirectory()) {
-                listener.getLogger().println("Excluding src/test/ from checkout of " + scm.getKey() + " so that library test code cannot be accessed by Pipelines.");
-                listener.getLogger().println("To remove this log message, move the test code outside of src/. To restore the previous behavior that allowed access to files in src/test/, pass -D" + SCMSourceRetriever.class.getName() + ".INCLUDE_SRC_TEST_IN_LIBRARIES=true to the java command used to start Jenkins.");
-                srcTest.deleteRecursive();
-                deleted.add("src/test");
-            }
-        }
-        for (FilePath child : target.list()) {
-            String name = child.getName();
-            switch (name) {
-            case "src":
-                // TODO delete everything that is not *.groovy
-                break;
-            case "vars":
-                // TODO delete everything that is not *.groovy or *.txt, incl. subdirs
-                break;
-            case "resources":
-                // OK, leave it all
-                break;
-            default:
-                deleted.add(name);
-                child.deleteRecursive();
-            }
-        }
-        if (!deleted.isEmpty()) {
-            listener.getLogger().println("Deleted " + deleted.stream().collect(Collectors.joining(", ")));
+            // TODO handle INCLUDE_SRC_TEST_IN_LIBRARIES
+            LibraryRetriever.dir2Jar(root, target);
+        } finally {
+            tmp.deleteRecursive();
         }
     }
 

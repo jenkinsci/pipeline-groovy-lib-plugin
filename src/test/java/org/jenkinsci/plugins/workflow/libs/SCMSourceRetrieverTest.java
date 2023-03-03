@@ -375,7 +375,6 @@ public class SCMSourceRetrieverTest {
         sampleRepo.init();
         sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something special'}");
         sampleRepo.write("README.md", "Summary");
-        sampleRepo.git("rm", "file");
         sampleRepo.git("add", ".");
         sampleRepo.git("commit", "--message=init");
         GitSCMSource src = new GitSCMSource(sampleRepo.toString());
@@ -390,7 +389,6 @@ public class SCMSourceRetrieverTest {
         WorkflowRun b = r.buildAndAssertSuccess(p);
         assertFalse(r.jenkins.getWorkspaceFor(p).withSuffix("@libs").isDirectory());
         r.assertLogContains("something special", b);
-        r.assertLogContains("Deleted .git, README.md", b);
         r.assertLogContains("Using shallow clone with depth 1", b);
     }
 
@@ -409,8 +407,6 @@ public class SCMSourceRetrieverTest {
         p.setDefinition(new CpsFlowDefinition("@Library('root_sub_path@master') import myecho; myecho()", true));
         WorkflowRun b = r.buildAndAssertSuccess(p);
         r.assertLogContains("something special", b);
-        r.assertLogContains("Moving vars to top level", b);
-        r.assertLogContains("Deleted root", b);
     }
 
     @Test public void cloneModeLibraryPathSecurity() throws Exception {

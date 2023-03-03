@@ -35,6 +35,9 @@ import hudson.model.TaskListener;
 import hudson.util.FormValidation;
 import edu.umd.cs.findbugs.annotations.CheckForNull;
 import edu.umd.cs.findbugs.annotations.NonNull;
+import hudson.util.io.ArchiverFactory;
+import java.io.IOException;
+import java.io.OutputStream;
 
 /**
  * A way in which a library can be physically obtained for use in a build.
@@ -46,12 +49,72 @@ public abstract class LibraryRetriever extends AbstractDescribableImpl<LibraryRe
      * @param name the {@link LibraryConfiguration#getName}
      * @param version the version of the library, such as from {@link LibraryConfiguration#getDefaultVersion} or an override
      * @param changelog whether to include changesets in the library in jobs using it from {@link LibraryConfiguration#getIncludeInChangesets}
+     * @param target a JAR file in which to stash sources; should contain {@code **}{@code /*.groovy} (sources at top level will be considered vars), and optionally also {@code resources/}
+     * @param run a build which will use the library
+     * @param listener a way to report progress
+     * @throws Exception if there is any problem (use {@link AbortException} for user errors)
+     */
+    public void retrieveJar(@NonNull String name, @NonNull String version, boolean changelog, @NonNull FilePath target, @NonNull Run<?,?> run, @NonNull TaskListener listener) throws Exception {
+        if (Util.isOverridden(LibraryRetriever.class, getClass(), "retrieve", String.class, String.class, boolean.class, FilePath.class, Run.class, TaskListener.class)) {
+            FilePath tmp = target.withSuffix(".checkout");
+            try {
+                retrieve(name, version, changelog, tmp, run, listener);
+                dir2Jar(tmp, target);
+            } finally {
+                tmp.deleteRecursive();
+            }
+        } else {
+            throw new AbstractMethodError("Implement retrieveJar");
+        }
+    }
+
+    /**
+     * Translates a historical directory with {@code src/} and/or {@code vars/} and/or {@code resources/} subdirectories
+     * into a JAR file with Groovy in classpath orientation and {@code resources/} as a ZIP folder.
+     */
+    static void dir2Jar(@NonNull FilePath dir, @NonNull FilePath jar) throws IOException, InterruptedException {
+        // TODO do this more efficiently by packing JAR directly
+        FilePath tmp2 = jar.withSuffix(".tmp2");
+        tmp2.mkdirs();
+        try {
+            FilePath src = dir.child("src");
+            if (src.isDirectory()) {
+                src.moveAllChildrenTo(tmp2);
+            }
+            FilePath vars = dir.child("vars");
+            if (vars.isDirectory()) {
+                vars.moveAllChildrenTo(tmp2);
+            }
+            FilePath resources = dir.child("resources");
+            if (resources.isDirectory()) {
+                resources.renameTo(tmp2.child("resources"));
+            }
+            try (OutputStream os = jar.write()) {
+                tmp2.archive(ArchiverFactory.ZIP, os, "**");
+            }
+        } finally {
+            tmp2.deleteRecursive();
+        }
+    }
+
+    /**
+     * Obtains library sources.
+     * @param name the {@link LibraryConfiguration#getName}
+     * @param version the version of the library, such as from {@link LibraryConfiguration#getDefaultVersion} or an override
+     * @param changelog whether to include changesets in the library in jobs using it from {@link LibraryConfiguration#getIncludeInChangesets}
      * @param target a directory in which to check out sources; should create {@code src/**}{@code /*.groovy} and/or {@code vars/*.groovy}, and optionally also {@code resources/}
      * @param run a build which will use the library
      * @param listener a way to report progress
      * @throws Exception if there is any problem (use {@link AbortException} for user errors)
      */
-    public abstract void retrieve(@NonNull String name, @NonNull String version, boolean changelog, @NonNull FilePath target, @NonNull Run<?,?> run, @NonNull TaskListener listener) throws Exception;
+    @Deprecated
+    public void retrieve(@NonNull String name, @NonNull String version, boolean changelog, @NonNull FilePath target, @NonNull Run<?,?> run, @NonNull TaskListener listener) throws Exception {
+        if (Util.isOverridden(LibraryRetriever.class, getClass(), "retrieve", String.class, String.class, FilePath.class, Run.class, TaskListener.class)) {
+            retrieve(name, version, target, run, listener);
+        } else {
+            throw new AbstractMethodError("Implement retrieveJar");
+        }
+    }
 
     /**
      * Obtains library sources.
@@ -62,8 +125,10 @@ public abstract class LibraryRetriever extends AbstractDescribableImpl<LibraryRe
      * @param listener a way to report progress
      * @throws Exception if there is any problem (use {@link AbortException} for user errors)
      */
-    // TODO this should have been made nonabstract and deprecated and delegated to the new version; may be able to use access-modifier to help
-    public abstract void retrieve(@NonNull String name, @NonNull String version, @NonNull FilePath target, @NonNull Run<?,?> run, @NonNull TaskListener listener) throws Exception;
+    @Deprecated
+    public void retrieve(@NonNull String name, @NonNull String version, @NonNull FilePath target, @NonNull Run<?,?> run, @NonNull TaskListener listener) throws Exception {
+        throw new AbstractMethodError("Implement retrieveJar");
+    }
 
     @Deprecated
     public FormValidation validateVersion(@NonNull String name, @NonNull String version) {

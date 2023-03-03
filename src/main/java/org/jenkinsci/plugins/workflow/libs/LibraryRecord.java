@@ -71,7 +71,7 @@ public final class LibraryRecord {
     }
 
     /**
-     * Returns a partially unique name that can be safely used as a directory name.
+     * Returns a partially unique name that can be safely used as a directory or JAR base name.
      *
      * Uniqueness is based on the library name, version, whether it is trusted, and the source of the library.
      * {@link LibraryRetriever}-specific information such as the SCM is not used to produce this name.
