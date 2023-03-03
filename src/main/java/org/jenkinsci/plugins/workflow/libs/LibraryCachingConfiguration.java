@@ -31,7 +31,7 @@ public final class LibraryCachingConfiguration extends AbstractDescribableImpl<L
     private String excludedVersionsStr;
 
     private static final String VERSIONS_SEPARATOR = " ";
-    public static final String GLOBAL_LIBRARIES_DIR = "global-libraries-jar-cache";
+    public static final String GLOBAL_LIBRARIES_DIR = "pipeline-groovy-lib-cache";
     public static final String LAST_READ_FILE = "last_read";
 
     @DataBoundConstructor public LibraryCachingConfiguration(int refreshTimeMinutes, String excludedVersionsStr) {
