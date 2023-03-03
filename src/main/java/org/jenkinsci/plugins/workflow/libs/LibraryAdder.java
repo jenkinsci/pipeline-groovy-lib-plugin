@@ -99,13 +99,9 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
         if (action != null) {
             // Resuming a build, so just look up what we loaded before.
             for (LibraryRecord record : action.getLibraries()) {
-                // TODO call LibraryRetriever.dir2Jar as needed
-                FilePath libDir = new FilePath(execution.getOwner().getRootDir()).child("libs/" + record.getDirectoryName());
-                for (String root : new String[] {"src", "vars"}) {
-                    FilePath dir = libDir.child(root);
-                    if (dir.isDirectory()) {
-                        additions.add(new Addition(dir.toURI().toURL(), record.trusted));
-                    }
+                FilePath libJar = new FilePath(execution.getOwner().getRootDir()).child("libs/" + record.getDirectoryName() + ".jar");
+                if (libJar.exists()) {
+                    additions.add(new Addition(libJar.toURI().toURL(), record.trusted));
                 }
                 String unparsed = librariesUnparsed.get(record.name);
                 if (unparsed != null) {
