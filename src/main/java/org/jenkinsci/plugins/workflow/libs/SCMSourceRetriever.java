@@ -264,6 +264,7 @@ public class SCMSourceRetriever extends LibraryRetriever {
             LibraryRetriever.dir2Jar(root, target);
         } finally {
             tmp.deleteRecursive();
+            WorkspaceList.tempDir(tmp).deleteRecursive();
         }
     }
 

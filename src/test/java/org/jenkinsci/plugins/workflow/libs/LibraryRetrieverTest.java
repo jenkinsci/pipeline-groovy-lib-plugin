@@ -29,6 +29,7 @@ import java.util.Set;
 import java.util.TreeSet;
 import java.util.jar.JarFile;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.is;
 import org.junit.Rule;
 import org.junit.Test;
@@ -53,11 +54,12 @@ public class LibraryRetrieverTest {
     // TODO assert that other files are not copied
 
     private void assertDir2Jar(Set<String> inputs, Set<String> outputs) throws Exception {
-        FilePath dir = new FilePath(tmp.newFolder());
+        FilePath work = new FilePath(tmp.newFolder());
+        FilePath dir = work.child("dir");
         for (String input : inputs) {
             dir.child(input).write("xxx", null);
         }
-        FilePath jar = new FilePath(tmp.newFile("x.jar"));
+        FilePath jar = work.child("x.jar");
         LibraryRetriever.dir2Jar(dir, jar);
         Set<String> actualOutputs = new TreeSet<>();
         try (JarFile jf = new JarFile(jar.getRemote())) {
@@ -69,6 +71,7 @@ public class LibraryRetrieverTest {
             });
         }
         assertThat(actualOutputs, is(outputs));
+        assertThat(work.list(), containsInAnyOrder(dir, jar));
     }
 
 }
