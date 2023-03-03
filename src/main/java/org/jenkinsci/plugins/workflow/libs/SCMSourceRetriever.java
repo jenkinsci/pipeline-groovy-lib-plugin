@@ -245,7 +245,7 @@ public class SCMSourceRetriever extends LibraryRetriever {
         SCMStep delegate = new GenericSCMStep(scm);
         delegate.setPoll(false);
         delegate.setChangelog(false);
-        FilePath tmp = target.withSuffix(".tmp");
+        FilePath tmp = target.sibling(target.getBaseName() + "-checkout");
         try {
             retrySCMOperation(listener, () -> {
                 delegate.checkout(run, tmp, listener, Jenkins.get().createLauncher(listener));
