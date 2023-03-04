@@ -45,21 +45,20 @@ import java.io.Serializable;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.net.URI;
-import java.net.URISyntaxException;
 import java.net.URL;
-import java.nio.file.Paths;
-import java.security.CodeSource;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
-import java.util.logging.Level;
 import java.util.logging.Logger;
 import edu.umd.cs.findbugs.annotations.CheckForNull;
 import edu.umd.cs.findbugs.annotations.NonNull;
+import edu.umd.cs.findbugs.annotations.Nullable;
 import groovy.lang.MissingPropertyException;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import javax.inject.Inject;
 import jenkins.model.Jenkins;
 import jenkins.scm.impl.SingleSCMSource;
@@ -251,20 +250,20 @@ public class LibraryStep extends AbstractStepImpl {
         private final @NonNull String prefix;
         /** {@link Class#getName} minus package prefix */
         private final @CheckForNull String clazz;
-        /** {@code jar:file:/…/libs/$hash.jar!/} */
-        private final @NonNull String srcUrl;
+        /** {@code /…/libs/$hash.jar}, or null if resuming a pre-dir2Jar build */
+        private final @Nullable String jar;
 
         LoadedClasses(String library, String libraryDirectoryName, boolean trusted, Boolean changelog, Run<?,?> run) {
-            this(library, trusted, changelog, "", null, /* cf. LibraryAdder.retrieve */ "jar:" + new File(run.getRootDir(), "libs/" + libraryDirectoryName + ".jar").toURI() + "!/");
+            this(library, trusted, changelog, "", null, /* cf. LibraryAdder.retrieve */ new File(run.getRootDir(), "libs/" + libraryDirectoryName + ".jar").getAbsolutePath());
         }
 
-        LoadedClasses(String library, boolean trusted, Boolean changelog, String prefix, String clazz, String srcUrl) {
+        LoadedClasses(String library, boolean trusted, Boolean changelog, String prefix, String clazz, String jar) {
             this.library = library;
             this.trusted = trusted;
             this.changelog = changelog;
             this.prefix = prefix;
             this.clazz = clazz;
-            this.srcUrl = srcUrl;
+            this.jar = jar;
         }
 
         @Override public Object getProperty(String property) {
@@ -288,12 +287,12 @@ public class LibraryStep extends AbstractStepImpl {
                 String fullClazz = clazz != null ? clazz + '$' + property : property;
                 loadClass(prefix + fullClazz);
                 // OK, class really exists, stash it and await methods
-                return new LoadedClasses(library, trusted, changelog, prefix, fullClazz, srcUrl);
+                return new LoadedClasses(library, trusted, changelog, prefix, fullClazz, jar);
             } else if (clazz != null) {
                 throw new MissingPropertyException(property, loadClass(prefix + clazz));
             } else {
                 // Still selecting package components.
-                return new LoadedClasses(library, trusted, changelog, prefix + property + '.', null, srcUrl);
+                return new LoadedClasses(library, trusted, changelog, prefix + property + '.', null, jar);
             }
         }
 
@@ -339,6 +338,8 @@ public class LibraryStep extends AbstractStepImpl {
 
         // TODO putProperty for static field set
 
+        private static final Pattern JAR_URL = Pattern.compile("jar:(file:/.+[.]jar)!/.+");
+
         private Class<?> loadClass(String name) {
             CpsFlowExecution exec = CpsThread.current().getExecution();
             GroovyClassLoader loader = (trusted ? exec.getTrustedShell() : exec.getShell()).getClassLoader();
@@ -351,14 +352,22 @@ public class LibraryStep extends AbstractStepImpl {
                 if (definingLoader != loader) {
                     throw new IllegalAccessException("cannot access " + c + " via library handle: " + definingLoader + " is not " + loader);
                 }
-                // Note that this goes through GroovyCodeSource.<init>(File, String), which unlike (say) URLClassLoader set the “location” to the actual file, *not* the root.
-                CodeSource codeSource = c.getProtectionDomain().getCodeSource();
-                if (codeSource == null) {
-                    throw new IllegalAccessException(name + " had no defined code source");
-                }
-                String loc = codeSource.getLocation().toString();
-                if (!loc.startsWith(srcUrl)) {
-                    throw new IllegalAccessException(name + " was defined in " + loc + " which was not inside " + srcUrl);
+                if (jar != null) {
+                    URL res = loader.getResource(name.replaceFirst("[$][^.]+$", "").replace('.', '/') + ".groovy");
+                    if (res == null) {
+                        throw new IllegalAccessException("Unknown where " + name + " (" + c.getProtectionDomain().getCodeSource().getLocation() + ") was loaded from");
+                    }
+                    Matcher m = JAR_URL.matcher(res.toString());
+                    if (!m.matches()) {
+                        throw new IllegalAccessException("Unexpected URL " + res);
+                    }
+                    File actual = new File(URI.create(m.group(1)));
+                    if (!actual.equals(new File(jar))) {
+                        throw new IllegalAccessException(name + " was defined in " + actual + " rather than the expected " + jar);
+                    }
+                    LOGGER.fine(() -> "loaded " + name + " from " + res + " ~ " + actual + " as expected");
+                } else {
+                    LOGGER.fine(() -> "loaded " + name + " but resuming from an old build which did not properly record JAR location");
                 }
                 if (!Modifier.isPublic(c.getModifiers())) { // unlikely since Groovy makes classes implicitly public
                     throw new IllegalAccessException(c + " is not public");

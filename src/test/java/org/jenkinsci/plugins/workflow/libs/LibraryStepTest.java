@@ -36,6 +36,7 @@ import hudson.plugins.git.extensions.GitSCMExtension;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.logging.Level;
 
 import jenkins.plugins.git.GitSCMSource;
 import jenkins.plugins.git.GitSampleRepoRule;
@@ -56,6 +57,7 @@ import org.junit.Rule;
 import org.jvnet.hudson.test.BuildWatcher;
 import org.jvnet.hudson.test.Issue;
 import org.jvnet.hudson.test.JenkinsRule;
+import org.jvnet.hudson.test.LoggerRule;
 
 @Issue("JENKINS-39450")
 public class LibraryStepTest {
@@ -64,6 +66,7 @@ public class LibraryStepTest {
     @Rule public JenkinsRule r = new JenkinsRule();
     @Rule public GitSampleRepoRule sampleRepo = new GitSampleRepoRule();
     @Rule public GitSampleRepoRule sampleRepo2 = new GitSampleRepoRule();
+    @Rule public LoggerRule logging = new LoggerRule().record(LibraryStep.class, Level.FINE);
 
     @Test public void configRoundtrip() throws Exception {
         StepConfigTester stepTester = new StepConfigTester(r);
