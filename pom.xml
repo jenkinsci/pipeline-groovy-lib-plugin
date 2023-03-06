@@ -75,10 +75,11 @@
                 <scope>import</scope>
                 <type>pom</type>
             </dependency>
+            <!-- TODO pending inclusion in BOM -->
             <dependency>
                 <groupId>org.jenkins-ci.plugins.workflow</groupId>
                 <artifactId>workflow-cps</artifactId>
-                <version>3625.vb_50f7cb_e66b_7</version> <!-- TODO https://github.com/jenkinsci/workflow-cps-plugin/pull/672 -->
+                <version>3626.v4eb_a_7d8b_2fa_4</version>
             </dependency>
         </dependencies>
     </dependencyManagement>
