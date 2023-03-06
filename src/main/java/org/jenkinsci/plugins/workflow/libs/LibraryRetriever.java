@@ -35,6 +35,7 @@ import hudson.model.TaskListener;
 import hudson.util.FormValidation;
 import edu.umd.cs.findbugs.annotations.CheckForNull;
 import edu.umd.cs.findbugs.annotations.NonNull;
+import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import hudson.slaves.WorkspaceList;
 import hudson.util.DirScanner;
 import hudson.util.FileVisitor;
@@ -57,6 +58,9 @@ public abstract class LibraryRetriever extends AbstractDescribableImpl<LibraryRe
      * JAR manifest attribute giving original library name.
      */
     static final String ATTR_LIBRARY_NAME = "Jenkins-Library-Name";
+
+    @SuppressFBWarnings(value = "MS_SHOULD_BE_FINAL", justification = "Non-final for write access via the Script Console")
+    public static boolean INCLUDE_SRC_TEST_IN_LIBRARIES = Boolean.getBoolean(SCMSourceRetriever.class.getName() + ".INCLUDE_SRC_TEST_IN_LIBRARIES");
 
     /**
      * Obtains library sources.
@@ -109,7 +113,7 @@ public abstract class LibraryRetriever extends AbstractDescribableImpl<LibraryRe
                     @Override public void scan(File dir, FileVisitor visitor) throws IOException {
                         scanSingle(new File(mf.getRemote()), JarFile.MANIFEST_NAME, visitor);
                         String excludes;
-                        if (!SCMSourceRetriever.INCLUDE_SRC_TEST_IN_LIBRARIES && new File(dir, "src/test").isDirectory()) {
+                        if (!INCLUDE_SRC_TEST_IN_LIBRARIES && new File(dir, "src/test").isDirectory()) {
                             excludes = "test/";
                             listener.getLogger().println("Excluding src/test/ so that library test code cannot be accessed by Pipelines.");
                             listener.getLogger().println("To remove this log message, move the test code outside of src/. To restore the previous behavior that allowed access to files in src/test/, pass -D" + SCMSourceRetriever.class.getName() + ".INCLUDE_SRC_TEST_IN_LIBRARIES=true to the java command used to start Jenkins.");
