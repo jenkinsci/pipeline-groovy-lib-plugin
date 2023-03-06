@@ -50,6 +50,7 @@ import java.util.logging.Logger;
 import edu.umd.cs.findbugs.annotations.CheckForNull;
 import edu.umd.cs.findbugs.annotations.NonNull;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import java.util.regex.Matcher;
@@ -358,20 +359,24 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
                     Run<?,?> run = (Run) executable;
                     LibrariesAction action = run.getAction(LibrariesAction.class);
                     if (action != null) {
-                        // TODO handle *.jar
                         FilePath libs = new FilePath(run.getRootDir()).child("libs");
                         for (LibraryRecord library : action.getLibraries()) {
                             if (library.trusted) {
                                 continue; // TODO JENKINS-41157 allow replay of trusted libraries if you have ADMINISTER
                             }
-                            for (String rootName : new String[] {"src", "vars"}) {
-                                FilePath root = libs.child(library.getDirectoryName() + "/" + rootName);
-                                if (!root.isDirectory()) {
-                                    continue;
-                                }
-                                for (FilePath groovy : root.list("**/*.groovy")) {
-                                    String clazz = className(groovy.getRemote(), root.getRemote());
-                                    scripts.put(clazz, groovy.readToString()); // TODO no idea what encoding the Groovy compiler uses
+                            FilePath jar = libs.child(library.getDirectoryName() + ".jar");
+                            if (!jar.exists()) {
+                                continue;
+                            }
+                            try (JarFile jf = new JarFile(jar.getRemote())) {
+                                for (JarEntry je : (Iterable<JarEntry>) jf.stream()::iterator) {
+                                    if (je.getName().endsWith(".groovy")) {
+                                        String text;
+                                        try (InputStream is = jf.getInputStream(je)) {
+                                            text = IOUtils.toString(is, StandardCharsets.UTF_8); // TODO no idea what encoding the Groovy compiler uses
+                                        }
+                                        scripts.put(je.getName().replaceFirst("[.]groovy$", "").replace('/', '.'), text);
+                                    }
                                 }
                             }
                         }
@@ -381,10 +386,6 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
                 LOGGER.log(Level.WARNING, null, x);
             }
             return scripts;
-        }
-
-        static String className(String groovy, String root) {
-            return groovy.replaceFirst("^" + Pattern.quote(root) + "[/\\\\](.+)[.]groovy", "$1").replace('/', '.').replace('\\', '.');
         }
 
     }

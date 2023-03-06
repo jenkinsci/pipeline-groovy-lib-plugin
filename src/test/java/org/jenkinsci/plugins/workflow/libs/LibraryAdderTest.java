@@ -46,7 +46,6 @@ import jenkins.plugins.git.GitSampleRepoRule;
 import jenkins.scm.impl.subversion.SubversionSCMSource;
 import jenkins.scm.impl.subversion.SubversionSampleRepoRule;
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.nullValue;
 import org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition;
 import org.jenkinsci.plugins.workflow.cps.GlobalVariable;
@@ -64,7 +63,6 @@ import org.jvnet.hudson.test.BuildWatcher;
 import org.jvnet.hudson.test.Issue;
 import org.jvnet.hudson.test.JenkinsRule;
 import org.jvnet.hudson.test.TestExtension;
-import org.jvnet.hudson.test.WithoutJenkins;
 import org.jvnet.hudson.test.recipes.LocalData;
 
 public class LibraryAdderTest {
@@ -545,13 +543,5 @@ public class LibraryAdderTest {
     }
 
     // TODO test migration in LibraryAdder.add after reload build started prior to dir2Jar (@OldData)
-
-    @Issue("JENKINS-68544")
-    @WithoutJenkins
-    @Test public void className() {
-        assertThat(LibraryAdder.LoadedLibraries.className("/path/to/lib/src/some/pkg/Type.groovy", "/path/to/lib/src"), is("some.pkg.Type"));
-        assertThat(LibraryAdder.LoadedLibraries.className("C:\\path\\to\\lib\\src\\some\\pkg\\Type.groovy", "C:\\path\\to\\lib\\src"), is("some.pkg.Type"));
-        assertThat(LibraryAdder.LoadedLibraries.className("C:\\path\\to\\Extra\\lib\\src\\some\\pkg\\Type.groovy", "C:\\path\\to\\Extra\\lib\\src"), is("some.pkg.Type"));
-    }
 
 }
