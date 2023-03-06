@@ -49,6 +49,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import edu.umd.cs.findbugs.annotations.CheckForNull;
 import edu.umd.cs.findbugs.annotations.NonNull;
+import java.net.URI;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import java.util.regex.Matcher;
@@ -337,8 +338,7 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
             List<GlobalVariable> vars = new ArrayList<>();
             for (LibraryRecord library : action.getLibraries()) {
                 for (String variable : library.variables) {
-                    // TODO pass URL of *.jar!/$variable.txt
-                    vars.add(new UserDefinedGlobalVariable(variable, new File(run.getRootDir(), "libs/" + library.getDirectoryName() + "/vars/" + variable + ".txt")));
+                    vars.add(new UserDefinedGlobalVariable(variable, URI.create("jar:" + new File(run.getRootDir(), "libs/" + library.getDirectoryName() + ".jar").toURI() + "!/" + variable + ".txt")));
                 }
             }
             return vars;
