@@ -36,7 +36,10 @@ import hudson.util.FormValidation;
 import edu.umd.cs.findbugs.annotations.CheckForNull;
 import edu.umd.cs.findbugs.annotations.NonNull;
 import hudson.slaves.WorkspaceList;
+import hudson.util.DirScanner;
+import hudson.util.FileVisitor;
 import hudson.util.io.ArchiverFactory;
+import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.file.Path;
@@ -84,24 +87,10 @@ public abstract class LibraryRetriever extends AbstractDescribableImpl<LibraryRe
      * into a JAR file with Groovy in classpath orientation and {@code resources/} as a ZIP folder.
      */
     static void dir2Jar(@NonNull String name, @NonNull FilePath dir, @NonNull FilePath jar) throws IOException, InterruptedException {
-        // TODO do this more efficiently by packing JAR directly
-        FilePath tmp = jar.sibling(jar.getBaseName() + "-repack");
-        tmp.mkdirs();
+        lookForBadSymlinks(dir, dir);
+        FilePath mf = jar.withSuffix(".mf");
         try {
-            FilePath src = dir.child("src");
-            if (src.isDirectory()) {
-                src.moveAllChildrenTo(tmp);
-            }
-            FilePath vars = dir.child("vars");
-            if (vars.isDirectory()) {
-                vars.moveAllChildrenTo(tmp);
-            }
-            FilePath resources = dir.child("resources");
-            if (resources.isDirectory()) {
-                resources.renameTo(tmp.child("resources"));
-            }
-            lookForBadSymlinks(tmp, tmp);
-            try (OutputStream os = tmp.child(JarFile.MANIFEST_NAME).write()) {
+            try (OutputStream os = mf.write()) {
                 Manifest m = new Manifest();
                 m.getMainAttributes().put(Attributes.Name.MANIFEST_VERSION, "1.0");
                 // Informational debugging aid, since the hex JAR basename will be meaningless:
@@ -109,10 +98,17 @@ public abstract class LibraryRetriever extends AbstractDescribableImpl<LibraryRe
                 m.write(os);
             }
             try (OutputStream os = jar.write()) {
-                tmp.archive(ArchiverFactory.ZIP, os, "**");
+                dir.archive(ArchiverFactory.ZIP, os, new DirScanner() {
+                    @Override public void scan(File dir, FileVisitor visitor) throws IOException {
+                        scanSingle(new File(mf.getRemote()), JarFile.MANIFEST_NAME, visitor);
+                        new DirScanner.Glob("**/*.groovy", null).scan(new File(dir, "src"), visitor);
+                        new DirScanner.Glob("*.groovy,*.txt", null).scan(new File(dir, "vars"), visitor);
+                        new DirScanner.Glob("resources/", null).scan(dir, visitor);
+                    }
+                });
             }
         } finally {
-            tmp.deleteRecursive();
+            mf.delete();
         }
     }
 

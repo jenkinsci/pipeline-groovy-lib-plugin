@@ -33,6 +33,7 @@ import java.util.TreeSet;
 import java.util.jar.JarFile;
 import org.apache.commons.io.IOUtils;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.arrayContainingInAnyOrder;
 import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.is;
 import static org.junit.Assert.assertThrows;
@@ -54,6 +55,10 @@ public class LibraryRetrieverTest {
 
     @Test public void theWorks() throws Exception {
         assertDir2Jar(Set.of("src/p1/xxx.groovy", "vars/yyy.groovy", "resources/a.txt", "resources/b/c.txt"), Set.of("p1/xxx.groovy", "yyy.groovy", "resources/a.txt", "resources/b/c.txt"));
+    }
+
+    @Test public void otherFiles() throws Exception {
+        assertDir2Jar(Set.of("vars/v.groovy", "vars/v.txt", "vars/README.md", "README.md", "docs/usage.png", "src/p1/C.groovy", "src/p1/README.md"), Set.of("v.groovy", "v.txt", "p1/C.groovy"));
     }
 
     @Test public void safeSymlinks() throws Exception {
@@ -79,8 +84,6 @@ public class LibraryRetrieverTest {
         assertThrows(SecurityException.class, () -> LibraryRetriever.dir2Jar("mylib", dir, jar));
     }
 
-    // TODO assert that other files are not copied
-
     private void assertDir2Jar(Set<String> inputs, Set<String> outputs) throws Exception {
         FilePath work = new FilePath(tmp.newFolder());
         FilePath dir = work.child("dir");
@@ -88,7 +91,9 @@ public class LibraryRetrieverTest {
             dir.child(input).write("xxx", null);
         }
         FilePath jar = work.child("x.jar");
+        var before = dir.list("**");
         LibraryRetriever.dir2Jar("mylib", dir, jar);
+        assertThat(dir.list("**"), arrayContainingInAnyOrder(before));
         Set<String> actualOutputs = new TreeSet<>();
         try (JarFile jf = new JarFile(jar.getRemote())) {
             assertThat(jf.getManifest().getMainAttributes().getValue(LibraryRetriever.ATTR_LIBRARY_NAME), is("mylib"));
