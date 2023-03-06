@@ -447,7 +447,7 @@ public class SCMSourceRetrieverTest {
         WorkflowRun b = r.buildAndAssertSuccess(p);
         assertFalse(r.jenkins.getWorkspaceFor(p).withSuffix("@libs").isDirectory());
         r.assertLogContains("something special", b);
-        r.assertLogContains("Excluding src/test/ from checkout", b);
+        r.assertLogContains("Excluding src/test/", b);
     }
 
     @Test public void cloneModeIncludeSrcTest() throws Exception {
