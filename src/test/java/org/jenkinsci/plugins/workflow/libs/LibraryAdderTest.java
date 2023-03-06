@@ -528,7 +528,7 @@ public class LibraryAdderTest {
         WorkflowRun b1 = r.buildAndAssertSuccess(p1);
         LibrariesAction action = b1.getAction(LibrariesAction.class);
         LibraryRecord record = action.getLibraries().get(0);
-        FilePath cache = LibraryCachingConfiguration.getGlobalLibrariesCacheDir().child(record.getDirectoryName());
+        FilePath cache = LibraryCachingConfiguration.getGlobalLibrariesCacheDir().child(record.getDirectoryName() + ".jar");
         //Expire the cache
         long oldMillis = ZonedDateTime.now().minusMinutes(35).toInstant().toEpochMilli();
         cache.touch(oldMillis);
