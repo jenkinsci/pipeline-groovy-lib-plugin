@@ -132,8 +132,6 @@ public class LibraryStepTest {
         r.assertLogContains("using constant vs. constant", b);
     }
 
-    // TODO test LoadedClasses.srcUrl after reload build started prior to dir2Jar (@OldData)
-
     @Test public void missingProperty() throws Exception {
         sampleRepo.init();
         sampleRepo.write("src/some/pkg/MyClass.groovy", "package some.pkg; class MyClass { }");
