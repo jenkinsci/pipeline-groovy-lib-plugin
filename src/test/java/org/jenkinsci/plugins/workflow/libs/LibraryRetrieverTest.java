@@ -64,6 +64,7 @@ public class LibraryRetrieverTest {
     @Test public void safeSymlinks() throws Exception {
         FilePath work = new FilePath(tmp.newFolder());
         FilePath dir = work.child("dir");
+        dir.child("vars/x.groovy").write("content", null);
         dir.child("resources/a.txt").write("content", null);
         dir.child("resources/b.txt").symlinkTo("a.txt", StreamTaskListener.fromStderr());
         FilePath jar = work.child("x.jar");
@@ -77,6 +78,7 @@ public class LibraryRetrieverTest {
     @Test public void unsafeSymlinks() throws Exception {
         FilePath work = new FilePath(tmp.newFolder());
         FilePath dir = work.child("dir");
+        dir.child("vars/x.groovy").write("content", null);
         dir.child("resources").mkdirs();
         work.child("secret.txt").write("s3cr3t", null);
         dir.child("resources/hack.txt").symlinkTo("../../secret.txt", StreamTaskListener.fromStderr());
