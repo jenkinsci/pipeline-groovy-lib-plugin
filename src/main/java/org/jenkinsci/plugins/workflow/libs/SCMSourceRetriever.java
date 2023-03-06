@@ -60,14 +60,11 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import edu.umd.cs.findbugs.annotations.NonNull;
 import edu.umd.cs.findbugs.annotations.CheckForNull;
-import java.util.Set;
-import java.util.TreeSet;
 import jenkins.model.Jenkins;
 import jenkins.scm.api.SCMRevision;
 import jenkins.scm.api.SCMSource;
 import jenkins.scm.api.SCMSourceDescriptor;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 import org.jenkinsci.Symbol;
 import org.jenkinsci.plugins.structs.describable.CustomDescribableModel;
 import org.jenkinsci.plugins.structs.describable.UninstantiatedDescribable;
@@ -143,18 +140,18 @@ public class SCMSourceRetriever extends LibraryRetriever {
     }
 
     @Override public void retrieveJar(String name, String version, boolean changelog, FilePath target, Run<?, ?> run, TaskListener listener) throws Exception {
+        if (libraryPath != null && PROHIBITED_DOUBLE_DOT.matcher(libraryPath).matches()) {
+            throw new AbortException("Library path may not contain '..'");
+        }
         SCMRevision revision = retrySCMOperation(listener, () -> scm.fetch(version, listener, run.getParent()));
         if (revision == null) {
             throw new AbortException("No version " + version + " found for library " + name);
         }
-        if (clone) {
-            if (changelog) {
-                listener.getLogger().println("WARNING: ignoring request to compute changelog in clone mode");
-            }
-            doClone(name, scm.build(revision.getHead(), revision), libraryPath, target, run, listener);
-        } else {
-            doRetrieve(name, changelog, scm.build(revision.getHead(), revision), libraryPath, target, run, listener);
+        if (clone && changelog) {
+            listener.getLogger().println("WARNING: ignoring request to compute changelog in clone mode");
+            changelog = false;
         }
+        doRetrieve(name, changelog, scm.build(revision.getHead(), revision), libraryPath, target, run, listener, clone);
     }
 
     private static <T> T retrySCMOperation(TaskListener listener, Callable<T> task) throws Exception{
@@ -188,84 +185,63 @@ public class SCMSourceRetriever extends LibraryRetriever {
         return ret;
     }
 
-    static void doRetrieve(String name, boolean changelog, @NonNull SCM scm, String libraryPath, FilePath target, Run<?, ?> run, TaskListener listener) throws Exception {
+    static void doRetrieve(String name, boolean changelog, @NonNull SCM scm, String libraryPath, FilePath target, Run<?, ?> run, TaskListener listener, boolean clone) throws Exception {
         // Adapted from CpsScmFlowDefinition:
         SCMStep delegate = new GenericSCMStep(scm);
         delegate.setPoll(false); // TODO we have no API for determining if a given SCMHead is branch-like or tag-like; would we want to turn on polling if the former?
         delegate.setChangelog(changelog);
-        FilePath dir;
         Node node = Jenkins.get();
-        if (run.getParent() instanceof TopLevelItem) {
-            FilePath baseWorkspace = node.getWorkspaceFor((TopLevelItem) run.getParent());
-            if (baseWorkspace == null) {
+        if (clone) {
+            FilePath tmp = target.sibling(target.getBaseName() + "-checkout");
+            if (tmp == null) {
+                throw new IOException();
+            }
+            try {
+                retrySCMOperation(listener, () -> {
+                    delegate.checkout(run, tmp, listener, node.createLauncher(listener));
+                    return null;
+                });
+                LibraryRetriever.dir2Jar(name, libraryPath != null ? tmp.child(libraryPath) : tmp, target, listener);
+            } finally {
+                tmp.deleteRecursive();
+                FilePath tmp2 = WorkspaceList.tempDir(tmp);
+                if (tmp2 != null) {
+                    tmp2.deleteRecursive();
+                }
+            }
+        } else {
+            FilePath dir;
+            if (run.getParent() instanceof TopLevelItem) {
+                FilePath baseWorkspace = node.getWorkspaceFor((TopLevelItem) run.getParent());
+                if (baseWorkspace == null) {
+                    throw new IOException(node.getDisplayName() + " may be offline");
+                }
+                String checkoutDirName = LibraryRecord.directoryNameFor(scm.getKey());
+                dir = baseWorkspace.withSuffix(getFilePathSuffix() + "libs").child(checkoutDirName);
+            } else { // should not happen, but just in case:
+                throw new AbortException("Cannot check out in non-top-level build");
+            }
+            Computer computer = node.toComputer();
+            if (computer == null) {
                 throw new IOException(node.getDisplayName() + " may be offline");
             }
-            String checkoutDirName = LibraryRecord.directoryNameFor(scm.getKey());
-            dir = baseWorkspace.withSuffix(getFilePathSuffix() + "libs").child(checkoutDirName);
-        } else { // should not happen, but just in case:
-            throw new AbortException("Cannot check out in non-top-level build");
-        }
-        Computer computer = node.toComputer();
-        if (computer == null) {
-            throw new IOException(node.getDisplayName() + " may be offline");
-        }
-        try (WorkspaceList.Lease lease = computer.getWorkspaceList().allocate(dir)) {
-            // Write the SCM key to a file as a debugging aid.
-            lease.path.withSuffix("-scm-key.txt").write(scm.getKey(), "UTF-8");
-            retrySCMOperation(listener, () -> {
-                delegate.checkout(run, lease.path, listener, node.createLauncher(listener));
-                return null;
-            });
-            if (libraryPath == null) {
-                libraryPath = ".";
-            } else if (PROHIBITED_DOUBLE_DOT.matcher(libraryPath).matches()) {
-                throw new AbortException("Library path may not contain '..'");
+            try (WorkspaceList.Lease lease = computer.getWorkspaceList().allocate(dir)) {
+                // Write the SCM key to a file as a debugging aid.
+                lease.path.withSuffix("-scm-key.txt").write(scm.getKey(), "UTF-8");
+                retrySCMOperation(listener, () -> {
+                    delegate.checkout(run, lease.path, listener, node.createLauncher(listener));
+                    return null;
+                });
+                // Cannot add WorkspaceActionImpl to private CpsFlowExecution.flowStartNodeActions; do we care?
+                // Copy sources with relevant files from the checkout:
+                LibraryRetriever.dir2Jar(name, libraryPath != null ? lease.path.child(libraryPath) : lease.path, target, listener);
             }
-            // Cannot add WorkspaceActionImpl to private CpsFlowExecution.flowStartNodeActions; do we care?
-            // Copy sources with relevant files from the checkout:
-            LibraryRetriever.dir2Jar(name, lease.path.child(libraryPath), target, listener);
         }
     }
 
     // TODO there is WorkspaceList.tempDir but no API to make other variants
     private static String getFilePathSuffix() {
         return System.getProperty(WorkspaceList.class.getName(), "@");
-    }
-
-    /**
-     * Similar to {@link #doRetrieve} but used in {@link #clone} mode.
-     */
-    private static void doClone(@NonNull String name, @NonNull SCM scm, String libraryPath, FilePath target, Run<?, ?> run, TaskListener listener) throws Exception {
-        // TODO merge into doRetrieve
-        SCMStep delegate = new GenericSCMStep(scm);
-        delegate.setPoll(false);
-        delegate.setChangelog(false);
-        FilePath tmp = target.sibling(target.getBaseName() + "-checkout");
-        if (tmp == null) {
-            throw new IOException();
-        }
-        try {
-            retrySCMOperation(listener, () -> {
-                delegate.checkout(run, tmp, listener, Jenkins.get().createLauncher(listener));
-                return null;
-            });
-            FilePath root;
-            if (libraryPath == null) {
-                root = tmp;
-            } else {
-                if (PROHIBITED_DOUBLE_DOT.matcher(libraryPath).matches()) {
-                    throw new AbortException("Library path may not contain '..'");
-                }
-                root = tmp.child(libraryPath);
-            }
-            LibraryRetriever.dir2Jar(name, root, target, listener);
-        } finally {
-            tmp.deleteRecursive();
-            FilePath tmp2 = WorkspaceList.tempDir(tmp);
-            if (tmp2 != null) {
-                tmp2.deleteRecursive();
-            }
-        }
     }
 
     @Override public FormValidation validateVersion(String name, String version, Item context) {

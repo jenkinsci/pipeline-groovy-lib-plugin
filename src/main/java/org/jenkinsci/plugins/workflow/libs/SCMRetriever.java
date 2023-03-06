@@ -89,7 +89,7 @@ public class SCMRetriever extends LibraryRetriever {
     }
 
     @Override public void retrieveJar(String name, String version, boolean changelog, FilePath target, Run<?, ?> run, TaskListener listener) throws Exception {
-        SCMSourceRetriever.doRetrieve(name, changelog, scm, libraryPath, target, run, listener);
+        SCMSourceRetriever.doRetrieve(name, changelog, scm, libraryPath, target, run, listener, false); // TODO support clone
     }
 
     @Override public FormValidation validateVersion(String name, String version, Item context) {
