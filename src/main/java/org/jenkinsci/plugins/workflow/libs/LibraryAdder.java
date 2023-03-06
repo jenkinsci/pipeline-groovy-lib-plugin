@@ -102,6 +102,14 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
                 FilePath libJar = new FilePath(execution.getOwner().getRootDir()).child("libs/" + record.getDirectoryName() + ".jar");
                 if (libJar.exists()) {
                     additions.add(new Addition(libJar.toURI().toURL(), record.trusted));
+                } else {
+                    FilePath libDir = new FilePath(execution.getOwner().getRootDir()).child("libs/" + record.getDirectoryName());
+                    if (libDir.isDirectory()) {
+                        execution.getOwner().getListener().getLogger().println("Migrating " + libDir + " to " + libJar);
+                        LibraryRetriever.dir2Jar(record.getName(), libDir, libJar);
+                        libDir.deleteRecursive();
+                        additions.add(new Addition(libJar.toURI().toURL(), record.trusted));
+                    }
                 }
                 String unparsed = librariesUnparsed.get(record.name);
                 if (unparsed != null) {

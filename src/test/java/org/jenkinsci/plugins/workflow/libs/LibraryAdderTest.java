@@ -475,6 +475,34 @@ public class LibraryAdderTest {
         r.assertLogContains("called Foo", b);
     }
 
+    @LocalData
+    @Test
+    public void correctLibraryDirectoryUsedWhenResumingPreDir2JarBuild() throws Exception {
+        // LocalData captured as of 1091aea7fa252acae11389588addf603a505e195:
+        /*
+        sampleRepo.init();
+        sampleRepo.write("vars/foo.groovy", "def call() { echo('called Foo') }");
+        sampleRepo.git("add", "vars");
+        sampleRepo.git("commit", "--message=init");
+        GlobalLibraries.get().setLibraries(Collections.singletonList(
+                new LibraryConfiguration("lib",
+                        new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true)))));
+        WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "p");
+        p.setDefinition(new CpsFlowDefinition(
+                "@Library('lib@master') _\n" +
+                "sleep 180\n" +
+                "foo()", true));
+        WorkflowRun b = p.scheduleBuild2(0).waitForStart();
+        r.waitForMessage("Sleeping for 3 min", b);
+        b.save();
+        Thread.sleep(Long.MAX_VALUE);
+        */
+        WorkflowJob p = r.jenkins.getItemByFullName("p", WorkflowJob.class);
+        WorkflowRun b = p.getBuildByNumber(1);
+        r.assertBuildStatus(Result.SUCCESS, r.waitForCompletion(b));
+        r.assertLogContains("called Foo", b);
+    }
+
     @Issue("JENKINS-66898")
     @Test
     public void parallelBuildsDontInterfereWithExpiredCache() throws Throwable {
