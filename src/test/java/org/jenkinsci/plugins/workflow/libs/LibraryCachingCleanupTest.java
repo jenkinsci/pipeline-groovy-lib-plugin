@@ -27,7 +27,7 @@ import hudson.ExtensionList;
 import hudson.FilePath;
 import hudson.util.StreamTaskListener;
 import java.io.File;
-import java.time.ZonedDateTime;
+import java.util.concurrent.TimeUnit;
 import jenkins.plugins.git.GitSCMSource;
 import jenkins.plugins.git.GitSampleRepoRule;
 import org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition;
@@ -72,7 +72,7 @@ public class LibraryCachingCleanupTest {
         ExtensionList.lookupSingleton(LibraryCachingCleanup.class).execute(StreamTaskListener.fromStderr());
         assertThat(new File(cache.getRemote()), anExistingFile());
         // Run LibraryCachingCleanup after modifying LAST_READ_FILE to be an old date and and show that cache is deleted.
-        long oldMillis = ZonedDateTime.now().minusDays(LibraryCachingCleanup.EXPIRE_AFTER_READ_DAYS + 1).toInstant().toEpochMilli();
+        long oldMillis = System.currentTimeMillis() - TimeUnit.DAYS.toMillis(LibraryCachingCleanup.EXPIRE_AFTER_READ_DAYS + 1);
         cache.sibling(cache.getBaseName() + "." + LibraryCachingConfiguration.LAST_READ_FILE).touch(oldMillis);
         ExtensionList.lookupSingleton(LibraryCachingCleanup.class).execute(StreamTaskListener.fromStderr());
         assertThat(new File(cache.getRemote()), not(anExistingFile()));
