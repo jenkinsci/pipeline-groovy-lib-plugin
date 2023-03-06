@@ -195,7 +195,7 @@ public class ResourceStepTest {
         Path resourcesDir = Paths.get(sampleRepo.getRoot().getPath(), "resources");
         Files.createDirectories(resourcesDir);
         Path symlinkPath = Paths.get(resourcesDir.toString(), "master.key");
-        Files.createSymbolicLink(symlinkPath, Paths.get("../../../../../../../secrets/master.key"));
+        Files.createSymbolicLink(symlinkPath, Paths.get("../../../../secrets/master.key"));
 
         sampleRepo.git("add", "src", "resources");
         sampleRepo.git("commit", "--message=init");
