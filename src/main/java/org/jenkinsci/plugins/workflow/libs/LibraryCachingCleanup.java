@@ -40,7 +40,7 @@ import jenkins.util.SystemProperties;
      */
     private void removeIfExpiredCacheJar(FilePath libJar) throws IOException, InterruptedException {
         final FilePath lastReadFile = libJar.sibling(libJar.getBaseName() + "." + LibraryCachingConfiguration.LAST_READ_FILE);
-        if (lastReadFile.exists()) {
+        if (lastReadFile != null && lastReadFile.exists()) {
             ReentrantReadWriteLock retrieveLock = LibraryAdder.getReadWriteLockFor(libJar.getBaseName());
             retrieveLock.writeLock().lockInterruptibly();
             try {

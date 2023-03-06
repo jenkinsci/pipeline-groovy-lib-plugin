@@ -241,6 +241,9 @@ public class SCMSourceRetriever extends LibraryRetriever {
         delegate.setPoll(false);
         delegate.setChangelog(false);
         FilePath tmp = target.sibling(target.getBaseName() + "-checkout");
+        if (tmp == null) {
+            throw new IOException();
+        }
         try {
             retrySCMOperation(listener, () -> {
                 delegate.checkout(run, tmp, listener, Jenkins.get().createLauncher(listener));
@@ -258,7 +261,10 @@ public class SCMSourceRetriever extends LibraryRetriever {
             LibraryRetriever.dir2Jar(name, root, target, listener);
         } finally {
             tmp.deleteRecursive();
-            WorkspaceList.tempDir(tmp).deleteRecursive();
+            FilePath tmp2 = WorkspaceList.tempDir(tmp);
+            if (tmp2 != null) {
+                tmp2.deleteRecursive();
+            }
         }
     }
 

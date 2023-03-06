@@ -71,12 +71,18 @@ public abstract class LibraryRetriever extends AbstractDescribableImpl<LibraryRe
     public void retrieveJar(@NonNull String name, @NonNull String version, boolean changelog, @NonNull FilePath target, @NonNull Run<?,?> run, @NonNull TaskListener listener) throws Exception {
         if (Util.isOverridden(LibraryRetriever.class, getClass(), "retrieve", String.class, String.class, boolean.class, FilePath.class, Run.class, TaskListener.class)) {
             FilePath tmp = target.sibling(target.getBaseName() + "-checkout");
+            if (tmp == null) {
+                throw new IOException();
+            }
             try {
                 retrieve(name, version, changelog, tmp, run, listener);
                 dir2Jar(name, tmp, target, listener);
             } finally {
                 tmp.deleteRecursive();
-                WorkspaceList.tempDir(tmp).deleteRecursive();
+                FilePath tmp2 = WorkspaceList.tempDir(tmp);
+                if (tmp2 != null) {
+                    tmp2.deleteRecursive();
+                }
             }
         } else {
             throw new AbstractMethodError("Implement retrieveJar");
