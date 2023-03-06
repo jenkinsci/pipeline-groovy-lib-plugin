@@ -173,11 +173,11 @@ public class LibraryCachingConfigurationTest {
         WorkflowRun b = r.buildAndAssertSuccess(p);
         LibrariesAction action = b.getAction(LibrariesAction.class);
         LibraryRecord record = action.getLibraries().get(0);
-        FilePath cache = LibraryCachingConfiguration.getGlobalLibrariesCacheDir().child(record.getDirectoryName());
-        assertThat(new File(cache.getRemote()), anExistingDirectory());
+        FilePath cache = LibraryCachingConfiguration.getGlobalLibrariesCacheDir().child(record.getDirectoryName() + ".jar");
+        assertThat(new File(cache.getRemote()), anExistingFile());
         // Clear the cache. TODO: Would be more realistic to set up security and use WebClient.
         ExtensionList.lookupSingleton(LibraryCachingConfiguration.DescriptorImpl.class).doClearCache("library", false);
-        assertThat(new File(cache.getRemote()), not(anExistingDirectory()));
+        assertThat(new File(cache.getRemote()), not(anExistingFile()));
     }
 
 }
