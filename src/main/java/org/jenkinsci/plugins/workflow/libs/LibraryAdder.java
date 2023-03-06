@@ -94,6 +94,7 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
             libraryChangelogs.put(parsed[0], changelogs.get(library));
             librariesUnparsed.put(parsed[0], library);
         }
+        TaskListener listener = execution.getOwner().getListener();
         List<Addition> additions = new ArrayList<>();
         LibrariesAction action = build.getAction(LibrariesAction.class);
         if (action != null) {
@@ -105,8 +106,8 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
                 } else {
                     FilePath libDir = new FilePath(execution.getOwner().getRootDir()).child("libs/" + record.getDirectoryName());
                     if (libDir.isDirectory()) {
-                        execution.getOwner().getListener().getLogger().println("Migrating " + libDir + " to " + libJar);
-                        LibraryRetriever.dir2Jar(record.getName(), libDir, libJar);
+                        listener.getLogger().println("Migrating " + libDir + " to " + libJar);
+                        LibraryRetriever.dir2Jar(record.getName(), libDir, libJar, listener);
                         libDir.deleteRecursive();
                         additions.add(new Addition(libJar.toURI().toURL(), record.trusted));
                     }
@@ -121,7 +122,6 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
         // Now we will see which libraries we want to load for this job.
         Map<String,LibraryRecord> librariesAdded = new LinkedHashMap<>();
         Map<String,LibraryRetriever> retrievers = new HashMap<>();
-        TaskListener listener = execution.getOwner().getListener();
         for (LibraryResolver kind : ExtensionList.lookup(LibraryResolver.class)) {
             boolean kindTrusted = kind.isTrusted();
             for (LibraryConfiguration cfg : kind.forJob(build.getParent(), libraryVersions)) {

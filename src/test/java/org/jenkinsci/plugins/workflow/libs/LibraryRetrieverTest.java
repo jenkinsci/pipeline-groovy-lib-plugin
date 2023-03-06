@@ -65,9 +65,9 @@ public class LibraryRetrieverTest {
         FilePath work = new FilePath(tmp.newFolder());
         FilePath dir = work.child("dir");
         dir.child("resources/a.txt").write("content", null);
-        dir.child("resources/b.txt").symlinkTo("a.txt", TaskListener.NULL);
+        dir.child("resources/b.txt").symlinkTo("a.txt", StreamTaskListener.fromStderr());
         FilePath jar = work.child("x.jar");
-        LibraryRetriever.dir2Jar("mylib", dir, jar);
+        LibraryRetriever.dir2Jar("mylib", dir, jar, StreamTaskListener.fromStderr());
         try (JarFile jf = new JarFile(jar.getRemote())) {
             assertThat(IOUtils.toString(jf.getInputStream(jf.getEntry("resources/a.txt")), StandardCharsets.UTF_8), is("content"));
             assertThat(IOUtils.toString(jf.getInputStream(jf.getEntry("resources/b.txt")), StandardCharsets.UTF_8), is("content"));
@@ -81,7 +81,7 @@ public class LibraryRetrieverTest {
         work.child("secret.txt").write("s3cr3t", null);
         dir.child("resources/hack.txt").symlinkTo("../../secret.txt", StreamTaskListener.fromStderr());
         FilePath jar = work.child("x.jar");
-        assertThrows(SecurityException.class, () -> LibraryRetriever.dir2Jar("mylib", dir, jar));
+        assertThrows(SecurityException.class, () -> LibraryRetriever.dir2Jar("mylib", dir, jar, StreamTaskListener.fromStderr()));
     }
 
     private void assertDir2Jar(Set<String> inputs, Set<String> outputs) throws Exception {
@@ -92,7 +92,7 @@ public class LibraryRetrieverTest {
         }
         FilePath jar = work.child("x.jar");
         var before = dir.list("**");
-        LibraryRetriever.dir2Jar("mylib", dir, jar);
+        LibraryRetriever.dir2Jar("mylib", dir, jar, StreamTaskListener.fromStderr());
         assertThat(dir.list("**"), arrayContainingInAnyOrder(before));
         Set<String> actualOutputs = new TreeSet<>();
         try (JarFile jf = new JarFile(jar.getRemote())) {

@@ -43,6 +43,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.file.Path;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.jar.Attributes;
 import java.util.jar.JarFile;
 import java.util.jar.Manifest;
@@ -72,7 +73,7 @@ public abstract class LibraryRetriever extends AbstractDescribableImpl<LibraryRe
             FilePath tmp = target.sibling(target.getBaseName() + "-checkout");
             try {
                 retrieve(name, version, changelog, tmp, run, listener);
-                dir2Jar(name, tmp, target);
+                dir2Jar(name, tmp, target, listener);
             } finally {
                 tmp.deleteRecursive();
                 WorkspaceList.tempDir(tmp).deleteRecursive();
@@ -86,7 +87,7 @@ public abstract class LibraryRetriever extends AbstractDescribableImpl<LibraryRe
      * Translates a historical directory with {@code src/} and/or {@code vars/} and/or {@code resources/} subdirectories
      * into a JAR file with Groovy in classpath orientation and {@code resources/} as a ZIP folder.
      */
-    static void dir2Jar(@NonNull String name, @NonNull FilePath dir, @NonNull FilePath jar) throws IOException, InterruptedException {
+    static void dir2Jar(@NonNull String name, @NonNull FilePath dir, @NonNull FilePath jar, @NonNull TaskListener listener) throws IOException, InterruptedException {
         lookForBadSymlinks(dir, dir);
         FilePath mf = jar.withSuffix(".mf");
         try {
@@ -101,8 +102,26 @@ public abstract class LibraryRetriever extends AbstractDescribableImpl<LibraryRe
                 dir.archive(ArchiverFactory.ZIP, os, new DirScanner() {
                     @Override public void scan(File dir, FileVisitor visitor) throws IOException {
                         scanSingle(new File(mf.getRemote()), JarFile.MANIFEST_NAME, visitor);
-                        new DirScanner.Glob("**/*.groovy", null).scan(new File(dir, "src"), visitor);
-                        new DirScanner.Glob("*.groovy,*.txt", null).scan(new File(dir, "vars"), visitor);
+                        String excludes;
+                        if (!SCMSourceRetriever.INCLUDE_SRC_TEST_IN_LIBRARIES && new File(dir, "src/test").isDirectory()) {
+                            excludes = "test/";
+                            listener.getLogger().println("Excluding src/test/ so that library test code cannot be accessed by Pipelines.");
+                            listener.getLogger().println("To remove this log message, move the test code outside of src/. To restore the previous behavior that allowed access to files in src/test/, pass -D" + SCMSourceRetriever.class.getName() + ".INCLUDE_SRC_TEST_IN_LIBRARIES=true to the java command used to start Jenkins.");
+                        } else {
+                            excludes = null;
+                        }
+                        AtomicBoolean found = new AtomicBoolean();
+                        FileVisitor verifyingVisitor = visitor.with(pathname -> {
+                            if (pathname.getName().endsWith(".groovy")) {
+                                found.set(true);
+                            }
+                            return true;
+                        });
+                        new DirScanner.Glob("**/*.groovy", excludes).scan(new File(dir, "src"), verifyingVisitor);
+                        new DirScanner.Glob("*.groovy,*.txt", null).scan(new File(dir, "vars"), verifyingVisitor);
+                        if (!found.get()) {
+                            throw new AbortException("Library " + name + " expected to contain at least one of src or vars directories");
+                        }
                         new DirScanner.Glob("resources/", null).scan(dir, visitor);
                     }
                 });

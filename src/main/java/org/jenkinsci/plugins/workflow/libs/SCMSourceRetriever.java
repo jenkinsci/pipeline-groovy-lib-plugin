@@ -221,14 +221,9 @@ public class SCMSourceRetriever extends LibraryRetriever {
             } else if (PROHIBITED_DOUBLE_DOT.matcher(libraryPath).matches()) {
                 throw new AbortException("Library path may not contain '..'");
             }
-            String excludes = INCLUDE_SRC_TEST_IN_LIBRARIES ? null : "src/test/";
-            if (lease.path.child(libraryPath).child("src/test").exists()) {
-                listener.getLogger().println("Excluding src/test/ from checkout of " + scm.getKey() + " so that library test code cannot be accessed by Pipelines.");
-                listener.getLogger().println("To remove this log message, move the test code outside of src/. To restore the previous behavior that allowed access to files in src/test/, pass -D" + SCMSourceRetriever.class.getName() + ".INCLUDE_SRC_TEST_IN_LIBRARIES=true to the java command used to start Jenkins.");
-            }
             // Cannot add WorkspaceActionImpl to private CpsFlowExecution.flowStartNodeActions; do we care?
             // Copy sources with relevant files from the checkout:
-            LibraryRetriever.dir2Jar(name, lease.path.child(libraryPath), target);
+            LibraryRetriever.dir2Jar(name, lease.path.child(libraryPath), target, listener);
         }
     }
 
@@ -260,8 +255,7 @@ public class SCMSourceRetriever extends LibraryRetriever {
                 }
                 root = tmp.child(libraryPath);
             }
-            // TODO handle INCLUDE_SRC_TEST_IN_LIBRARIES
-            LibraryRetriever.dir2Jar(name, root, target);
+            LibraryRetriever.dir2Jar(name, root, target, listener);
         } finally {
             tmp.deleteRecursive();
             WorkspaceList.tempDir(tmp).deleteRecursive();
