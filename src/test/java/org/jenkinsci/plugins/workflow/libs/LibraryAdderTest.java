@@ -542,6 +542,4 @@ public class LibraryAdderTest {
         // r.assertLogContains("Library library@master is cached. Copying from home.", f2.get());
     }
 
-    // TODO test migration in LibraryAdder.add after reload build started prior to dir2Jar (@OldData)
-
 }
