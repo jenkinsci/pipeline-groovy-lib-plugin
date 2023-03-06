@@ -39,6 +39,7 @@ import hudson.slaves.WorkspaceList;
 import hudson.util.io.ArchiverFactory;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.nio.file.Path;
 import java.util.jar.Attributes;
 import java.util.jar.JarFile;
 import java.util.jar.Manifest;
@@ -99,6 +100,7 @@ public abstract class LibraryRetriever extends AbstractDescribableImpl<LibraryRe
             if (resources.isDirectory()) {
                 resources.renameTo(tmp.child("resources"));
             }
+            lookForBadSymlinks(tmp, tmp);
             try (OutputStream os = tmp.child(JarFile.MANIFEST_NAME).write()) {
                 Manifest m = new Manifest();
                 m.getMainAttributes().put(Attributes.Name.MANIFEST_VERSION, "1.0");
@@ -111,6 +113,22 @@ public abstract class LibraryRetriever extends AbstractDescribableImpl<LibraryRe
             }
         } finally {
             tmp.deleteRecursive();
+        }
+    }
+
+    private static void lookForBadSymlinks(FilePath root, FilePath dir) throws IOException, InterruptedException {
+        for (FilePath child : dir.list()) {
+            if (child.isDirectory()) {
+                lookForBadSymlinks(root, child);
+            } else {
+                String link = child.readLink();
+                if (link != null) {
+                    Path target = Path.of(dir.getRemote(), link).toRealPath();
+                    if (!target.startsWith(Path.of(root.getRemote()))) {
+                        throw new SecurityException(child + " → " + target + " is not inside " + root);
+                    }
+                }
+            }
         }
     }
 

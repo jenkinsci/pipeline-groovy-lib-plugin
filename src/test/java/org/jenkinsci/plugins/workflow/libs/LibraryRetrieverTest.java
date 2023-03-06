@@ -25,12 +25,17 @@
 package org.jenkinsci.plugins.workflow.libs;
 
 import hudson.FilePath;
+import hudson.model.TaskListener;
+import hudson.util.StreamTaskListener;
+import java.nio.charset.StandardCharsets;
 import java.util.Set;
 import java.util.TreeSet;
 import java.util.jar.JarFile;
+import org.apache.commons.io.IOUtils;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.is;
+import static org.junit.Assert.assertThrows;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
@@ -49,6 +54,29 @@ public class LibraryRetrieverTest {
 
     @Test public void theWorks() throws Exception {
         assertDir2Jar(Set.of("src/p1/xxx.groovy", "vars/yyy.groovy", "resources/a.txt", "resources/b/c.txt"), Set.of("p1/xxx.groovy", "yyy.groovy", "resources/a.txt", "resources/b/c.txt"));
+    }
+
+    @Test public void safeSymlinks() throws Exception {
+        FilePath work = new FilePath(tmp.newFolder());
+        FilePath dir = work.child("dir");
+        dir.child("resources/a.txt").write("content", null);
+        dir.child("resources/b.txt").symlinkTo("a.txt", TaskListener.NULL);
+        FilePath jar = work.child("x.jar");
+        LibraryRetriever.dir2Jar("mylib", dir, jar);
+        try (JarFile jf = new JarFile(jar.getRemote())) {
+            assertThat(IOUtils.toString(jf.getInputStream(jf.getEntry("resources/a.txt")), StandardCharsets.UTF_8), is("content"));
+            assertThat(IOUtils.toString(jf.getInputStream(jf.getEntry("resources/b.txt")), StandardCharsets.UTF_8), is("content"));
+        }
+    }
+
+    @Test public void unsafeSymlinks() throws Exception {
+        FilePath work = new FilePath(tmp.newFolder());
+        FilePath dir = work.child("dir");
+        dir.child("resources").mkdirs();
+        work.child("secret.txt").write("s3cr3t", null);
+        dir.child("resources/hack.txt").symlinkTo("../../secret.txt", StreamTaskListener.fromStderr());
+        FilePath jar = work.child("x.jar");
+        assertThrows(SecurityException.class, () -> LibraryRetriever.dir2Jar("mylib", dir, jar));
     }
 
     // TODO assert that other files are not copied

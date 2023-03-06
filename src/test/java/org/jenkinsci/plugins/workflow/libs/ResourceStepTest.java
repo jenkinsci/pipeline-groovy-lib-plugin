@@ -204,7 +204,7 @@ public class ResourceStepTest {
 
         WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "p");
         p.setDefinition(new CpsFlowDefinition("@Library('symlink-stuff@master') import Stuff; echo(Stuff.contents(this))", true));
-        r.assertLogContains("master.key references a file that is not contained within the library: symlink-stuff", r.buildAndAssertStatus(Result.FAILURE, p));
+        r.assertLogContains("master.key is not inside", r.buildAndAssertStatus(Result.FAILURE, p));
     }
 
     @Issue("SECURITY-2476")
@@ -222,7 +222,7 @@ public class ResourceStepTest {
         WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "p");
         p.setDefinition(new CpsFlowDefinition("@Library('libres-stuff@master') import Stuff; echo(Stuff.contents(this))", true));
 
-        r.assertLogContains("../../../../../../../secrets/master.key references a file that is not contained within the library: libres-stuff", r.buildAndAssertStatus(Result.FAILURE, p));
+        r.assertLogContains("No such library resource ../../../../../../../secrets/master.key could be found.", r.buildAndAssertStatus(Result.FAILURE, p));
     }
 
     @Test public void findResourcesAttemptsToLoadFromAllIncludedLibraries() throws Exception {
