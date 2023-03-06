@@ -49,8 +49,10 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import edu.umd.cs.findbugs.annotations.CheckForNull;
 import edu.umd.cs.findbugs.annotations.NonNull;
+import java.io.OutputStream;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
+import java.util.Set;
 import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import java.util.regex.Matcher;
@@ -266,18 +268,29 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
 
         // Replace any classes requested for replay:
         if (!record.trusted) {
-            for (String clazz : ReplayAction.replacementsIn(execution)) {
-                String rel = clazz.replace('.', '/') + ".groovy";
-                /* TODO need to unpack & repack I guess
-                FilePath f = libDir.child(rel);
-                if (f.exists()) {
-                    String replacement = ReplayAction.replace(execution, clazz);
-                    if (replacement != null) {
-                        listener.getLogger().println("Replacing contents of " + rel);
-                        f.write(replacement, null); // TODO as below, unsure of encoding used by Groovy compiler
+            Set<String> clazzes = ReplayAction.replacementsIn(execution);
+            if (!clazzes.isEmpty()) {
+                FilePath tmp = libJar.withSuffix(".tmp");
+                try {
+                    libJar.unzip(tmp);
+                    for (String clazz : clazzes) {
+                        String rel = clazz.replace('.', '/') + ".groovy";
+                        FilePath f = tmp.child(rel);
+                        if (f.exists()) {
+                            String replacement = ReplayAction.replace(execution, clazz);
+                            if (replacement != null) {
+                                listener.getLogger().println("Replacing contents of " + rel);
+                                f.write(replacement, null); // TODO as below, unsure of encoding used by Groovy compiler
+                            }
+                        }
                     }
+                    libJar.delete();
+                    try (OutputStream os = libJar.write()) {
+                        tmp.zip(os, "**");
+                    }
+                } finally {
+                    tmp.deleteRecursive();
                 }
-                */
             }
         }
         try (JarFile jf = new JarFile(libJar.getRemote())) {
