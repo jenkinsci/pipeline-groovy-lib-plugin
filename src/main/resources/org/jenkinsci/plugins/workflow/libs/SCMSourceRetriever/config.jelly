@@ -27,5 +27,5 @@ THE SOFTWARE.
 <j:jelly xmlns:j="jelly:core" xmlns:f="/lib/form" xmlns:st="jelly:stapler">
     <f:description>${%blurb}</f:description>
     <f:dropdownDescriptorSelector field="scm" descriptors="${descriptor.SCMDescriptors}" title="${%Source Code Management}"/>
-    <st:include page="options" from="${instance}"/>
+    <st:include page="options" class="${descriptor.clazz}" from="${instance}"/>
 </j:jelly>
