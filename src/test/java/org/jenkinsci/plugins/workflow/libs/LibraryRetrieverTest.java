@@ -25,7 +25,7 @@
 package org.jenkinsci.plugins.workflow.libs;
 
 import hudson.FilePath;
-import hudson.model.TaskListener;
+import hudson.Functions;
 import hudson.util.StreamTaskListener;
 import java.nio.charset.StandardCharsets;
 import java.util.Set;
@@ -37,6 +37,7 @@ import static org.hamcrest.Matchers.arrayContainingInAnyOrder;
 import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.is;
 import static org.junit.Assert.assertThrows;
+import static org.junit.Assume.assumeFalse;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
@@ -62,6 +63,7 @@ public class LibraryRetrieverTest {
     }
 
     @Test public void safeSymlinks() throws Exception {
+        assumeFalse(Functions.isWindows());
         FilePath work = new FilePath(tmp.newFolder());
         FilePath dir = work.child("dir");
         dir.child("vars/x.groovy").write("content", null);
@@ -76,6 +78,7 @@ public class LibraryRetrieverTest {
     }
 
     @Test public void unsafeSymlinks() throws Exception {
+        assumeFalse(Functions.isWindows());
         FilePath work = new FilePath(tmp.newFolder());
         FilePath dir = work.child("dir");
         dir.child("vars/x.groovy").write("content", null);
