@@ -379,7 +379,7 @@ public class SCMSourceRetrieverTest {
         sampleRepo.git("add", ".");
         sampleRepo.git("commit", "--message=init");
         GitSCMSource src = new GitSCMSource(sampleRepo.toString());
-        src.setTraits(List.<SCMSourceTrait>of(new CloneOptionTrait(new CloneOption(true, null, null))));
+        src.setTraits(List.<SCMSourceTrait>of(new CloneOptionTrait(new CloneOption(true, true, null, null))));
         SCMSourceRetriever scm = new SCMSourceRetriever(src);
         LibraryConfiguration lc = new LibraryConfiguration("echoing", scm);
         lc.setIncludeInChangesets(false);
@@ -391,6 +391,7 @@ public class SCMSourceRetrieverTest {
         assertFalse(r.jenkins.getWorkspaceFor(p).withSuffix("@libs").isDirectory());
         r.assertLogContains("something special", b);
         r.assertLogContains("Using shallow clone with depth 1", b);
+        r.assertLogContains("Avoid fetching tags", b);
         // Fails to reproduce presence of *.jar.tmp@tmp; probably specific to use of GIT_ASKPASS:
         assertThat(new File(b.getRootDir(), "libs").list(), arrayContaining(matchesPattern("[0-9a-f]{64}[.]jar")));
     }
