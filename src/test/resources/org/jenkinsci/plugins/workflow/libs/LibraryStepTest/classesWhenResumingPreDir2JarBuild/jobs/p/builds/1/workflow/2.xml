@@ -1,0 +1,12 @@
+<?xml version='1.1' encoding='UTF-8'?>
+<Tag>
+  <node class="org.jenkinsci.plugins.workflow.graph.FlowStartNode">
+    <parentIds/>
+    <id>2</id>
+  </node>
+  <actions>
+    <wf.a.TimingAction>
+      <startTime>1678379140348</startTime>
+    </wf.a.TimingAction>
+  </actions>
+</Tag>

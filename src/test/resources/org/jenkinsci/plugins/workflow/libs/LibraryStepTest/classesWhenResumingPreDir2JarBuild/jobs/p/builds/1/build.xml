@@ -1,0 +1,126 @@
+<?xml version='1.1' encoding='UTF-8'?>
+<flow-build>
+  <actions>
+    <org.jenkinsci.plugins.workflow.libs.LibrariesAction>
+      <libraries>
+        <org.jenkinsci.plugins.workflow.libs.LibraryRecord>
+          <name>stuff</name>
+          <version>master</version>
+          <variables class="sorted-set"/>
+          <trusted>true</trusted>
+          <changelog>true</changelog>
+          <directoryName>eb3ddf43cdf7079385a1295409e0c698810cf8b02b166382c33fab989458805b</directoryName>
+        </org.jenkinsci.plugins.workflow.libs.LibraryRecord>
+      </libraries>
+    </org.jenkinsci.plugins.workflow.libs.LibrariesAction>
+    <hudson.plugins.git.util.BuildData>
+      <buildsByBranchName>
+        <entry>
+          <string>master</string>
+          <hudson.plugins.git.util.Build>
+            <marked>
+              <sha1>98c9e41033d994442c0105ba3011fe39a57a69b1</sha1>
+              <branches class="singleton-set">
+                <hudson.plugins.git.Branch>
+                  <sha1 reference="../../../sha1"/>
+                  <name>master</name>
+                </hudson.plugins.git.Branch>
+              </branches>
+            </marked>
+            <revision reference="../marked"/>
+            <hudsonBuildNumber>1</hudsonBuildNumber>
+          </hudson.plugins.git.util.Build>
+        </entry>
+      </buildsByBranchName>
+      <lastBuild reference="../buildsByBranchName/entry/hudson.plugins.git.util.Build"/>
+      <remoteUrls>
+        <string>…/pipeline-groovy-lib-plugin/target/tmp/junit12658522753310550560/junit9582443866860979657</string>
+      </remoteUrls>
+    </hudson.plugins.git.util.BuildData>
+    <org.jenkinsci.plugins.workflow.steps.scm.MultiSCMRevisionState>
+      <revisionStates>
+        <entry>
+          <string>git …/pipeline-groovy-lib-plugin/target/tmp/junit12658522753310550560/junit9582443866860979657</string>
+          <hudson.scm.SCMRevisionState_-None/>
+        </entry>
+      </revisionStates>
+    </org.jenkinsci.plugins.workflow.steps.scm.MultiSCMRevisionState>
+  </actions>
+  <queueId>1</queueId>
+  <timestamp>1678379139742</timestamp>
+  <startTime>1678379139771</startTime>
+  <duration>0</duration>
+  <charset>UTF-8</charset>
+  <keepLog>false</keepLog>
+  <execution class="org.jenkinsci.plugins.workflow.cps.CpsFlowExecution">
+    <result>SUCCESS</result>
+    <script>def lib = library(&apos;stuff@master&apos;); sleep 180; echo(/got ${lib.pkg.C.m()}/)</script>
+    <loadedScripts class="map"/>
+    <durabilityHint>MAX_SURVIVABILITY</durabilityHint>
+    <timings class="concurrent-hash-map">
+      <entry>
+        <string>flowNode</string>
+        <long>82579725</long>
+      </entry>
+      <entry>
+        <string>classLoad</string>
+        <long>406679430</long>
+      </entry>
+      <entry>
+        <string>run</string>
+        <long>370461094</long>
+      </entry>
+      <entry>
+        <string>parse</string>
+        <long>387067399</long>
+      </entry>
+      <entry>
+        <string>saveProgram</string>
+        <long>121174695</long>
+      </entry>
+    </timings>
+    <sandbox>true</sandbox>
+    <iota>4</iota>
+    <head>1:4</head>
+    <start>2</start>
+    <done>false</done>
+    <resumeBlocked>false</resumeBlocked>
+  </execution>
+  <completed>false</completed>
+  <checkouts class="hudson.util.PersistedList">
+    <org.jenkinsci.plugins.workflow.job.WorkflowRun_-SCMCheckout>
+      <scm class="hudson.plugins.git.GitSCM">
+        <configVersion>2</configVersion>
+        <userRemoteConfigs>
+          <hudson.plugins.git.UserRemoteConfig>
+            <name>origin</name>
+            <refspec>+refs/heads/*:refs/remotes/origin/*</refspec>
+            <url>…/pipeline-groovy-lib-plugin/target/tmp/junit12658522753310550560/junit9582443866860979657</url>
+          </hudson.plugins.git.UserRemoteConfig>
+        </userRemoteConfigs>
+        <branches class="singleton-list">
+          <hudson.plugins.git.BranchSpec>
+            <name>master</name>
+          </hudson.plugins.git.BranchSpec>
+        </branches>
+        <doGenerateSubmoduleConfigurations>false</doGenerateSubmoduleConfigurations>
+        <submoduleCfg class="empty-list"/>
+        <extensions>
+          <hudson.plugins.git.extensions.impl.IgnoreNotifyCommit/>
+          <jenkins.plugins.git.GitSCMSourceDefaults>
+            <includeTags>false</includeTags>
+          </jenkins.plugins.git.GitSCMSourceDefaults>
+          <hudson.plugins.git.extensions.impl.BuildChooserSetting>
+            <buildChooser class="jenkins.plugins.git.AbstractGitSCMSource$SpecificRevisionBuildChooser">
+              <revision reference="../../../../../../../actions/hudson.plugins.git.util.BuildData/buildsByBranchName/entry/hudson.plugins.git.util.Build/marked"/>
+            </buildChooser>
+          </hudson.plugins.git.extensions.impl.BuildChooserSetting>
+        </extensions>
+      </scm>
+      <node></node>
+      <workspace>…/pipeline-groovy-lib-plugin/target/tmp/j h744515433002142412/workspace/p@libs/f42b7770bb31e81024ba7b8451a6e63e6a1ce3eac92cd7c91e73094d7d85b2b9</workspace>
+      <changelogFile>…/pipeline-groovy-lib-plugin/target/tmp/j h744515433002142412/jobs/p/builds/1/changelog5512666869627859761.xml</changelogFile>
+      <pollingBaseline class="hudson.scm.SCMRevisionState$None" reference="../../../actions/org.jenkinsci.plugins.workflow.steps.scm.MultiSCMRevisionState/revisionStates/entry/hudson.scm.SCMRevisionState_-None"/>
+    </org.jenkinsci.plugins.workflow.job.WorkflowRun_-SCMCheckout>
+  </checkouts>
+</flow-build>

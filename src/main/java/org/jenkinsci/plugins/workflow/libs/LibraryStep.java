@@ -39,12 +39,10 @@ import hudson.model.Run;
 import hudson.model.TaskListener;
 import hudson.scm.SCM;
 import hudson.security.AccessControlled;
-import java.io.File;
 import java.io.IOException;
 import java.io.Serializable;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
-import java.net.URI;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -250,20 +248,40 @@ public class LibraryStep extends AbstractStepImpl {
         private final @NonNull String prefix;
         /** {@link Class#getName} minus package prefix */
         private final @CheckForNull String clazz;
-        /** {@code /…/libs/$hash.jar}, or null if resuming a pre-dir2Jar build */
-        private final @Nullable String jar;
+        /** {@code file:/…/libs/NAME/src/} */
+        @Deprecated
+        private @NonNull String srcUrl;
+        /** {@link LibraryRecord#getDirectoryName}, or null if resuming a pre-dir2Jar build */
+        private final @Nullable String directoryName;
 
         LoadedClasses(String library, String libraryDirectoryName, boolean trusted, Boolean changelog, Run<?,?> run) {
-            this(library, trusted, changelog, "", null, /* cf. LibraryAdder.retrieve */ new File(run.getRootDir(), "libs/" + libraryDirectoryName + ".jar").getAbsolutePath());
+            this(library, trusted, changelog, "", null, libraryDirectoryName);
         }
 
-        LoadedClasses(String library, boolean trusted, Boolean changelog, String prefix, String clazz, String jar) {
+        LoadedClasses(String library, boolean trusted, Boolean changelog, String prefix, String clazz, String directoryName) {
             this.library = library;
             this.trusted = trusted;
             this.changelog = changelog;
             this.prefix = prefix;
             this.clazz = clazz;
-            this.jar = jar;
+            this.directoryName = directoryName;
+        }
+
+        private static final Pattern SRC_URL = Pattern.compile("file:/.+/([0-9a-f]{64})/src/");
+
+        private Object readResolve() throws IllegalAccessException {
+            if (srcUrl != null) {
+                Matcher m = SRC_URL.matcher(srcUrl);
+                if (!m.matches()) {
+                    // Perhaps predating hash-based naming (ace0de3, Feb 2022):
+                    throw new IllegalAccessException("Unexpected form of library source URL: " + srcUrl);
+                }
+                String inferredDirectoryName = m.group(1);
+                LOGGER.fine(() -> "deserializing to " + inferredDirectoryName);
+                return new LoadedClasses(library, trusted, changelog, prefix, clazz, inferredDirectoryName);
+            } else {
+                return this;
+            }
         }
 
         @Override public Object getProperty(String property) {
@@ -287,12 +305,12 @@ public class LibraryStep extends AbstractStepImpl {
                 String fullClazz = clazz != null ? clazz + '$' + property : property;
                 loadClass(prefix + fullClazz);
                 // OK, class really exists, stash it and await methods
-                return new LoadedClasses(library, trusted, changelog, prefix, fullClazz, jar);
+                return new LoadedClasses(library, trusted, changelog, prefix, fullClazz, directoryName);
             } else if (clazz != null) {
                 throw new MissingPropertyException(property, loadClass(prefix + clazz));
             } else {
                 // Still selecting package components.
-                return new LoadedClasses(library, trusted, changelog, prefix + property + '.', null, jar);
+                return new LoadedClasses(library, trusted, changelog, prefix + property + '.', null, directoryName);
             }
         }
 
@@ -338,7 +356,7 @@ public class LibraryStep extends AbstractStepImpl {
 
         // TODO putProperty for static field set
 
-        private static final Pattern JAR_URL = Pattern.compile("jar:(file:/.+[.]jar)!/.+");
+        private static final Pattern JAR_URL = Pattern.compile("jar:file:/.+/([0-9a-f]{64})[.]jar!/.+");
 
         private Class<?> loadClass(String name) {
             CpsFlowExecution exec = CpsThread.current().getExecution();
@@ -352,23 +370,19 @@ public class LibraryStep extends AbstractStepImpl {
                 if (definingLoader != loader) {
                     throw new IllegalAccessException("cannot access " + c + " via library handle: " + definingLoader + " is not " + loader);
                 }
-                if (jar != null) {
-                    URL res = loader.getResource(name.replaceFirst("[$][^.]+$", "").replace('.', '/') + ".groovy");
-                    if (res == null) {
-                        throw new IllegalAccessException("Unknown where " + name + " (" + c.getProtectionDomain().getCodeSource().getLocation() + ") was loaded from");
-                    }
-                    Matcher m = JAR_URL.matcher(res.toString());
-                    if (!m.matches()) {
-                        throw new IllegalAccessException("Unexpected URL " + res);
-                    }
-                    File actual = new File(URI.create(m.group(1)));
-                    if (!actual.equals(new File(jar))) {
-                        throw new IllegalAccessException(name + " was defined in " + actual + " rather than the expected " + jar);
-                    }
-                    LOGGER.fine(() -> "loaded " + name + " from " + res + " ~ " + actual + " as expected");
-                } else {
-                    LOGGER.fine(() -> "loaded " + name + " but resuming from an old build which did not properly record JAR location");
+                URL res = loader.getResource(name.replaceFirst("[$][^.]+$", "").replace('.', '/') + ".groovy");
+                if (res == null) {
+                    throw new IllegalAccessException("Unknown where " + name + " (" + c.getProtectionDomain().getCodeSource().getLocation() + ") was loaded from");
                 }
+                Matcher m = JAR_URL.matcher(res.toString());
+                if (!m.matches()) {
+                    throw new IllegalAccessException("Unexpected URL " + res);
+                }
+                String actual = m.group(1);
+                if (!actual.equals(directoryName)) {
+                    throw new IllegalAccessException(name + " was defined in " + res + " rather than the expected " + directoryName);
+                }
+                LOGGER.fine(() -> "loaded " + name + " from " + res + " ~ " + actual + " as expected");
                 if (!Modifier.isPublic(c.getModifiers())) { // unlikely since Groovy makes classes implicitly public
                     throw new IllegalAccessException(c + " is not public");
                 }
