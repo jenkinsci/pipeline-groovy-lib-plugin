@@ -248,9 +248,9 @@ public class LibraryStep extends AbstractStepImpl {
         private final @NonNull String prefix;
         /** {@link Class#getName} minus package prefix */
         private final @CheckForNull String clazz;
-        /** {@code file:/…/libs/NAME/src/} */
+        /** {@code file:/…/libs/NAME/src/}, migrated to {@link #directoryName} */
         @Deprecated
-        private @NonNull String srcUrl;
+        private @CheckForNull String srcUrl;
         /** {@link LibraryRecord#getDirectoryName}, or null if resuming a pre-dir2Jar build */
         private final @Nullable String directoryName;
 
