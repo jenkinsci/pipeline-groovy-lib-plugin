@@ -46,7 +46,11 @@ import jenkins.util.SystemProperties;
             try {
                 if (System.currentTimeMillis() - lastReadFile.lastModified() > TimeUnit.DAYS.toMillis(EXPIRE_AFTER_READ_DAYS)) {
                     listener.getLogger().println("Deleting " + libJar);
-                    libJar.delete();
+                    try {
+                        libJar.delete();
+                    } finally {
+                        lastReadFile.delete();
+                    }
                 } else {
                     listener.getLogger().println(lastReadFile + " is sufficiently recent");
                 }
