@@ -82,7 +82,7 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.matchesPattern;
 import static org.hamcrest.Matchers.nullValue;
-import static org.jenkinsci.plugins.workflow.libs.SCMSourceRetriever.PROHIBITED_DOUBLE_DOT;
+import static org.jenkinsci.plugins.workflow.libs.SCMBasedRetriever.PROHIBITED_DOUBLE_DOT;
 import static org.junit.Assume.assumeFalse;
 import org.jvnet.hudson.test.FlagRule;
 
@@ -92,7 +92,7 @@ public class SCMSourceRetrieverTest {
     @Rule public JenkinsRule r = new JenkinsRule();
     @Rule public GitSampleRepoRule sampleRepo = new GitSampleRepoRule();
     @Rule public SubversionSampleRepoRule sampleRepoSvn = new SubversionSampleRepoRule();
-    @Rule public FlagRule<Boolean> includeSrcTest = new FlagRule<>(() -> SCMSourceRetriever.INCLUDE_SRC_TEST_IN_LIBRARIES, v -> SCMSourceRetriever.INCLUDE_SRC_TEST_IN_LIBRARIES = v);
+    @Rule public FlagRule<Boolean> includeSrcTest = new FlagRule<>(() -> SCMBasedRetriever.INCLUDE_SRC_TEST_IN_LIBRARIES, v -> SCMBasedRetriever.INCLUDE_SRC_TEST_IN_LIBRARIES = v);
 
     @Issue("JENKINS-40408")
     @Test public void lease() throws Exception {
@@ -444,7 +444,7 @@ public class SCMSourceRetrieverTest {
         GlobalLibraries.get().setLibraries(Collections.singletonList(lc));
         WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "p");
         p.setDefinition(new CpsFlowDefinition("@Library('echoing@master') import myecho; myecho()", true));
-        SCMSourceRetriever.INCLUDE_SRC_TEST_IN_LIBRARIES = false;
+        SCMBasedRetriever.INCLUDE_SRC_TEST_IN_LIBRARIES = false;
         WorkflowRun b = r.buildAndAssertSuccess(p);
         assertFalse(r.jenkins.getWorkspaceFor(p).withSuffix("@libs").isDirectory());
         r.assertLogContains("something special", b);
@@ -465,7 +465,7 @@ public class SCMSourceRetrieverTest {
         GlobalLibraries.get().setLibraries(Collections.singletonList(lc));
         WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "p");
         p.setDefinition(new CpsFlowDefinition("@Library('echoing@master') import myecho; myecho()", true));
-        SCMSourceRetriever.INCLUDE_SRC_TEST_IN_LIBRARIES = true;
+        SCMBasedRetriever.INCLUDE_SRC_TEST_IN_LIBRARIES = true;
         WorkflowRun b = r.buildAndAssertSuccess(p);
         assertFalse(r.jenkins.getWorkspaceFor(p).withSuffix("@libs").isDirectory());
         r.assertLogContains("got something special", b);
