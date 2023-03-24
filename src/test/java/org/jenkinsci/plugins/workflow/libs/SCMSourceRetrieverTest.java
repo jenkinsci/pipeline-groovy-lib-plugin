@@ -62,6 +62,7 @@ import org.jenkinsci.plugins.workflow.job.WorkflowRun;
 import static hudson.ExtensionList.lookupSingleton;
 import hudson.plugins.git.extensions.impl.CloneOption;
 import jenkins.plugins.git.traits.CloneOptionTrait;
+import jenkins.plugins.git.traits.RefSpecsSCMSourceTrait;
 import jenkins.scm.api.trait.SCMSourceTrait;
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.containsInAnyOrder;
@@ -379,7 +380,9 @@ public class SCMSourceRetrieverTest {
         sampleRepo.git("add", ".");
         sampleRepo.git("commit", "--message=init");
         GitSCMSource src = new GitSCMSource(sampleRepo.toString());
-        src.setTraits(List.<SCMSourceTrait>of(new CloneOptionTrait(new CloneOption(true, null, null))));
+        CloneOption cloneOption = new CloneOption(true, true, null, null);
+        cloneOption.setHonorRefspec(true);
+        src.setTraits(List.<SCMSourceTrait>of(new CloneOptionTrait(cloneOption), new RefSpecsSCMSourceTrait("+refs/heads/master:refs/remotes/origin/master")));
         SCMSourceRetriever scm = new SCMSourceRetriever(src);
         LibraryConfiguration lc = new LibraryConfiguration("echoing", scm);
         lc.setIncludeInChangesets(false);
@@ -392,6 +395,8 @@ public class SCMSourceRetrieverTest {
         r.assertLogContains("something special", b);
         r.assertLogContains("Deleted .git, README.md", b);
         r.assertLogContains("Using shallow clone with depth 1", b);
+        r.assertLogContains("Avoid fetching tags", b);
+        r.assertLogNotContains("+refs/heads/*:refs/remotes/origin/*", b);
     }
 
     @Test public void cloneModeLibraryPath() throws Exception {
