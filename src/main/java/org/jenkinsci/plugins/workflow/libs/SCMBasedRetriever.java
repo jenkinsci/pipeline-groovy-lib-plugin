@@ -138,7 +138,7 @@ public abstract class SCMBasedRetriever extends LibraryRetriever {
                     tmp2.deleteRecursive();
                 }
             }
-        } else {
+        } else { // !clone
             FilePath dir;
             if (run.getParent() instanceof TopLevelItem) {
                 FilePath baseWorkspace = node.getWorkspaceFor((TopLevelItem) run.getParent());
@@ -200,7 +200,7 @@ public abstract class SCMBasedRetriever extends LibraryRetriever {
     }
 
     // TODO there is WorkspaceList.tempDir but no API to make other variants
-    protected static String getFilePathSuffix() {
+    private static String getFilePathSuffix() {
         return System.getProperty(WorkspaceList.class.getName(), "@");
     }
 
