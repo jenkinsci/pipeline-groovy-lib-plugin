@@ -39,33 +39,19 @@ import hudson.scm.SCMDescriptor;
 import hudson.util.FormValidation;
 import java.util.ArrayList;
 import java.util.List;
-import edu.umd.cs.findbugs.annotations.CheckForNull;
 import jenkins.model.Jenkins;
 import org.jenkinsci.Symbol;
 import org.kohsuke.accmod.Restricted;
 import org.kohsuke.accmod.restrictions.DoNotUse;
 import org.kohsuke.accmod.restrictions.NoExternalUse;
 import org.kohsuke.stapler.DataBoundConstructor;
-import org.kohsuke.stapler.DataBoundSetter;
-import org.kohsuke.stapler.QueryParameter;
-import org.kohsuke.stapler.verb.POST;
 
 /**
  * Uses legacy {@link SCM} to check out sources based on variable interpolation.
  */
-public class SCMRetriever extends LibraryRetriever {
+public class SCMRetriever extends SCMBasedRetriever {
 
     private final SCM scm;
-
-    /**
-     * The path to the library inside of the SCM.
-     *
-     * {@code null} is the default and means that the library is in the root of the repository. Otherwise, the value is
-     * considered to be a relative path inside of the repository and always ends in a forward slash
-     *
-     * @see #setLibraryPath
-     */
-    private @CheckForNull String libraryPath;
 
     @DataBoundConstructor public SCMRetriever(SCM scm) {
         this.scm = scm;
@@ -75,25 +61,12 @@ public class SCMRetriever extends LibraryRetriever {
         return scm;
     }
 
-    public String getLibraryPath() {
-        return libraryPath;
-    }
-
-    @DataBoundSetter
-    public void setLibraryPath(String libraryPath) {
-        libraryPath = Util.fixEmptyAndTrim(libraryPath);
-        if (libraryPath != null && !libraryPath.endsWith("/")) {
-            libraryPath += '/';
-        }
-        this.libraryPath = libraryPath;
-    }
-
     @Override public void retrieve(String name, String version, boolean changelog, FilePath target, Run<?, ?> run, TaskListener listener) throws Exception {
-        SCMSourceRetriever.doRetrieve(name, changelog, scm, libraryPath, target, run, listener);
+        doRetrieve(name, changelog, scm, target, run, listener);
     }
 
     @Override public void retrieve(String name, String version, FilePath target, Run<?, ?> run, TaskListener listener) throws Exception {
-        SCMSourceRetriever.doRetrieve(name, true, scm, libraryPath, target, run, listener);
+        retrieve(name, version, true, target, run, listener);
     }
     
     @Override public FormValidation validateVersion(String name, String version, Item context) {
@@ -105,12 +78,7 @@ public class SCMRetriever extends LibraryRetriever {
     }
 
     @Symbol("legacySCM")
-    @Extension(ordinal=-100) public static class DescriptorImpl extends LibraryRetrieverDescriptor {
-
-        @POST
-        public FormValidation doCheckLibraryPath(@QueryParameter String libraryPath) {
-            return SCMSourceRetriever.DescriptorImpl.checkLibraryPath(libraryPath);
-        }
+    @Extension(ordinal=-100) public static class DescriptorImpl extends SCMBasedRetrieverDescriptor {
 
         @Override public String getDisplayName() {
             return "Legacy SCM";
