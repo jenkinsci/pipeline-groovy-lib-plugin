@@ -50,13 +50,10 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
-import java.util.TreeSet;
 import java.util.concurrent.Callable;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 import jenkins.model.Jenkins;
 import org.jenkinsci.plugins.workflow.steps.scm.GenericSCMStep;
 import org.jenkinsci.plugins.workflow.steps.scm.SCMStep;
@@ -149,20 +146,18 @@ public abstract class SCMBasedRetriever extends LibraryRetriever {
                 for (String content : List.of("src", "vars", "resources")) {
                     FilePath contentDir = subdir.child(content);
                     if (contentDir.isDirectory()) {
-                        listener.getLogger().println("Moving " + content + " to top level");
+                        LOGGER.fine(() -> "Moving " + content + " to top level in " + target);
                         contentDir.renameTo(target.child(content));
                     }
                 }
                 // root itself will be deleted below
             }
-            Set<String> deleted = new TreeSet<>();
             if (!INCLUDE_SRC_TEST_IN_LIBRARIES) {
                 FilePath srcTest = target.child("src/test");
                 if (srcTest.isDirectory()) {
                     listener.getLogger().println("Excluding src/test/ from checkout of " + scm.getKey() + " so that library test code cannot be accessed by Pipelines.");
                     listener.getLogger().println("To remove this log message, move the test code outside of src/. To restore the previous behavior that allowed access to files in src/test/, pass -D" + SCMSourceRetriever.class.getName() + ".INCLUDE_SRC_TEST_IN_LIBRARIES=true to the java command used to start Jenkins.");
                     srcTest.deleteRecursive();
-                    deleted.add("src/test");
                 }
             }
             for (FilePath child : target.list()) {
@@ -178,12 +173,9 @@ public abstract class SCMBasedRetriever extends LibraryRetriever {
                     // OK, leave it all
                     break;
                 default:
-                    deleted.add(subdir);
                     child.deleteRecursive();
+                    LOGGER.fine(() -> "Deleted " + child);
                 }
-            }
-            if (!deleted.isEmpty()) {
-                listener.getLogger().println("Deleted " + deleted.stream().collect(Collectors.joining(", ")));
             }
         } else { // !clone
             FilePath dir;

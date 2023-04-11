@@ -43,6 +43,7 @@ import java.nio.file.Path;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
+import java.util.logging.Level;
 import jenkins.plugins.git.GitSCMSource;
 import jenkins.plugins.git.GitSampleRepoRule;
 import jenkins.scm.api.SCMHead;
@@ -80,12 +81,15 @@ import org.jvnet.hudson.test.TestExtension;
 import org.jvnet.hudson.test.WithoutJenkins;
 
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.arrayContainingInAnyOrder;
+import static org.hamcrest.Matchers.arrayWithSize;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.matchesPattern;
 import static org.hamcrest.Matchers.nullValue;
 import static org.jenkinsci.plugins.workflow.libs.SCMBasedRetriever.PROHIBITED_DOUBLE_DOT;
 import static org.junit.Assume.assumeFalse;
 import org.jvnet.hudson.test.FlagRule;
+import org.jvnet.hudson.test.LoggerRule;
 
 public class SCMSourceRetrieverTest {
 
@@ -94,6 +98,7 @@ public class SCMSourceRetrieverTest {
     @Rule public GitSampleRepoRule sampleRepo = new GitSampleRepoRule();
     @Rule public SubversionSampleRepoRule sampleRepoSvn = new SubversionSampleRepoRule();
     @Rule public FlagRule<Boolean> includeSrcTest = new FlagRule<>(() -> SCMBasedRetriever.INCLUDE_SRC_TEST_IN_LIBRARIES, v -> SCMBasedRetriever.INCLUDE_SRC_TEST_IN_LIBRARIES = v);
+    @Rule public LoggerRule logging = new LoggerRule().record(SCMBasedRetriever.class, Level.FINE);
 
     @Issue("JENKINS-40408")
     @Test public void lease() throws Exception {
@@ -393,10 +398,13 @@ public class SCMSourceRetrieverTest {
         WorkflowRun b = r.buildAndAssertSuccess(p);
         assertFalse(r.jenkins.getWorkspaceFor(p).withSuffix("@libs").isDirectory());
         r.assertLogContains("something special", b);
-        r.assertLogContains("Deleted .git, README.md", b);
         r.assertLogContains("Using shallow clone with depth 1", b);
         r.assertLogContains("Avoid fetching tags", b);
         r.assertLogNotContains("+refs/heads/*:refs/remotes/origin/*", b);
+        File[] libDirs = new File(b.getRootDir(), "libs").listFiles(File::isDirectory);
+        assertThat(libDirs, arrayWithSize(1));
+        String[] entries = libDirs[0].list();
+        assertThat(entries, arrayContainingInAnyOrder("vars"));
     }
 
     @Test public void cloneModeLibraryPath() throws Exception {
@@ -414,8 +422,10 @@ public class SCMSourceRetrieverTest {
         p.setDefinition(new CpsFlowDefinition("@Library('root_sub_path@master') import myecho; myecho()", true));
         WorkflowRun b = r.buildAndAssertSuccess(p);
         r.assertLogContains("something special", b);
-        r.assertLogContains("Moving vars to top level", b);
-        r.assertLogContains("Deleted root", b);
+        File[] libDirs = new File(b.getRootDir(), "libs").listFiles(File::isDirectory);
+        assertThat(libDirs, arrayWithSize(1));
+        String[] entries = libDirs[0].list();
+        assertThat(entries, arrayContainingInAnyOrder("vars"));
     }
 
     @Test public void cloneModeLibraryPathSecurity() throws Exception {
