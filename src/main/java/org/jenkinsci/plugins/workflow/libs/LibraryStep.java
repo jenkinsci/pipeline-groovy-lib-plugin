@@ -39,27 +39,24 @@ import hudson.model.Run;
 import hudson.model.TaskListener;
 import hudson.scm.SCM;
 import hudson.security.AccessControlled;
-import java.io.File;
 import java.io.IOException;
 import java.io.Serializable;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
-import java.net.URI;
-import java.net.URISyntaxException;
 import java.net.URL;
-import java.nio.file.Paths;
-import java.security.CodeSource;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import java.util.TreeSet;
-import java.util.logging.Level;
 import java.util.logging.Logger;
 import edu.umd.cs.findbugs.annotations.CheckForNull;
 import edu.umd.cs.findbugs.annotations.NonNull;
+import edu.umd.cs.findbugs.annotations.Nullable;
 import groovy.lang.MissingPropertyException;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import javax.inject.Inject;
 import jenkins.model.Jenkins;
 import jenkins.scm.impl.SingleSCMSource;
@@ -229,9 +226,7 @@ public class LibraryStep extends AbstractStepImpl {
             listener.getLogger().println("Loading library " + record.name + "@" + record.version);
             CpsFlowExecution exec = (CpsFlowExecution) getContext().get(FlowExecution.class);
             GroovyClassLoader loader = (trusted ? exec.getTrustedShell() : exec.getShell()).getClassLoader();
-            for (URL u : LibraryAdder.retrieve(record, retriever, listener, run, (CpsFlowExecution) getContext().get(FlowExecution.class))) {
-                loader.addURL(u);
-            }
+            loader.addURL(LibraryAdder.retrieve(record, retriever, listener, run, (CpsFlowExecution) getContext().get(FlowExecution.class)));
             run.save(); // persist changes to LibrariesAction.libraries*.variables
             return new LoadedClasses(name, record.getDirectoryName(), trusted, changelog, run);
         }
@@ -253,20 +248,40 @@ public class LibraryStep extends AbstractStepImpl {
         private final @NonNull String prefix;
         /** {@link Class#getName} minus package prefix */
         private final @CheckForNull String clazz;
-        /** {@code file:/…/libs/NAME/src/} */
-        private final @NonNull String srcUrl;
+        /** {@code file:/…/libs/NAME/src/}, migrated to {@link #directoryName} */
+        @Deprecated
+        private @CheckForNull String srcUrl;
+        /** {@link LibraryRecord#getDirectoryName}, or null if resuming a pre-dir2Jar build */
+        private final @Nullable String directoryName;
 
         LoadedClasses(String library, String libraryDirectoryName, boolean trusted, Boolean changelog, Run<?,?> run) {
-            this(library, trusted, changelog, "", null, /* cf. LibraryAdder.retrieve */ new File(run.getRootDir(), "libs/" + libraryDirectoryName + "/src").toURI().toString());
+            this(library, trusted, changelog, "", null, libraryDirectoryName);
         }
 
-        LoadedClasses(String library, boolean trusted, Boolean changelog, String prefix, String clazz, String srcUrl) {
+        LoadedClasses(String library, boolean trusted, Boolean changelog, String prefix, String clazz, String directoryName) {
             this.library = library;
             this.trusted = trusted;
             this.changelog = changelog;
             this.prefix = prefix;
             this.clazz = clazz;
-            this.srcUrl = srcUrl;
+            this.directoryName = directoryName;
+        }
+
+        private static final Pattern SRC_URL = Pattern.compile("file:/.+/([0-9a-f]{64})/src/");
+
+        private Object readResolve() throws IllegalAccessException {
+            if (srcUrl != null) {
+                Matcher m = SRC_URL.matcher(srcUrl);
+                if (!m.matches()) {
+                    // Perhaps predating hash-based naming (ace0de3, Feb 2022):
+                    throw new IllegalAccessException("Unexpected form of library source URL: " + srcUrl);
+                }
+                String inferredDirectoryName = m.group(1);
+                LOGGER.fine(() -> "deserializing to " + inferredDirectoryName);
+                return new LoadedClasses(library, trusted, changelog, prefix, clazz, inferredDirectoryName);
+            } else {
+                return this;
+            }
         }
 
         @Override public Object getProperty(String property) {
@@ -290,12 +305,12 @@ public class LibraryStep extends AbstractStepImpl {
                 String fullClazz = clazz != null ? clazz + '$' + property : property;
                 loadClass(prefix + fullClazz);
                 // OK, class really exists, stash it and await methods
-                return new LoadedClasses(library, trusted, changelog, prefix, fullClazz, srcUrl);
+                return new LoadedClasses(library, trusted, changelog, prefix, fullClazz, directoryName);
             } else if (clazz != null) {
                 throw new MissingPropertyException(property, loadClass(prefix + clazz));
             } else {
                 // Still selecting package components.
-                return new LoadedClasses(library, trusted, changelog, prefix + property + '.', null, srcUrl);
+                return new LoadedClasses(library, trusted, changelog, prefix + property + '.', null, directoryName);
             }
         }
 
@@ -341,6 +356,8 @@ public class LibraryStep extends AbstractStepImpl {
 
         // TODO putProperty for static field set
 
+        private static final Pattern JAR_URL = Pattern.compile("jar:file:/.+/([0-9a-f]{64})[.]jar!/.+");
+
         private Class<?> loadClass(String name) {
             CpsFlowExecution exec = CpsThread.current().getExecution();
             GroovyClassLoader loader = (trusted ? exec.getTrustedShell() : exec.getShell()).getClassLoader();
@@ -353,16 +370,19 @@ public class LibraryStep extends AbstractStepImpl {
                 if (definingLoader != loader) {
                     throw new IllegalAccessException("cannot access " + c + " via library handle: " + definingLoader + " is not " + loader);
                 }
-                // Note that this goes through GroovyCodeSource.<init>(File, String), which unlike (say) URLClassLoader set the “location” to the actual file, *not* the root.
-                CodeSource codeSource = c.getProtectionDomain().getCodeSource();
-                if (codeSource == null) {
-                    throw new IllegalAccessException(name + " had no defined code source");
+                URL res = loader.getResource(name.replaceFirst("[$][^.]+$", "").replace('.', '/') + ".groovy");
+                if (res == null) {
+                    throw new IllegalAccessException("Unknown where " + name + " (" + c.getProtectionDomain().getCodeSource().getLocation() + ") was loaded from");
                 }
-                String actual = canonicalize(codeSource.getLocation().toString());
-                String srcUrlC = canonicalize(srcUrl); // do not do this in constructor: path might not actually exist
-                if (!actual.startsWith(srcUrlC)) {
-                    throw new IllegalAccessException(name + " was defined in " + actual + " which was not inside " + srcUrlC);
+                Matcher m = JAR_URL.matcher(res.toString());
+                if (!m.matches()) {
+                    throw new IllegalAccessException("Unexpected URL " + res);
                 }
+                String actual = m.group(1);
+                if (!actual.equals(directoryName)) {
+                    throw new IllegalAccessException(name + " was defined in " + res + " rather than the expected " + directoryName);
+                }
+                LOGGER.fine(() -> "loaded " + name + " from " + res + " ~ " + actual + " as expected");
                 if (!Modifier.isPublic(c.getModifiers())) { // unlikely since Groovy makes classes implicitly public
                     throw new IllegalAccessException(c + " is not public");
                 }
@@ -374,16 +394,6 @@ public class LibraryStep extends AbstractStepImpl {
             }
         }
 
-        private static String canonicalize(String uri) {
-            if (uri.startsWith("file:/")) {
-                try {
-                    return Paths.get(new URI(uri)).toRealPath().toUri().toString();
-                } catch (IOException | URISyntaxException x) {
-                    LOGGER.log(Level.WARNING, "could not canonicalize " + uri, x);
-                }
-            }
-            return uri;
-        }
 
     }
 

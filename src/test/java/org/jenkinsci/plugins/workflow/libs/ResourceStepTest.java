@@ -195,7 +195,7 @@ public class ResourceStepTest {
         Path resourcesDir = Paths.get(sampleRepo.getRoot().getPath(), "resources");
         Files.createDirectories(resourcesDir);
         Path symlinkPath = Paths.get(resourcesDir.toString(), "master.key");
-        Files.createSymbolicLink(symlinkPath, Paths.get("../../../../../../../secrets/master.key"));
+        Files.createSymbolicLink(symlinkPath, Paths.get("../../../../secrets/master.key"));
 
         sampleRepo.git("add", "src", "resources");
         sampleRepo.git("commit", "--message=init");
@@ -204,7 +204,7 @@ public class ResourceStepTest {
 
         WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "p");
         p.setDefinition(new CpsFlowDefinition("@Library('symlink-stuff@master') import Stuff; echo(Stuff.contents(this))", true));
-        r.assertLogContains("master.key references a file that is not contained within the library: symlink-stuff", r.buildAndAssertStatus(Result.FAILURE, p));
+        r.assertLogContains("master.key is not inside", r.buildAndAssertStatus(Result.FAILURE, p));
     }
 
     @Issue("SECURITY-2476")
@@ -222,7 +222,7 @@ public class ResourceStepTest {
         WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "p");
         p.setDefinition(new CpsFlowDefinition("@Library('libres-stuff@master') import Stuff; echo(Stuff.contents(this))", true));
 
-        r.assertLogContains("../../../../../../../secrets/master.key references a file that is not contained within the library: libres-stuff", r.buildAndAssertStatus(Result.FAILURE, p));
+        r.assertLogContains("No such library resource ../../../../../../../secrets/master.key could be found.", r.buildAndAssertStatus(Result.FAILURE, p));
     }
 
     @Test public void findResourcesAttemptsToLoadFromAllIncludedLibraries() throws Exception {
@@ -271,9 +271,9 @@ public class ResourceStepTest {
 
     public void modifyCacheTimestamp(String name, String version, long timestamp) throws Exception {
         String cacheDirName = LibraryRecord.directoryNameFor(name, version, String.valueOf(true), GlobalLibraries.ForJob.class.getName());
-        FilePath cacheDir = new FilePath(LibraryCachingConfiguration.getGlobalLibrariesCacheDir(), cacheDirName);
-        if (cacheDir.exists()) {
-            cacheDir.touch(timestamp);
+        FilePath cacheJar = new FilePath(LibraryCachingConfiguration.getGlobalLibrariesCacheDir(), cacheDirName + ".jar");
+        if (cacheJar.exists()) {
+            cacheJar.touch(timestamp);
         }
     }
 

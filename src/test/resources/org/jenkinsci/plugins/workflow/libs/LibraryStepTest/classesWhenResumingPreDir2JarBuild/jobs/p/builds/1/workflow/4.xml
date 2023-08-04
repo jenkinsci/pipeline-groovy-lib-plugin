@@ -1,0 +1,26 @@
+<?xml version='1.1' encoding='UTF-8'?>
+<Tag>
+  <node class="cps.n.StepAtomNode">
+    <parentIds>
+      <string>3</string>
+    </parentIds>
+    <id>4</id>
+    <descriptorId>org.jenkinsci.plugins.workflow.steps.SleepStep</descriptorId>
+  </node>
+  <actions>
+    <cps.a.ArgumentsActionImpl>
+      <arguments>
+        <entry>
+          <string>time</string>
+          <long>180</long>
+        </entry>
+      </arguments>
+      <sensitiveVariables/>
+      <isUnmodifiedBySanitization>true</isUnmodifiedBySanitization>
+    </cps.a.ArgumentsActionImpl>
+    <wf.a.TimingAction>
+      <startTime>1678379141028</startTime>
+    </wf.a.TimingAction>
+    <s.a.LogStorageAction/>
+  </actions>
+</Tag>

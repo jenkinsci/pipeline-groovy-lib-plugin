@@ -1,0 +1,1 @@
+package pkg; class C {static void m() {23}}

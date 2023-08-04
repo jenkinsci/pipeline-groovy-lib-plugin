@@ -24,7 +24,6 @@
 
 package org.jenkinsci.plugins.workflow.libs;
 
-import hudson.AbortException;
 import hudson.Extension;
 import hudson.ExtensionList;
 import hudson.FilePath;
@@ -50,6 +49,13 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import edu.umd.cs.findbugs.annotations.CheckForNull;
 import edu.umd.cs.findbugs.annotations.NonNull;
+import java.io.OutputStream;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.util.Set;
+import java.util.jar.JarEntry;
+import java.util.jar.JarFile;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.apache.commons.io.IOUtils;
 import org.jenkinsci.plugins.workflow.cps.CpsFlowExecution;
@@ -92,16 +98,22 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
             libraryChangelogs.put(parsed[0], changelogs.get(library));
             librariesUnparsed.put(parsed[0], library);
         }
+        TaskListener listener = execution.getOwner().getListener();
         List<Addition> additions = new ArrayList<>();
         LibrariesAction action = build.getAction(LibrariesAction.class);
         if (action != null) {
             // Resuming a build, so just look up what we loaded before.
             for (LibraryRecord record : action.getLibraries()) {
-                FilePath libDir = new FilePath(execution.getOwner().getRootDir()).child("libs/" + record.getDirectoryName());
-                for (String root : new String[] {"src", "vars"}) {
-                    FilePath dir = libDir.child(root);
-                    if (dir.isDirectory()) {
-                        additions.add(new Addition(dir.toURI().toURL(), record.trusted));
+                FilePath libJar = new FilePath(execution.getOwner().getRootDir()).child("libs/" + record.getDirectoryName() + ".jar");
+                if (libJar.exists()) {
+                    additions.add(new Addition(libJar.toURI().toURL(), record.trusted));
+                } else {
+                    FilePath libDir = new FilePath(execution.getOwner().getRootDir()).child("libs/" + record.getDirectoryName());
+                    if (libDir.isDirectory()) {
+                        listener.getLogger().println("Migrating " + libDir + " to " + libJar);
+                        LibraryRetriever.dir2Jar(record.getName(), libDir, libJar, listener);
+                        libDir.deleteRecursive();
+                        additions.add(new Addition(libJar.toURI().toURL(), record.trusted));
                     }
                 }
                 String unparsed = librariesUnparsed.get(record.name);
@@ -114,7 +126,6 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
         // Now we will see which libraries we want to load for this job.
         Map<String,LibraryRecord> librariesAdded = new LinkedHashMap<>();
         Map<String,LibraryRetriever> retrievers = new HashMap<>();
-        TaskListener listener = execution.getOwner().getListener();
         for (LibraryResolver kind : ExtensionList.lookup(LibraryResolver.class)) {
             boolean kindTrusted = kind.isTrusted();
             for (LibraryConfiguration cfg : kind.forJob(build.getParent(), libraryVersions)) {
@@ -147,9 +158,7 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
         // Now actually try to retrieve the libraries.
         for (LibraryRecord record : librariesAdded.values()) {
             listener.getLogger().println("Loading library " + record.name + "@" + record.version);
-            for (URL u : retrieve(record, retrievers.get(record.name), listener, build, execution)) {
-                additions.add(new Addition(u, record.trusted));
-            }
+            additions.add(new Addition(retrieve(record, retrievers.get(record.name), listener, build, execution), record.trusted));
         }
         return additions;
     }
@@ -169,14 +178,14 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
         EXPIRED;
     }
     
-    private static CacheStatus getCacheStatus(@NonNull LibraryCachingConfiguration cachingConfiguration, @NonNull final FilePath versionCacheDir)
+    private static CacheStatus getCacheStatus(@NonNull LibraryCachingConfiguration cachingConfiguration, @NonNull final FilePath versionCacheJar)
           throws IOException, InterruptedException
     {
         if (cachingConfiguration.isRefreshEnabled()) {
             final long cachingMilliseconds = cachingConfiguration.getRefreshTimeMilliseconds();
 
-            if(versionCacheDir.exists()) {
-                if ((versionCacheDir.lastModified() + cachingMilliseconds) > System.currentTimeMillis()) {
+            if(versionCacheJar.exists()) {
+                if ((versionCacheJar.lastModified() + cachingMilliseconds) > System.currentTimeMillis()) {
                     return CacheStatus.VALID;
                 } else {
                     return CacheStatus.EXPIRED;
@@ -185,7 +194,7 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
                 return CacheStatus.DOES_NOT_EXIST;
             }
         } else {
-            if (versionCacheDir.exists()) {
+            if (versionCacheJar.exists()) {
                 return CacheStatus.VALID;
             } else {
                 return CacheStatus.DOES_NOT_EXIST;
@@ -194,16 +203,16 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
     }
     
     /** Retrieve library files. */
-    static List<URL> retrieve(@NonNull LibraryRecord record, @NonNull LibraryRetriever retriever, @NonNull TaskListener listener, @NonNull Run<?,?> run, @NonNull CpsFlowExecution execution) throws Exception {
+    static URL retrieve(@NonNull LibraryRecord record, @NonNull LibraryRetriever retriever, @NonNull TaskListener listener, @NonNull Run<?,?> run, @NonNull CpsFlowExecution execution) throws Exception {
         String name = record.name;
         String version = record.version;
         boolean changelog = record.changelog;
         LibraryCachingConfiguration cachingConfiguration = record.cachingConfiguration;
-        FilePath libDir = new FilePath(execution.getOwner().getRootDir()).child("libs/" + record.getDirectoryName());
+        FilePath libJar = new FilePath(execution.getOwner().getRootDir()).child("libs/" + record.getDirectoryName() + ".jar");
         Boolean shouldCache = cachingConfiguration != null;
-        final FilePath versionCacheDir = new FilePath(LibraryCachingConfiguration.getGlobalLibrariesCacheDir(), record.getDirectoryName());
+        final FilePath versionCacheJar = new FilePath(LibraryCachingConfiguration.getGlobalLibrariesCacheDir(), record.getDirectoryName() + ".jar");
         ReentrantReadWriteLock retrieveLock = getReadWriteLockFor(record.getDirectoryName());
-        final FilePath lastReadFile = new FilePath(versionCacheDir, LibraryCachingConfiguration.LAST_READ_FILE);
+        final FilePath lastReadFile = versionCacheJar.sibling(record.getDirectoryName() + "." + LibraryCachingConfiguration.LAST_READ_FILE);
 
         if(shouldCache && cachingConfiguration.isExcluded(version)) {
             listener.getLogger().println("Library " + name + "@" + version + " is excluded from caching.");
@@ -213,13 +222,13 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
         if(shouldCache) {
             retrieveLock.readLock().lockInterruptibly();
             try {
-                CacheStatus cacheStatus = getCacheStatus(cachingConfiguration, versionCacheDir);
+                CacheStatus cacheStatus = getCacheStatus(cachingConfiguration, versionCacheJar);
                 if (cacheStatus == CacheStatus.DOES_NOT_EXIST || cacheStatus == CacheStatus.EXPIRED) {
                     retrieveLock.readLock().unlock();
                     retrieveLock.writeLock().lockInterruptibly();
                     try {
                       boolean retrieve = false;
-                      switch (getCacheStatus(cachingConfiguration, versionCacheDir)) {
+                      switch (getCacheStatus(cachingConfiguration, versionCacheJar)) {
                           case VALID: 
                               listener.getLogger().println("Library " + name + "@" + version + " is cached. Copying from home."); 
                                 break;
@@ -229,9 +238,8 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
                           case EXPIRED:
                               long cachingMinutes = cachingConfiguration.getRefreshTimeMinutes();
                               listener.getLogger().println("Library " + name + "@" + version + " is due for a refresh after " + cachingMinutes + " minutes, clearing.");
-                                if (versionCacheDir.exists()) {
-                                    versionCacheDir.deleteRecursive();
-                                    versionCacheDir.withSuffix("-name.txt").delete();
+                                if (versionCacheJar.exists()) {
+                                    versionCacheJar.delete();
                                 }
                                 retrieve = true;
                                 break;
@@ -239,8 +247,7 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
                             
                         if (retrieve) {
                             listener.getLogger().println("Caching library " + name + "@" + version);                            
-                            versionCacheDir.mkdirs();
-                            retriever.retrieve(name, version, changelog, versionCacheDir, run, listener);
+                            retriever.retrieveJar(name, version, changelog, versionCacheJar, run, listener);
                         }
                         retrieveLock.readLock().lock();
                     } finally {
@@ -251,50 +258,52 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
                 }
   
                 lastReadFile.touch(System.currentTimeMillis());
-                versionCacheDir.withSuffix("-name.txt").write(name, "UTF-8");
-                versionCacheDir.copyRecursiveTo(libDir);
+                versionCacheJar.copyTo(libJar);
             } finally {
               retrieveLock.readLock().unlock();
             }
         } else {
-            retriever.retrieve(name, version, changelog, libDir, run, listener);
+            retriever.retrieveJar(name, version, changelog, libJar, run, listener);
         }
-        // Write the user-provided name to a file as a debugging aid.
-        libDir.withSuffix("-name.txt").write(name, "UTF-8");
 
         // Replace any classes requested for replay:
         if (!record.trusted) {
-            for (String clazz : ReplayAction.replacementsIn(execution)) {
-                for (String root : new String[] {"src", "vars"}) {
-                    String rel = root + "/" + clazz.replace('.', '/') + ".groovy";
-                    FilePath f = libDir.child(rel);
-                    if (f.exists()) {
-                        String replacement = ReplayAction.replace(execution, clazz);
-                        if (replacement != null) {
-                            listener.getLogger().println("Replacing contents of " + rel);
-                            f.write(replacement, null); // TODO as below, unsure of encoding used by Groovy compiler
+            Set<String> clazzes = ReplayAction.replacementsIn(execution);
+            if (!clazzes.isEmpty()) {
+                FilePath tmp = libJar.withSuffix(".tmp");
+                try {
+                    libJar.unzip(tmp);
+                    for (String clazz : clazzes) {
+                        String rel = clazz.replace('.', '/') + ".groovy";
+                        FilePath f = tmp.child(rel);
+                        if (f.exists()) {
+                            String replacement = ReplayAction.replace(execution, clazz);
+                            if (replacement != null) {
+                                listener.getLogger().println("Replacing contents of " + rel);
+                                f.write(replacement, null); // TODO as below, unsure of encoding used by Groovy compiler
+                            }
                         }
                     }
+                    libJar.delete();
+                    try (OutputStream os = libJar.write()) {
+                        tmp.zip(os, "**");
+                    }
+                } finally {
+                    tmp.deleteRecursive();
                 }
             }
         }
-        List<URL> urls = new ArrayList<>();
-        FilePath srcDir = libDir.child("src");
-        if (srcDir.isDirectory()) {
-            urls.add(srcDir.toURI().toURL());
+        try (JarFile jf = new JarFile(libJar.getRemote())) {
+            jf.stream().forEach(entry -> {
+                Matcher m = ROOT_GROOVY_SOURCE.matcher(entry.getName());
+                if (m.matches()) {
+                    record.variables.add(m.group(1));
+                }
+            });
         }
-        FilePath varsDir = libDir.child("vars");
-        if (varsDir.isDirectory()) {
-            urls.add(varsDir.toURI().toURL());
-            for (FilePath var : varsDir.list("*.groovy")) {
-                record.variables.add(var.getBaseName());
-            }
-        }
-        if (urls.isEmpty()) {
-            throw new AbortException("Library " + name + " expected to contain at least one of src or vars directories");
-        }
-        return urls;
+        return libJar.toURI().toURL();
     }
+    private static final Pattern ROOT_GROOVY_SOURCE = Pattern.compile("([^/]+)[.]groovy");
 
     /**
      * Loads resources for {@link ResourceStep}.
@@ -311,27 +320,23 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
             if (action != null) {
                 FilePath libs = new FilePath(run.getRootDir()).child("libs");
                 for (LibraryRecord library : action.getLibraries()) {
-                    FilePath libResources = libs.child(library.getDirectoryName() + "/resources/");
-                    FilePath f = libResources.child(name);
-                    if (!new File(f.getRemote()).getCanonicalFile().toPath().startsWith(new File(libResources.getRemote()).getCanonicalPath())) {
-                        throw new AbortException(name + " references a file that is not contained within the library: " + library.name);
-                    } else if (f.exists()) {
-                        resources.put(library.name, readResource(f, encoding));
+                    FilePath libJar = libs.child(library.getDirectoryName() + ".jar");
+                    try (JarFile jf = new JarFile(libJar.getRemote())) {
+                        JarEntry je = jf.getJarEntry("resources/" + name);
+                        if (je != null) {
+                            try (InputStream in = jf.getInputStream(je)) {
+                                if ("Base64".equals(encoding)) {
+                                    resources.put(library.name, Base64.getEncoder().encodeToString(IOUtils.toByteArray(in)));
+                                } else {
+                                    resources.put(library.name, IOUtils.toString(in, encoding)); // The platform default is used if encoding is null.
+                                }
+                            }
+                        }
                     }
                 }
             }
         }
         return resources;
-    }
-
-    private static String readResource(FilePath file, @CheckForNull String encoding) throws IOException, InterruptedException {
-        try (InputStream in = file.read()) {
-            if ("Base64".equals(encoding)) {
-                return Base64.getEncoder().encodeToString(IOUtils.toByteArray(in));
-            } else {
-                return IOUtils.toString(in, encoding); // The platform default is used if encoding is null.
-            }
-        }
     }
 
     @Extension public static class GlobalVars extends GlobalVariableSet {
@@ -347,7 +352,7 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
             List<GlobalVariable> vars = new ArrayList<>();
             for (LibraryRecord library : action.getLibraries()) {
                 for (String variable : library.variables) {
-                    vars.add(new UserDefinedGlobalVariable(variable, new File(run.getRootDir(), "libs/" + library.getDirectoryName() + "/vars/" + variable + ".txt")));
+                    vars.add(new UserDefinedGlobalVariable(variable, URI.create("jar:" + new File(run.getRootDir(), "libs/" + library.getDirectoryName() + ".jar").toURI() + "!/" + variable + ".txt")));
                 }
             }
             return vars;
@@ -372,14 +377,19 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
                             if (library.trusted) {
                                 continue; // TODO JENKINS-41157 allow replay of trusted libraries if you have ADMINISTER
                             }
-                            for (String rootName : new String[] {"src", "vars"}) {
-                                FilePath root = libs.child(library.getDirectoryName() + "/" + rootName);
-                                if (!root.isDirectory()) {
-                                    continue;
-                                }
-                                for (FilePath groovy : root.list("**/*.groovy")) {
-                                    String clazz = className(groovy.getRemote(), root.getRemote());
-                                    scripts.put(clazz, groovy.readToString()); // TODO no idea what encoding the Groovy compiler uses
+                            FilePath jar = libs.child(library.getDirectoryName() + ".jar");
+                            if (!jar.exists()) {
+                                continue;
+                            }
+                            try (JarFile jf = new JarFile(jar.getRemote())) {
+                                for (JarEntry je : (Iterable<JarEntry>) jf.stream()::iterator) {
+                                    if (je.getName().endsWith(".groovy")) {
+                                        String text;
+                                        try (InputStream is = jf.getInputStream(je)) {
+                                            text = IOUtils.toString(is, StandardCharsets.UTF_8); // TODO no idea what encoding the Groovy compiler uses
+                                        }
+                                        scripts.put(je.getName().replaceFirst("[.]groovy$", "").replace('/', '.'), text);
+                                    }
                                 }
                             }
                         }
@@ -389,10 +399,6 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
                 LOGGER.log(Level.WARNING, null, x);
             }
             return scripts;
-        }
-
-        static String className(String groovy, String root) {
-            return groovy.replaceFirst("^" + Pattern.quote(root) + "[/\\\\](.+)[.]groovy", "$1").replace('/', '.').replace('\\', '.');
         }
 
     }

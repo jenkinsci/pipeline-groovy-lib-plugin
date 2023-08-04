@@ -43,7 +43,6 @@ import java.nio.file.Path;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
-import java.util.logging.Level;
 import jenkins.plugins.git.GitSCMSource;
 import jenkins.plugins.git.GitSampleRepoRule;
 import jenkins.scm.api.SCMHead;
@@ -81,15 +80,13 @@ import org.jvnet.hudson.test.TestExtension;
 import org.jvnet.hudson.test.WithoutJenkins;
 
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.arrayContainingInAnyOrder;
-import static org.hamcrest.Matchers.arrayWithSize;
+import static org.hamcrest.Matchers.arrayContaining;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.matchesPattern;
 import static org.hamcrest.Matchers.nullValue;
 import static org.jenkinsci.plugins.workflow.libs.SCMBasedRetriever.PROHIBITED_DOUBLE_DOT;
 import static org.junit.Assume.assumeFalse;
 import org.jvnet.hudson.test.FlagRule;
-import org.jvnet.hudson.test.LoggerRule;
 
 public class SCMSourceRetrieverTest {
 
@@ -97,8 +94,7 @@ public class SCMSourceRetrieverTest {
     @Rule public JenkinsRule r = new JenkinsRule();
     @Rule public GitSampleRepoRule sampleRepo = new GitSampleRepoRule();
     @Rule public SubversionSampleRepoRule sampleRepoSvn = new SubversionSampleRepoRule();
-    @Rule public FlagRule<Boolean> includeSrcTest = new FlagRule<>(() -> SCMBasedRetriever.INCLUDE_SRC_TEST_IN_LIBRARIES, v -> SCMBasedRetriever.INCLUDE_SRC_TEST_IN_LIBRARIES = v);
-    @Rule public LoggerRule logging = new LoggerRule().record(SCMBasedRetriever.class, Level.FINE);
+    @Rule public FlagRule<Boolean> includeSrcTest = new FlagRule<>(() -> LibraryRetriever.INCLUDE_SRC_TEST_IN_LIBRARIES, v -> LibraryRetriever.INCLUDE_SRC_TEST_IN_LIBRARIES = v);
 
     @Issue("JENKINS-40408")
     @Test public void lease() throws Exception {
@@ -381,7 +377,6 @@ public class SCMSourceRetrieverTest {
         sampleRepo.init();
         sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something special'}");
         sampleRepo.write("README.md", "Summary");
-        sampleRepo.git("rm", "file");
         sampleRepo.git("add", ".");
         sampleRepo.git("commit", "--message=init");
         GitSCMSource src = new GitSCMSource(sampleRepo.toString());
@@ -401,10 +396,8 @@ public class SCMSourceRetrieverTest {
         r.assertLogContains("Using shallow clone with depth 1", b);
         r.assertLogContains("Avoid fetching tags", b);
         r.assertLogNotContains("+refs/heads/*:refs/remotes/origin/*", b);
-        File[] libDirs = new File(b.getRootDir(), "libs").listFiles(File::isDirectory);
-        assertThat(libDirs, arrayWithSize(1));
-        String[] entries = libDirs[0].list();
-        assertThat(entries, arrayContainingInAnyOrder("vars"));
+        // Fails to reproduce presence of *.jar.tmp@tmp; probably specific to use of GIT_ASKPASS:
+        assertThat(new File(b.getRootDir(), "libs").list(), arrayContaining(matchesPattern("[0-9a-f]{64}[.]jar")));
     }
 
     @Test public void cloneModeLibraryPath() throws Exception {
@@ -422,10 +415,6 @@ public class SCMSourceRetrieverTest {
         p.setDefinition(new CpsFlowDefinition("@Library('root_sub_path@master') import myecho; myecho()", true));
         WorkflowRun b = r.buildAndAssertSuccess(p);
         r.assertLogContains("something special", b);
-        File[] libDirs = new File(b.getRootDir(), "libs").listFiles(File::isDirectory);
-        assertThat(libDirs, arrayWithSize(1));
-        String[] entries = libDirs[0].list();
-        assertThat(entries, arrayContainingInAnyOrder("vars"));
     }
 
     @Test public void cloneModeLibraryPathSecurity() throws Exception {
@@ -459,11 +448,11 @@ public class SCMSourceRetrieverTest {
         GlobalLibraries.get().setLibraries(Collections.singletonList(lc));
         WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "p");
         p.setDefinition(new CpsFlowDefinition("@Library('echoing@master') import myecho; myecho()", true));
-        SCMBasedRetriever.INCLUDE_SRC_TEST_IN_LIBRARIES = false;
+        LibraryRetriever.INCLUDE_SRC_TEST_IN_LIBRARIES = false;
         WorkflowRun b = r.buildAndAssertSuccess(p);
         assertFalse(r.jenkins.getWorkspaceFor(p).withSuffix("@libs").isDirectory());
         r.assertLogContains("something special", b);
-        r.assertLogContains("Excluding src/test/ from checkout", b);
+        r.assertLogContains("Excluding src/test/", b);
     }
 
     @Test public void cloneModeIncludeSrcTest() throws Exception {
@@ -480,7 +469,7 @@ public class SCMSourceRetrieverTest {
         GlobalLibraries.get().setLibraries(Collections.singletonList(lc));
         WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "p");
         p.setDefinition(new CpsFlowDefinition("@Library('echoing@master') import myecho; myecho()", true));
-        SCMBasedRetriever.INCLUDE_SRC_TEST_IN_LIBRARIES = true;
+        LibraryRetriever.INCLUDE_SRC_TEST_IN_LIBRARIES = true;
         WorkflowRun b = r.buildAndAssertSuccess(p);
         assertFalse(r.jenkins.getWorkspaceFor(p).withSuffix("@libs").isDirectory());
         r.assertLogContains("got something special", b);

@@ -46,7 +46,6 @@ import jenkins.plugins.git.GitSampleRepoRule;
 import jenkins.scm.impl.subversion.SubversionSCMSource;
 import jenkins.scm.impl.subversion.SubversionSampleRepoRule;
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.nullValue;
 import org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition;
 import org.jenkinsci.plugins.workflow.cps.GlobalVariable;
@@ -64,7 +63,6 @@ import org.jvnet.hudson.test.BuildWatcher;
 import org.jvnet.hudson.test.Issue;
 import org.jvnet.hudson.test.JenkinsRule;
 import org.jvnet.hudson.test.TestExtension;
-import org.jvnet.hudson.test.WithoutJenkins;
 import org.jvnet.hudson.test.recipes.LocalData;
 
 public class LibraryAdderTest {
@@ -374,7 +372,7 @@ public class LibraryAdderTest {
         WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "p");
         p.setDefinition(new CpsFlowDefinition("@Library('lib@master') import test.Foo", true));
         WorkflowRun b = r.assertBuildStatus(Result.FAILURE, p.scheduleBuild2(0));
-        r.assertLogContains("Excluding src/test/ from checkout", b);
+        r.assertLogContains("Excluding src/test/", b);
         r.assertLogContains("expected to contain at least one of src or vars directories", b);
     }
 
@@ -475,6 +473,34 @@ public class LibraryAdderTest {
         r.assertLogContains("called Foo", b);
     }
 
+    @LocalData
+    @Test
+    public void correctLibraryDirectoryUsedWhenResumingPreDir2JarBuild() throws Exception {
+        // LocalData captured as of 1091aea7fa252acae11389588addf603a505e195:
+        /*
+        sampleRepo.init();
+        sampleRepo.write("vars/foo.groovy", "def call() { echo('called Foo') }");
+        sampleRepo.git("add", "vars");
+        sampleRepo.git("commit", "--message=init");
+        GlobalLibraries.get().setLibraries(Collections.singletonList(
+                new LibraryConfiguration("lib",
+                        new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true)))));
+        WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "p");
+        p.setDefinition(new CpsFlowDefinition(
+                "@Library('lib@master') _\n" +
+                "sleep 180\n" +
+                "foo()", true));
+        WorkflowRun b = p.scheduleBuild2(0).waitForStart();
+        r.waitForMessage("Sleeping for 3 min", b);
+        b.save();
+        Thread.sleep(Long.MAX_VALUE);
+        */
+        WorkflowJob p = r.jenkins.getItemByFullName("p", WorkflowJob.class);
+        WorkflowRun b = p.getBuildByNumber(1);
+        r.assertBuildStatus(Result.SUCCESS, r.waitForCompletion(b));
+        r.assertLogContains("called Foo", b);
+    }
+
     @Issue("JENKINS-66898")
     @Test
     public void parallelBuildsDontInterfereWithExpiredCache() throws Throwable {
@@ -502,7 +528,7 @@ public class LibraryAdderTest {
         WorkflowRun b1 = r.buildAndAssertSuccess(p1);
         LibrariesAction action = b1.getAction(LibrariesAction.class);
         LibraryRecord record = action.getLibraries().get(0);
-        FilePath cache = LibraryCachingConfiguration.getGlobalLibrariesCacheDir().child(record.getDirectoryName());
+        FilePath cache = LibraryCachingConfiguration.getGlobalLibrariesCacheDir().child(record.getDirectoryName() + ".jar");
         //Expire the cache
         long oldMillis = ZonedDateTime.now().minusMinutes(35).toInstant().toEpochMilli();
         cache.touch(oldMillis);
@@ -514,14 +540,6 @@ public class LibraryAdderTest {
         // Occasionally the second job runs first and then build output doesn't match
         // r.assertLogContains("is due for a refresh after", f1.get());
         // r.assertLogContains("Library library@master is cached. Copying from home.", f2.get());
-    }
-
-    @Issue("JENKINS-68544")
-    @WithoutJenkins
-    @Test public void className() {
-        assertThat(LibraryAdder.LoadedLibraries.className("/path/to/lib/src/some/pkg/Type.groovy", "/path/to/lib/src"), is("some.pkg.Type"));
-        assertThat(LibraryAdder.LoadedLibraries.className("C:\\path\\to\\lib\\src\\some\\pkg\\Type.groovy", "C:\\path\\to\\lib\\src"), is("some.pkg.Type"));
-        assertThat(LibraryAdder.LoadedLibraries.className("C:\\path\\to\\Extra\\lib\\src\\some\\pkg\\Type.groovy", "C:\\path\\to\\Extra\\lib\\src"), is("some.pkg.Type"));
     }
 
 }

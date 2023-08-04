@@ -1,19 +1,20 @@
 package org.jenkinsci.plugins.workflow.cps.global;
 
+import edu.umd.cs.findbugs.annotations.CheckForNull;
+import edu.umd.cs.findbugs.annotations.NonNull;
 import groovy.lang.Binding;
+import java.io.File;
+import java.io.FileNotFoundException;
+import java.io.IOException;
+import java.net.URI;
 import java.nio.charset.StandardCharsets;
-import org.apache.commons.io.FileUtils;
+import jenkins.model.Jenkins;
+import org.apache.commons.io.IOUtils;
 import org.codehaus.groovy.control.MultipleCompilationErrorsException;
 import org.jenkinsci.plugins.workflow.cps.CpsCompilationErrorsException;
 import org.jenkinsci.plugins.workflow.cps.CpsScript;
 import org.jenkinsci.plugins.workflow.cps.CpsThread;
 import org.jenkinsci.plugins.workflow.cps.GlobalVariable;
-
-import edu.umd.cs.findbugs.annotations.CheckForNull;
-import edu.umd.cs.findbugs.annotations.NonNull;
-import java.io.File;
-import java.io.IOException;
-import jenkins.model.Jenkins;
 
 /**
  * Global variable backed by user-supplied script.
@@ -22,10 +23,18 @@ import jenkins.model.Jenkins;
  */
 // not @Extension because these are instantiated programmatically
 public class UserDefinedGlobalVariable extends GlobalVariable {
-    private final File help;
+    private final URI help;
     private final String name;
 
+    /**
+     * @deprecated use {@link #UserDefinedGlobalVariable(String, URI)}
+     */
+    @Deprecated
     public UserDefinedGlobalVariable(String name, File help) {
+        this(name, help.toURI());
+    }
+
+    public UserDefinedGlobalVariable(String name, URI help) {
         this.name = name;
         this.help = help;
     }
@@ -69,12 +78,14 @@ public class UserDefinedGlobalVariable extends GlobalVariable {
      * Loads help from user-defined file, if available.
      */
     public @CheckForNull String getHelpHtml() throws IOException {
-        if (!help.exists())     return null;
-
-        return Jenkins.get().getMarkupFormatter().translate(
-            FileUtils.readFileToString(help, StandardCharsets.UTF_8).
-            // Util.escape translates \n but not \r, and we do not know what platform the library will be checked out on:
-            replace("\r\n", "\n"));
+        try {
+            return Jenkins.get().getMarkupFormatter().translate(
+                IOUtils.toString(help, StandardCharsets.UTF_8).
+                // Util.escape translates \n but not \r, and we do not know what platform the library will be checked out on:
+                replace("\r\n", "\n"));
+        } catch (FileNotFoundException x) {
+            return null;
+        }
     }
 
     @Override

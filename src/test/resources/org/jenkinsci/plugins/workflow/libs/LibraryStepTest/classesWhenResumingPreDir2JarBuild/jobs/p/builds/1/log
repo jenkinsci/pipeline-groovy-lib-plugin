@@ -1,0 +1,29 @@
+Started
+[8mha:////4ESdDHApaBCDSybNFTtB8QH7JYx/td1ExPJr3dgp1IVpAAAAoh+LCAAAAAAAAP9tjTEOwjAQBM8BClpKHuFItIiK1krDC0x8GCfWnbEdkooX8TX+gCESFVvtrLSa5wtWKcKBo5UdUu8otU4GP9jS5Mixv3geZcdn2TIl9igbHBs2eJyx4YwwR1SwULBGaj0nRzbDRnX6rmuvydanHMu2V1A5c4MHCFXMWcf8hSnC9jqYxPTz/BXAFEIGsfuclm8zQVqFvQAAAA==[0m[Pipeline] Start of Pipeline
+[8mha:////4GmDEP+pf+jq6je4q08twRF2g64HEz1ZmA5RyCc5wqQeAAAAoh+LCAAAAAAAAP9tjTEOAiEURD9rLGwtPQSbaGmsbAmNJ0AWEZb8zwLrbuWJvJp3kLiJlZNMMm+a93rDOic4UbLcG+wdZu14DKOti0+U+lugiXu6ck2YKRguzSSpM+cFJRUDS1gDKwEbgzpQdmgLbIVXD9UGhba9lFS/o4DGdQM8gYlqLiqVL8wJdvexy4Q/z18BzLEA29ce4gfya1RxvAAAAA==[0m[Pipeline] library
+Loading library stuff@master
+Attempting to resolve master from remote references...
+ > git --version # timeout=10
+ > git --version # 'git version 2.34.1'
+ > git ls-remote -h -- …/pipeline-groovy-lib-plugin/target/tmp/junit12658522753310550560/junit9582443866860979657 # timeout=10
+Found match: refs/heads/master revision 98c9e41033d994442c0105ba3011fe39a57a69b1
+The recommended git tool is: NONE
+No credentials specified
+Cloning the remote Git repository
+Cloning with configured refspecs honoured and without tags
+Cloning repository …/pipeline-groovy-lib-plugin/target/tmp/junit12658522753310550560/junit9582443866860979657
+ > git init …/pipeline-groovy-lib-plugin/target/tmp/j h744515433002142412/workspace/p@libs/f42b7770bb31e81024ba7b8451a6e63e6a1ce3eac92cd7c91e73094d7d85b2b9 # timeout=10
+Fetching upstream changes from …/pipeline-groovy-lib-plugin/target/tmp/junit12658522753310550560/junit9582443866860979657
+ > git --version # timeout=10
+ > git --version # 'git version 2.34.1'
+ > git fetch --no-tags --force --progress -- …/pipeline-groovy-lib-plugin/target/tmp/junit12658522753310550560/junit9582443866860979657 +refs/heads/*:refs/remotes/origin/* # timeout=10
+ > git config remote.origin.url …/pipeline-groovy-lib-plugin/target/tmp/junit12658522753310550560/junit9582443866860979657 # timeout=10
+ > git config --add remote.origin.fetch +refs/heads/*:refs/remotes/origin/* # timeout=10
+Avoid second fetch
+Checking out Revision 98c9e41033d994442c0105ba3011fe39a57a69b1 (master)
+ > git config core.sparsecheckout # timeout=10
+ > git checkout -f 98c9e41033d994442c0105ba3011fe39a57a69b1 # timeout=10
+Commit message: "init"
+First time build. Skipping changelog.
+[8mha:////4JPM8UkGCuomMvb51Uo5DyzahUcbxePS+FWXyxySXcOwAAAAoh+LCAAAAAAAAP9tjTEOAiEURD9rLGwtPQSbGDtjZUtoPAGyiLDkfxZYdytP5NW8g8RNrJxkknnTvNcb1jnBiZLl3mDvMGvHYxhtXXyi1N8CTdzTlWvCTMFwaSZJnTkvKKkYWMIaWAnYGNSBskNbYCu8eqg2KLTtpaT6HQU0rhvgCUxUc1GpfGFOsLuPXSb8ef4KYI4F2L72ED81/RU+vAAAAA==[0m[Pipeline] sleep
+Sleeping for 3 min 0 sec

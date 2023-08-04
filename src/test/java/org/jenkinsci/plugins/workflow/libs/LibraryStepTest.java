@@ -36,6 +36,7 @@ import hudson.plugins.git.extensions.GitSCMExtension;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.logging.Level;
 
 import jenkins.plugins.git.GitSCMSource;
 import jenkins.plugins.git.GitSampleRepoRule;
@@ -56,6 +57,8 @@ import org.junit.Rule;
 import org.jvnet.hudson.test.BuildWatcher;
 import org.jvnet.hudson.test.Issue;
 import org.jvnet.hudson.test.JenkinsRule;
+import org.jvnet.hudson.test.LoggerRule;
+import org.jvnet.hudson.test.recipes.LocalData;
 
 @Issue("JENKINS-39450")
 public class LibraryStepTest {
@@ -64,6 +67,7 @@ public class LibraryStepTest {
     @Rule public JenkinsRule r = new JenkinsRule();
     @Rule public GitSampleRepoRule sampleRepo = new GitSampleRepoRule();
     @Rule public GitSampleRepoRule sampleRepo2 = new GitSampleRepoRule();
+    @Rule public LoggerRule logging = new LoggerRule().record(LibraryStep.class, Level.FINE);
 
     @Test public void configRoundtrip() throws Exception {
         StepConfigTester stepTester = new StepConfigTester(r);
@@ -338,4 +342,27 @@ public class LibraryStepTest {
         r.assertLogContains("/lib/java", b);
         r.assertLogContains("/pipeline/java", b);
     }
+
+    @LocalData
+    @Test public void classesWhenResumingPreDir2JarBuild() throws Exception {
+        // LocalData captured as of 1091aea7fa252acae11389588addf603a505e195:
+        /*
+        sampleRepo.init();
+        sampleRepo.write("src/pkg/C.groovy", "package pkg; class C {static void m() {23}}");
+        sampleRepo.git("add", "src");
+        sampleRepo.git("commit", "--message=init");
+        GlobalLibraries.get().setLibraries(Collections.singletonList(new LibraryConfiguration("stuff", new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true)))));
+        WorkflowJob p = r.createProject(WorkflowJob.class, "p");
+        p.setDefinition(new CpsFlowDefinition("def lib = library('stuff@master'); sleep 180; echo(/got ${lib.pkg.C.m()}/)", true));
+        WorkflowRun b = p.scheduleBuild2(0).waitForStart();
+        r.waitForMessage("Sleeping for 3 min", b);
+        b.save();
+        Thread.sleep(Long.MAX_VALUE);
+        */
+        WorkflowJob p = r.jenkins.getItemByFullName("p", WorkflowJob.class);
+        WorkflowRun b = p.getBuildByNumber(1);
+        r.assertBuildStatus(Result.SUCCESS, r.waitForCompletion(b));
+        r.assertLogContains("got 23", b);
+    }
+
 }

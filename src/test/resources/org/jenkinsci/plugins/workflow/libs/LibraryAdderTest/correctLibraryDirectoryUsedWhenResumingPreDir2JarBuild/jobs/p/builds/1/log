@@ -1,0 +1,28 @@
+Started
+Loading library lib@master
+Attempting to resolve master from remote references...
+ > git --version # timeout=10
+ > git --version # 'git version 2.34.1'
+ > git ls-remote -h -- …/pipeline-groovy-lib-plugin/target/tmp/junit14177916507003849782/junit11215768211970974458 # timeout=10
+Found match: refs/heads/master revision 3ed68a85765cb39641044af8dc4ad436fafe3fdd
+The recommended git tool is: NONE
+No credentials specified
+Cloning the remote Git repository
+Cloning with configured refspecs honoured and without tags
+Cloning repository …/pipeline-groovy-lib-plugin/target/tmp/junit14177916507003849782/junit11215768211970974458
+ > git init …/pipeline-groovy-lib-plugin/target/tmp/j h17061459720094902767/workspace/p@libs/999c1ee22db1f1f266cfcd6f657a4e9044467f77fcf8c8e4a377d3099a1d3a75 # timeout=10
+Fetching upstream changes from …/pipeline-groovy-lib-plugin/target/tmp/junit14177916507003849782/junit11215768211970974458
+ > git --version # timeout=10
+ > git --version # 'git version 2.34.1'
+ > git fetch --no-tags --force --progress -- …/pipeline-groovy-lib-plugin/target/tmp/junit14177916507003849782/junit11215768211970974458 +refs/heads/*:refs/remotes/origin/* # timeout=10
+ > git config remote.origin.url …/pipeline-groovy-lib-plugin/target/tmp/junit14177916507003849782/junit11215768211970974458 # timeout=10
+ > git config --add remote.origin.fetch +refs/heads/*:refs/remotes/origin/* # timeout=10
+Avoid second fetch
+Checking out Revision 3ed68a85765cb39641044af8dc4ad436fafe3fdd (master)
+ > git config core.sparsecheckout # timeout=10
+ > git checkout -f 3ed68a85765cb39641044af8dc4ad436fafe3fdd # timeout=10
+Commit message: "init"
+First time build. Skipping changelog.
+[8mha:////4DehqyOFtNH235D4++PGtYgv/4iflo72uInNzFKYe/qgAAAAoh+LCAAAAAAAAP9tjTEOwjAQBM8BClpKHuFItIiK1krDC0x8GCfWnbEdkooX8TX+gCESFVvtrLSa5wtWKcKBo5UdUu8otU4GP9jS5Mixv3geZcdn2TIl9igbHBs2eJyx4YwwR1SwULBGaj0nRzbDRnX6rmuvydanHMu2V1A5c4MHCFXMWcf8hSnC9jqYxPTz/BXAFEIGsfuclm8zQVqFvQAAAA==[0m[Pipeline] Start of Pipeline
+[8mha:////4KmcPvrxnGvS+11mq0cJwM0MifzD3S6+ZqB6eVBoHivtAAAAoh+LCAAAAAAAAP9tjTEOAiEURD9rLGwtPQSbaGmsbAmNJ0AWEZb8zwLrbuWJvJp3kLiJlZNMMm+a93rDOic4UbLcG+wdZu14DKOti0+U+lugiXu6ck2YKRguzSSpM+cFJRUDS1gDKwEbgzpQdmgLbIVXD9UGhba9lFS/o4DGdQM8gYlqLiqVL8wJdvexy4Q/z18BzLEA29ce4gfya1RxvAAAAA==[0m[Pipeline] sleep
+Sleeping for 3 min 0 sec

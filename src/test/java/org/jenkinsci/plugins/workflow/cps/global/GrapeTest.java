@@ -197,9 +197,6 @@ public class GrapeTest {
         @Override public void retrieve(String name, String version, boolean changelog, FilePath target, Run<?, ?> run, TaskListener listener) throws Exception {
             new FilePath(lib).copyRecursiveTo(target);
         }
-        @Override public void retrieve(String name, String version, FilePath target, Run<?, ?> run, TaskListener listener) throws Exception {
-            retrieve(name, version, false, target, run, listener);
-        }
     }
 
     @Test public void outsideLibrary() throws Exception {
