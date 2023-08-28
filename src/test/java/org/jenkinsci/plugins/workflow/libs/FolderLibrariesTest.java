@@ -25,13 +25,14 @@
 package org.jenkinsci.plugins.workflow.libs;
 
 import com.cloudbees.hudson.plugins.folder.Folder;
-import com.gargoylesoftware.htmlunit.HttpMethod;
-import com.gargoylesoftware.htmlunit.WebRequest;
-import com.gargoylesoftware.htmlunit.html.HtmlForm;
-import com.gargoylesoftware.htmlunit.html.HtmlPage;
-import com.gargoylesoftware.htmlunit.html.HtmlTextArea;
-import com.gargoylesoftware.htmlunit.util.NameValuePair;
+import org.htmlunit.HttpMethod;
+import org.htmlunit.WebRequest;
+import org.htmlunit.html.HtmlForm;
+import org.htmlunit.html.HtmlPage;
+import org.htmlunit.html.HtmlTextArea;
+import org.htmlunit.util.NameValuePair;
 import com.google.common.collect.ImmutableMap;
+import hudson.Functions;
 import hudson.model.Item;
 import hudson.model.Result;
 import hudson.plugins.git.GitSCM;
@@ -54,6 +55,7 @@ import org.jenkinsci.plugins.workflow.job.WorkflowJob;
 import org.jenkinsci.plugins.workflow.job.WorkflowRun;
 import org.junit.Test;
 import static org.junit.Assert.*;
+import static org.junit.Assume.assumeFalse;
 import org.junit.ClassRule;
 import org.junit.Rule;
 import org.jvnet.hudson.test.BuildWatcher;
@@ -188,6 +190,7 @@ public class FolderLibrariesTest {
 
     @Issue("JENKINS-43019")
     @Test public void classCastException() throws Exception {
+        assumeFalse("Too slow, prone to timing out before getting to build #51", Functions.isWindows());
         sampleRepo1.init();
         sampleRepo1.write("src/pkg/Obj.groovy", "package pkg; public class Obj implements Serializable {public Obj() {}}");
         sampleRepo1.write("vars/objs.groovy", "@groovy.transform.Field final pkg.Obj OBJ = new pkg.Obj()");

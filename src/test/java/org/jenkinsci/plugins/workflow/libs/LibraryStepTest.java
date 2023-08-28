@@ -51,6 +51,7 @@ import org.jenkinsci.plugins.workflow.steps.StepConfigTester;
 import org.junit.Test;
 import static org.junit.Assert.*;
 import org.junit.ClassRule;
+import org.junit.Ignore;
 import org.junit.Rule;
 import org.jvnet.hudson.test.BuildWatcher;
 import org.jvnet.hudson.test.Issue;
@@ -84,7 +85,7 @@ public class LibraryStepTest {
             null, null, Collections.<GitSCMExtension>emptyList())));
         s.setChangelog(false);
         r.assertEqualDataBoundBeans(s, stepTester.configRoundTrip(s));
-        snippetizerTester.assertRoundTrip(s, "library changelog: false, identifier: 'foo@master', retriever: legacySCM([$class: 'GitSCM', branches: [[name: '${library.foo.version}']], extensions: [], userRemoteConfigs: [[url: 'https://nowhere.net/']]])");
+        snippetizerTester.assertRoundTrip(s, "library changelog: false, identifier: 'foo@master', retriever: legacySCM(scmGit(branches: [[name: '${library.foo.version}']], extensions: [], userRemoteConfigs: [[url: 'https://nowhere.net/']]))");
     }
 
     @Test public void vars() throws Exception {
@@ -122,6 +123,99 @@ public class LibraryStepTest {
         p.setDefinition(new CpsFlowDefinition("def lib = library 'stuff@master'; echo(/using ${lib.some.pkg.Lib.Inner.stuff()} vs. ${lib.some.pkg.App.new().run()}/)", true));
         WorkflowRun b = r.buildAndAssertSuccess(p);
         r.assertLogContains("using constant vs. constant", b);
+    }
+
+    @Test public void missingProperty() throws Exception {
+        sampleRepo.init();
+        sampleRepo.write("src/some/pkg/MyClass.groovy", "package some.pkg; class MyClass { }");
+        sampleRepo.git("add", "src");
+        sampleRepo.git("commit", "--message=init");
+        Folder f = r.jenkins.createProject(Folder.class, "f");
+        f.getProperties().add(new FolderLibraries(Collections.singletonList(new LibraryConfiguration("stuff", new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true))))));
+        WorkflowJob p = f.createProject(WorkflowJob.class, "p");
+        p.setDefinition(new CpsFlowDefinition(
+                "def lib = library 'stuff@master'\n" +
+                "lib.some.pkg.MyClass.no_field_with_this_name\n" , true));
+        WorkflowRun b = r.buildAndAssertStatus(Result.FAILURE, p);
+        r.assertLogContains("MissingPropertyException: No such property: no_field_with_this_name for class: some.pkg.MyClass", b);
+    }
+
+    @Test public void reflectionInLoadedClassesIsIntercepted() throws Exception {
+        sampleRepo.init();
+        sampleRepo.write("src/some/pkg/MyThread.groovy", "package some.pkg; class MyThread extends Thread { }");
+        sampleRepo.git("add", "src");
+        sampleRepo.git("commit", "--message=init");
+        Folder f = r.jenkins.createProject(Folder.class, "f");
+        f.getProperties().add(new FolderLibraries(Collections.singletonList(new LibraryConfiguration("stuff", new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true))))));
+        WorkflowJob p = f.createProject(WorkflowJob.class, "p");
+        p.setDefinition(new CpsFlowDefinition(
+                "def lib = library 'stuff@master'\n" +
+                "catchError() { lib.some.pkg.MyThread.new(null) }\n" +
+                "catchError() { lib.some.pkg.MyThread.__$stMC }\n" +
+                "catchError() { lib.some.pkg.MyThread.$getCallSiteArray() }\n" , true));
+        WorkflowRun b = r.buildAndAssertStatus(Result.FAILURE, p);
+        r.assertLogContains("Rejecting illegal call to synthetic constructor", b);
+        r.assertLogContains("staticField some.pkg.MyThread __$stMC", b);
+        r.assertLogContains("staticMethod some.pkg.MyThread $getCallSiteArray", b);
+    }
+
+    @Issue("SECURITY-2824")
+    @Test public void constructorInvocationInLoadedClassesIsIntercepted() throws Exception {
+        sampleRepo.init();
+        sampleRepo.write("src/pkg/Superclass.groovy",
+                "package pkg;\n" +
+                "class Superclass { Superclass(String x) { } }\n");
+        sampleRepo.write("src/pkg/Subclass.groovy",
+                "package pkg;\n" +
+                "class Subclass extends Superclass {\n" +
+                "  def wrapper\n" +
+                "  Subclass() { super('secret.key'); def $cw = $cw; wrapper = $cw }\n" +
+                "}\n");
+        sampleRepo.write("src/pkg/MyFile.groovy",
+                "package pkg;\n" +
+                "class MyFile extends File {\n" +
+                "  MyFile(String path) {\n" +
+                "    super(path)\n" +
+                "  }\n" +
+                "}\n");
+        sampleRepo.git("add", "src");
+        sampleRepo.git("commit", "--message=init");
+        Folder f = r.jenkins.createProject(Folder.class, "f");
+        f.getProperties().add(new FolderLibraries(Collections.singletonList(new LibraryConfiguration("stuff", new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true))))));
+        WorkflowJob p = f.createProject(WorkflowJob.class, "p");
+        p.setDefinition(new CpsFlowDefinition(
+                "def lib = library 'stuff@master'\n" +
+                "def wrapper = lib.pkg.Subclass.new().wrapper\n" +
+                "def file = lib.pkg.MyFile.new(wrapper, 'unused')\n" +
+                "echo(/${[file, file.class]}/)", true));
+        WorkflowRun b = r.buildAndAssertStatus(Result.FAILURE, p);
+        r.assertLogContains("Rejecting illegal call to synthetic constructor: private pkg.MyFile", b);
+    }
+
+    @Ignore("Trusted libraries should never get a RejectedAccessException, but this case should be uncommon and is difficult to handle more precisely")
+    @Test public void falsePositiveRejectedAccessExceptionInTrustedLibrary() throws Exception {
+        sampleRepo.init();
+        sampleRepo.git("branch", "myBranch");
+        sampleRepo.write("vars/doStuff.groovy",
+                "def call() {\n" +
+                "  def lib = library('stuff2@myBranch')\n" +
+                "  lib.some.pkg.MyClass.$getCallSiteArray()\n" +
+                "}\n");
+        sampleRepo.git("add", ".");
+        sampleRepo.git("commit", "--message=init");
+        sampleRepo.git("checkout", "myBranch");
+        sampleRepo.write("src/some/pkg/MyClass.groovy", "package some.pkg; class MyClass { }");
+        sampleRepo.git("add", ".");
+        sampleRepo.git("commit", "--message=myBranch");
+        GlobalLibraries.get().setLibraries(Arrays.asList(
+                new LibraryConfiguration("stuff", new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true))),
+                new LibraryConfiguration("stuff2", new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true)))));
+        WorkflowJob p = r.createProject(WorkflowJob.class, "p");
+        p.setDefinition(new CpsFlowDefinition(
+                "@Library('stuff@master')\n" +
+                "import doStuff\n" +
+                "doStuff()\n", true));
+        WorkflowRun b = r.buildAndAssertSuccess(p);
     }
 
     @Test public void classesFromWrongPlace() throws Exception {

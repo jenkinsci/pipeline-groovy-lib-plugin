@@ -2,7 +2,7 @@
 <!--
 The MIT License
 
-Copyright 2016 CloudBees, Inc.
+Copyright 2023 CloudBees, Inc.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -24,8 +24,11 @@ THE SOFTWARE.
 -->
 
 <?jelly escape-by-default='true'?>
-<j:jelly xmlns:j="jelly:core" xmlns:f="/lib/form" xmlns:st="jelly:stapler">
-    <f:description>${%blurb}</f:description>
-    <f:dropdownDescriptorSelector field="scm" descriptors="${descriptor.SCMDescriptors}" title="${%Source Code Management}"/>
-    <st:include page="options" class="${descriptor.clazz}" from="${instance}"/>
+<j:jelly xmlns:j="jelly:core" xmlns:f="/lib/form">
+    <f:entry field="clone" title="${%Fresh clone per build}">
+        <f:checkbox/>
+    </f:entry>
+    <f:entry field="libraryPath" title="${%libraryPath}">
+        <f:textbox checkMethod="post"/>
+    </f:entry>
 </j:jelly>
