@@ -2,11 +2,15 @@ package org.jenkinsci.plugins.workflow.libs;
 
 import hudson.Extension;
 import hudson.FilePath;
+import hudson.RestrictedSince;
 import hudson.model.AbstractDescribableImpl;
 import hudson.model.Descriptor;
 import hudson.util.FormValidation;
 import jenkins.model.Jenkins;
+import org.kohsuke.accmod.Restricted;
+import org.kohsuke.accmod.restrictions.NoExternalUse;
 import org.kohsuke.stapler.DataBoundConstructor;
+import org.kohsuke.stapler.DataBoundSetter;
 import org.kohsuke.stapler.QueryParameter;
 
 import java.io.IOException;
@@ -35,12 +39,21 @@ public final class LibraryCachingConfiguration extends AbstractDescribableImpl<L
     public static final String GLOBAL_LIBRARIES_DIR = "global-libraries-cache";
     public static final String LAST_READ_FILE = "last_read";
 
-    @DataBoundConstructor public LibraryCachingConfiguration(int refreshTimeMinutes, String excludedVersionsStr, String includedVersionsStr) {
+    @DataBoundConstructor public LibraryCachingConfiguration(int refreshTimeMinutes, String excludedVersionsStr) {
+        this.refreshTimeMinutes = refreshTimeMinutes;
+        this.excludedVersionsStr = excludedVersionsStr;
+        this.includedVersionsStr = "";
+    }
+
+    /*
+     * Visible for testing ...
+     */
+    @Restricted(NoExternalUse.class)
+    LibraryCachingConfiguration(int refreshTimeMinutes, String excludedVersionsStr, String includedVersionsStr) {
         this.refreshTimeMinutes = refreshTimeMinutes;
         this.excludedVersionsStr = excludedVersionsStr;
         this.includedVersionsStr = includedVersionsStr;
     }
-
 
     public int getRefreshTimeMinutes() {
         return refreshTimeMinutes;
@@ -64,6 +77,10 @@ public final class LibraryCachingConfiguration extends AbstractDescribableImpl<L
             return includedVersionsStr;
     }
 
+    @DataBoundSetter
+    public void setIncludedVersionsStr(String includedVersionsStr) {
+        this.includedVersionsStr = includedVersionsStr;
+    }
 
     private List<String> getExcludedVersions() {
         if (excludedVersionsStr == null) {

@@ -71,7 +71,7 @@ public class ResourceStepTest {
         initFixedContentLibrary();
         
         LibraryConfiguration libraryConfig =  new LibraryConfiguration("stuff", new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true)));
-        libraryConfig.setCachingConfiguration(new LibraryCachingConfiguration(0, "", ""));
+        libraryConfig.setCachingConfiguration(new LibraryCachingConfiguration(0, ""));
         GlobalLibraries.get().setLibraries(Collections.singletonList(libraryConfig));
         WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "p");
 
@@ -92,7 +92,7 @@ public class ResourceStepTest {
         initFixedContentLibrary();
         
         LibraryConfiguration libraryConfig =  new LibraryConfiguration("stuff", new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true)));
-        libraryConfig.setCachingConfiguration(new LibraryCachingConfiguration(0, "test_unused other", ""));
+        libraryConfig.setCachingConfiguration(new LibraryCachingConfiguration(0, "test_unused other"));
         GlobalLibraries.get().setLibraries(Collections.singletonList(libraryConfig));
         WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "p");
 
@@ -114,7 +114,7 @@ public class ResourceStepTest {
         initFixedContentLibrary();
         
         LibraryConfiguration libraryConfig =  new LibraryConfiguration("stuff", new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true)));
-        libraryConfig.setCachingConfiguration(new LibraryCachingConfiguration(60, "test_unused other", ""));
+        libraryConfig.setCachingConfiguration(new LibraryCachingConfiguration(60, "test_unused other"));
         GlobalLibraries.get().setLibraries(Collections.singletonList(libraryConfig));
         WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "p");
 

@@ -218,7 +218,7 @@ public class LibraryCachingConfigurationTest {
                 new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true)));
         config.setDefaultVersion("master");
         config.setImplicit(true);
-        config.setCachingConfiguration(new LibraryCachingConfiguration(30, null, null));
+        config.setCachingConfiguration(new LibraryCachingConfiguration(30, null));
         GlobalLibraries.get().getLibraries().add(config);
         // Run build and check that cache gets created.
         WorkflowJob p = r.createProject(WorkflowJob.class);
