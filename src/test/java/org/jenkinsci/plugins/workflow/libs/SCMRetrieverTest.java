@@ -41,6 +41,7 @@ import org.jenkinsci.plugins.workflow.job.WorkflowRun;
 import org.jenkinsci.plugins.workflow.multibranch.WorkflowMultiBranchProject;
 import org.jenkinsci.plugins.workflow.multibranch.WorkflowMultiBranchProjectTest;
 import org.jenkinsci.plugins.workflow.test.steps.SemaphoreStep;
+import org.junit.Before;
 import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.Rule;
@@ -54,6 +55,10 @@ public class SCMRetrieverTest {
     @ClassRule public static BuildWatcher buildWatcher = new BuildWatcher();
     @Rule public JenkinsRule r = new JenkinsRule();
     @Rule public GitSampleRepoRule sampleRepo = new GitSampleRepoRule();
+
+    @Before public void doNotWait() {
+        r.setQuietPeriod(0);
+    }
 
     @Url("https://stackoverflow.com/a/49112612/12916")
     @Test public void selfTestLibraries() throws Exception {
