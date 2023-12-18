@@ -209,7 +209,7 @@ public class LibraryStep extends AbstractStepImpl {
                 verifyRevision(((SingleSCMSource) ((SCMSourceRetriever) retriever).getScm()).getScm(), name);
             }
 
-            LibraryRecord record = new LibraryRecord(name, version, trusted, changelog, cachingConfiguration, source);
+            LibraryRecord record = new LibraryRecord(name, version, trusted, Boolean.TRUE.equals(changelog), cachingConfiguration, source);
             LibrariesAction action = run.getAction(LibrariesAction.class);
             if (action == null) {
                 action = new LibrariesAction(Lists.newArrayList(record));
