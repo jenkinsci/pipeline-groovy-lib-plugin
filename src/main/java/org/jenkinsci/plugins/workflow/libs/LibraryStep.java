@@ -91,7 +91,7 @@ public class LibraryStep extends AbstractStepImpl {
     private static final Logger LOGGER = Logger.getLogger(LibraryStep.class.getName());
 
     private final String identifier;
-    private Boolean changelog = true;
+    private Boolean changelog;
     private LibraryRetriever retriever;
 
     @DataBoundConstructor public LibraryStep(String identifier) {
