@@ -120,6 +120,10 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
             boolean kindTrusted = kind.isTrusted();
             for (LibraryConfiguration cfg : kind.forJob(build.getParent(), libraryVersions)) {
                 String name = cfg.getName();
+                if (name == null) {
+                    continue;
+                }
+
                 if (!cfg.isImplicit() && !libraryVersions.containsKey(name)) {
                     continue; // not using this one at all
                 }

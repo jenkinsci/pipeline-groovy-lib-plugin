@@ -70,6 +70,7 @@ public class LibraryConfiguration extends AbstractDescribableImpl<LibraryConfigu
      * Library name.
      * Should match {@link Library#value}, up to the first occurrence of {@code @}, if any.
      */
+    @CheckForNull
     public String getName() {
         return name;
     }
@@ -173,6 +174,9 @@ public class LibraryConfiguration extends AbstractDescribableImpl<LibraryConfigu
 
         @RequirePOST
         public FormValidation doCheckDefaultVersion(@AncestorInPath Item context, @QueryParameter String defaultVersion, @QueryParameter boolean implicit, @QueryParameter boolean allowVersionOverride, @QueryParameter String name) {
+            if (name.isEmpty()) {
+                return FormValidation.error("You must enter a name.");
+            }
             if (defaultVersion.isEmpty()) {
                 if (implicit) {
                     return FormValidation.error("If you load a library implicitly, you must specify a default version.");
@@ -184,7 +188,7 @@ public class LibraryConfiguration extends AbstractDescribableImpl<LibraryConfigu
             } else {
                 for (LibraryResolver resolver : ExtensionList.lookup(LibraryResolver.class)) {
                     for (LibraryConfiguration config : resolver.fromConfiguration(Stapler.getCurrentRequest())) {
-                        if (config.getName().equals(name)) {
+                        if (name.equals(config.getName())) {
                             return config.getRetriever().validateVersion(name, defaultVersion, context);
                         }
                     }
