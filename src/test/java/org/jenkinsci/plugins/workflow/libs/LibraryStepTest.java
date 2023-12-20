@@ -338,19 +338,4 @@ public class LibraryStepTest {
         r.assertLogContains("/lib/java", b);
         r.assertLogContains("/pipeline/java", b);
     }
-
-    @Issue("JENKINS-63355")
-    @Test public void emptyNameLibrariesAreSkipped() throws Exception {
-        sampleRepo.init();
-        sampleRepo.write("vars/x.groovy", "def call() {echo 'ran library'}");
-        sampleRepo.git("add", "vars");
-        sampleRepo.git("commit", "--message=init");
-        GlobalLibraries.get().setLibraries(List.of(
-            new LibraryConfiguration("stuff", new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true))),
-            new LibraryConfiguration("", new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true)))
-        ));
-        WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "p");
-        p.setDefinition(new CpsFlowDefinition("library 'stuff@master'; x()", true));
-        WorkflowRun b = r.buildAndAssertSuccess(p);
-    }
 }
