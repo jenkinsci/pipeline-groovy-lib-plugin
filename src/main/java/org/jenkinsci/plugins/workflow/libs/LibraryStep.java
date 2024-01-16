@@ -60,7 +60,6 @@ import java.util.logging.Logger;
 import edu.umd.cs.findbugs.annotations.CheckForNull;
 import edu.umd.cs.findbugs.annotations.NonNull;
 import groovy.lang.MissingPropertyException;
-import jakarta.inject.Inject;
 import jenkins.model.Jenkins;
 import jenkins.scm.impl.SingleSCMSource;
 import org.codehaus.groovy.control.MultipleCompilationErrorsException;
@@ -70,10 +69,11 @@ import org.jenkinsci.plugins.workflow.cps.CpsCompilationErrorsException;
 import org.jenkinsci.plugins.workflow.cps.CpsFlowExecution;
 import org.jenkinsci.plugins.workflow.cps.CpsThread;
 import org.jenkinsci.plugins.workflow.flow.FlowExecution;
-import org.jenkinsci.plugins.workflow.steps.AbstractStepDescriptorImpl;
-import org.jenkinsci.plugins.workflow.steps.AbstractStepImpl;
-import org.jenkinsci.plugins.workflow.steps.AbstractSynchronousNonBlockingStepExecution;
-import org.jenkinsci.plugins.workflow.steps.StepContextParameter;
+import org.jenkinsci.plugins.workflow.steps.Step;
+import org.jenkinsci.plugins.workflow.steps.StepContext;
+import org.jenkinsci.plugins.workflow.steps.StepDescriptor;
+import org.jenkinsci.plugins.workflow.steps.StepExecution;
+import org.jenkinsci.plugins.workflow.steps.SynchronousNonBlockingStepExecution;
 import org.kohsuke.accmod.Restricted;
 import org.kohsuke.accmod.restrictions.DoNotUse;
 import org.kohsuke.groovy.sandbox.GroovyInterceptor;
@@ -86,7 +86,7 @@ import org.kohsuke.stapler.QueryParameter;
 /**
  * Dynamically injects a library into the running build.
  */
-public class LibraryStep extends AbstractStepImpl {
+public class LibraryStep extends Step {
 
     private static final Logger LOGGER = Logger.getLogger(LibraryStep.class.getName());
 
@@ -118,11 +118,11 @@ public class LibraryStep extends AbstractStepImpl {
         this.changelog = changelog;
     }
 
-    @Extension public static class DescriptorImpl extends AbstractStepDescriptorImpl {
+    @Override public StepExecution start(StepContext context) throws Exception {
+        return new Execution(this, context);
+    }
 
-        public DescriptorImpl() {
-            super(Execution.class);
-        }
+    @Extension public static class DescriptorImpl extends StepDescriptor {
 
         @Override public String getFunctionName() {
             return "library";
@@ -130,6 +130,10 @@ public class LibraryStep extends AbstractStepImpl {
 
         @Override public String getDisplayName() {
             return "Load a library on the fly";
+        }
+
+        @Override public Set<? extends Class<?>> getRequiredContext() {
+            return Set.of(Run.class, TaskListener.class, FlowExecution.class);
         }
 
         @Restricted(DoNotUse.class) // Jelly
@@ -157,15 +161,20 @@ public class LibraryStep extends AbstractStepImpl {
 
     }
 
-    public static class Execution extends AbstractSynchronousNonBlockingStepExecution<LoadedClasses> {
+    public static class Execution extends SynchronousNonBlockingStepExecution<LoadedClasses> {
 
         private static final long serialVersionUID = 1L;
 
-        @Inject private transient LibraryStep step;
-        @StepContextParameter private transient Run<?,?> run;
-        @StepContextParameter private transient TaskListener listener;
+        private transient final LibraryStep step;
+
+        Execution(LibraryStep step, StepContext context) {
+            super(context);
+            this.step = step;
+        }
 
         @Override protected LoadedClasses run() throws Exception {
+            Run<?,?> run = getContext().get(Run.class);
+            TaskListener listener = getContext().get(TaskListener.class);
             String[] parsed = LibraryAdder.parse(step.identifier);
             String name = parsed[0], version = parsed[1];
             boolean trusted = false;
@@ -204,9 +213,9 @@ public class LibraryStep extends AbstractStepImpl {
             // uses the library step with a non-null retriever to check out a static version of the library.
             // Fixing this would require us being able to detect usage of SCMVar precisely, which is not currently possible.
             else if (retriever instanceof SCMRetriever) {
-                verifyRevision(((SCMRetriever) retriever).getScm(), name);
+                verifyRevision(((SCMRetriever) retriever).getScm(), name, run, listener);
             } else if (retriever instanceof SCMSourceRetriever && ((SCMSourceRetriever) retriever).getScm() instanceof SingleSCMSource) {
-                verifyRevision(((SingleSCMSource) ((SCMSourceRetriever) retriever).getScm()).getScm(), name);
+                verifyRevision(((SingleSCMSource) ((SCMSourceRetriever) retriever).getScm()).getScm(), name, run, listener);
             }
 
             LibraryRecord record = new LibraryRecord(name, version, trusted, changelog, cachingConfiguration, source);
@@ -236,9 +245,9 @@ public class LibraryStep extends AbstractStepImpl {
             return new LoadedClasses(name, record.getDirectoryName(), trusted, changelog, run);
         }
 
-        private void verifyRevision(SCM scm, String name) throws IOException, InterruptedException {
+        private void verifyRevision(SCM scm, String name, Run<?,?> run, TaskListener listener) throws IOException, InterruptedException {
             for (LibraryStepRetrieverVerifier revisionVerifier : LibraryStepRetrieverVerifier.all()) {
-                revisionVerifier.verify(this.run, listener, scm, name);
+                revisionVerifier.verify(run, listener, scm, name);
             }
         }
 
