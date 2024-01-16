@@ -60,7 +60,7 @@ import java.util.logging.Logger;
 import edu.umd.cs.findbugs.annotations.CheckForNull;
 import edu.umd.cs.findbugs.annotations.NonNull;
 import groovy.lang.MissingPropertyException;
-import javax.inject.Inject;
+import jakarta.inject.Inject;
 import jenkins.model.Jenkins;
 import jenkins.scm.impl.SingleSCMSource;
 import org.codehaus.groovy.control.MultipleCompilationErrorsException;

@@ -29,7 +29,7 @@ import hudson.Extension;
 import hudson.Util;
 import java.util.Map;
 import edu.umd.cs.findbugs.annotations.CheckForNull;
-import javax.inject.Inject;
+import jakarta.inject.Inject;
 import org.jenkinsci.plugins.workflow.cps.CpsFlowExecution;
 import org.jenkinsci.plugins.workflow.flow.FlowExecution;
 import org.jenkinsci.plugins.workflow.steps.AbstractStepDescriptorImpl;
