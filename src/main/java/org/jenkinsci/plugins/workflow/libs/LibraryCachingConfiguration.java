@@ -2,11 +2,15 @@ package org.jenkinsci.plugins.workflow.libs;
 
 import hudson.Extension;
 import hudson.FilePath;
+import hudson.RestrictedSince;
 import hudson.model.AbstractDescribableImpl;
 import hudson.model.Descriptor;
 import hudson.util.FormValidation;
 import jenkins.model.Jenkins;
+import org.kohsuke.accmod.Restricted;
+import org.kohsuke.accmod.restrictions.NoExternalUse;
 import org.kohsuke.stapler.DataBoundConstructor;
+import org.kohsuke.stapler.DataBoundSetter;
 import org.kohsuke.stapler.QueryParameter;
 
 import java.io.IOException;
@@ -29,6 +33,7 @@ public final class LibraryCachingConfiguration extends AbstractDescribableImpl<L
     
     private int refreshTimeMinutes;
     private String excludedVersionsStr;
+    private String includedVersionsStr;
 
     private static final String VERSIONS_SEPARATOR = " ";
     public static final String GLOBAL_LIBRARIES_DIR = "global-libraries-cache";
@@ -37,6 +42,17 @@ public final class LibraryCachingConfiguration extends AbstractDescribableImpl<L
     @DataBoundConstructor public LibraryCachingConfiguration(int refreshTimeMinutes, String excludedVersionsStr) {
         this.refreshTimeMinutes = refreshTimeMinutes;
         this.excludedVersionsStr = excludedVersionsStr;
+        this.includedVersionsStr = "";
+    }
+
+    /*
+     * Visible for testing ...
+     */
+    @Restricted(NoExternalUse.class)
+    LibraryCachingConfiguration(int refreshTimeMinutes, String excludedVersionsStr, String includedVersionsStr) {
+        this.refreshTimeMinutes = refreshTimeMinutes;
+        this.excludedVersionsStr = excludedVersionsStr;
+        this.includedVersionsStr = includedVersionsStr;
     }
 
     public int getRefreshTimeMinutes() {
@@ -54,12 +70,30 @@ public final class LibraryCachingConfiguration extends AbstractDescribableImpl<L
     public String getExcludedVersionsStr() {
         return excludedVersionsStr;
     }
+    public String getIncludedVersionsStr() {
+        if(StringUtils.isBlank(includedVersionsStr)){
+            return null;
+        }
+            return includedVersionsStr;
+    }
+
+    @DataBoundSetter
+    public void setIncludedVersionsStr(String includedVersionsStr) {
+        this.includedVersionsStr = includedVersionsStr;
+    }
 
     private List<String> getExcludedVersions() {
         if (excludedVersionsStr == null) {
             return Collections.emptyList();
         }
         return Arrays.asList(excludedVersionsStr.split(VERSIONS_SEPARATOR));
+    }
+
+    private List<String> getIncludedVersions() {
+        if (includedVersionsStr == null) {
+            return Collections.emptyList();
+        }
+        return Arrays.asList(includedVersionsStr.split(VERSIONS_SEPARATOR));
     }
 
     public Boolean isExcluded(String version) {
@@ -70,6 +104,22 @@ public final class LibraryCachingConfiguration extends AbstractDescribableImpl<L
         for (String it : getExcludedVersions()) {
             // confirm that the excluded versions aren't null or empty
             // and if the version contains the exclusion thus it can be
+            // anywhere in the string.
+            if (StringUtils.isNotBlank(it) && version.contains(it)){
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public Boolean isIncluded(String version) {
+        // exit early if the version passed in is null or empty
+        if (StringUtils.isBlank(version)) {
+            return false;
+        }
+        for (String it : getIncludedVersions()) {
+            // works on empty or null included versions
+            // and if the version contains the inclusion thus it can be
             // anywhere in the string.
             if (StringUtils.isNotBlank(it) && version.contains(it)){
                 return true;
@@ -129,6 +179,5 @@ public final class LibraryCachingConfiguration extends AbstractDescribableImpl<L
             }
             return FormValidation.ok("The cache dir was deleted successfully.");
         }
-
     }
 }

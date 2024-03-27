@@ -24,10 +24,10 @@
 
 package org.jenkinsci.plugins.workflow.libs;
 
-import com.gargoylesoftware.htmlunit.HttpMethod;
-import com.gargoylesoftware.htmlunit.WebRequest;
-import com.gargoylesoftware.htmlunit.html.HtmlPage;
-import com.gargoylesoftware.htmlunit.util.NameValuePair;
+import org.htmlunit.HttpMethod;
+import org.htmlunit.WebRequest;
+import org.htmlunit.html.HtmlPage;
+import org.htmlunit.util.NameValuePair;
 import hudson.model.Item;
 import hudson.model.View;
 import java.net.URL;
@@ -57,6 +57,8 @@ public class GlobalLibrariesTest {
         assertEquals(Collections.emptyList(), gl.getLibraries());
         LibraryConfiguration foo = new LibraryConfiguration("foo", new SCMSourceRetriever(new SubversionSCMSource("foo", "https://phony.jenkins.io/foo/")));
         LibraryConfiguration bar = new LibraryConfiguration("bar", new SCMSourceRetriever(new GitSCMSource(null, "https://phony.jenkins.io/bar.git", "", "origin", "+refs/heads/*:refs/remotes/origin/*", "*", "", true)));
+        LibraryCachingConfiguration cachingConfiguration = new LibraryCachingConfiguration(120, "develop", "master stable");
+        foo.setCachingConfiguration(cachingConfiguration);
         bar.setDefaultVersion("master");
         bar.setImplicit(true);
         bar.setAllowVersionOverride(false);
@@ -72,6 +74,14 @@ public class GlobalLibrariesTest {
         r.assertEqualDataBoundBeans(Arrays.asList(foo, bar), libs);
         libs = gl.getLibraries();
         r.assertEqualDataBoundBeans(Arrays.asList(foo, bar), libs);
+        boolean noFoo = true;
+        for (LibraryConfiguration lib : libs) {
+            if ("foo".equals(lib.getName())) {
+                noFoo = false;
+                r.assertEqualDataBoundBeans(lib.getCachingConfiguration(), cachingConfiguration);
+            }
+        }
+        assertFalse("Missing a library called foo (should not happen)", noFoo);
     }
 
     @Issue("SECURITY-1422")
