@@ -516,6 +516,30 @@ public class LibraryAdderTest {
         // r.assertLogContains("Library library@master is cached. Copying from home.", f2.get());
     }
 
+    @Issue("JENKINS-69573")
+    @Test
+    public void refreshCacheIfNoSubdirs() throws Throwable{
+        sampleRepo.init();
+        sampleRepo.write("vars/foo.groovy", "def call() { echo 'foo' }");
+        sampleRepo.git("add", "vars");
+        sampleRepo.git("commit", "--message=init");
+        LibraryConfiguration config = new LibraryConfiguration("library",
+                new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true)));
+        config.setDefaultVersion("master");
+        config.setImplicit(true);
+        config.setCachingConfiguration(new LibraryCachingConfiguration(30, null));
+        GlobalLibraries.get().getLibraries().add(config);
+        WorkflowJob p1 = r.createProject(WorkflowJob.class);
+        p1.setDefinition(new CpsFlowDefinition("foo()", true));
+        WorkflowRun b1 = r.buildAndAssertSuccess(p1);
+        LibrariesAction action = b1.getAction(LibrariesAction.class);
+        LibraryRecord record = action.getLibraries().get(0);
+        FilePath cache = LibraryCachingConfiguration.getGlobalLibrariesCacheDir().child(record.getDirectoryName());
+        cache.deleteContents();
+        QueueTaskFuture<WorkflowRun> f1 = p1.scheduleBuild2(0);
+        r.assertBuildStatus(Result.SUCCESS, f1);
+    }
+
     @Issue("JENKINS-68544")
     @WithoutJenkins
     @Test public void className() {

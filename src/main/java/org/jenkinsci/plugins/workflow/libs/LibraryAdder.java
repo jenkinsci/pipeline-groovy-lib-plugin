@@ -167,7 +167,8 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
     private enum CacheStatus {
         VALID,
         DOES_NOT_EXIST,
-        EXPIRED;
+        EXPIRED,
+        INVALID;
     }
     
     private static CacheStatus getCacheStatus(@NonNull LibraryCachingConfiguration cachingConfiguration, @NonNull final FilePath versionCacheDir)
@@ -177,8 +178,13 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
             final long cachingMilliseconds = cachingConfiguration.getRefreshTimeMilliseconds();
 
             if(versionCacheDir.exists()) {
-                if ((versionCacheDir.lastModified() + cachingMilliseconds) > System.currentTimeMillis()) {
-                    return CacheStatus.VALID;
+                if ((versionCacheDir.lastModified() + cachingMilliseconds) > System.currentTimeMillis()){
+                    if (versionCacheDir.listDirectories().isEmpty()){
+                        return CacheStatus.INVALID;
+                    }
+                    else{
+                        return CacheStatus.VALID;
+                    }
                 } else {
                     return CacheStatus.EXPIRED;
                 }
@@ -218,7 +224,7 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
             retrieveLock.readLock().lockInterruptibly();
             try {
                 CacheStatus cacheStatus = getCacheStatus(cachingConfiguration, versionCacheDir);
-                if (cacheStatus == CacheStatus.DOES_NOT_EXIST || cacheStatus == CacheStatus.EXPIRED) {
+                if (cacheStatus == CacheStatus.DOES_NOT_EXIST || cacheStatus == CacheStatus.EXPIRED || cacheStatus == CacheStatus.INVALID) {
                     retrieveLock.readLock().unlock();
                     retrieveLock.writeLock().lockInterruptibly();
                     try {
@@ -239,7 +245,11 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
                                 }
                                 retrieve = true;
                                 break;
-                      }
+                          case INVALID:
+                                listener.getLogger().println("No subdirectories found in library " + name + "@" + version + ", refreshing cache.");
+                                retrieve = true;
+                                break;
+                        }
 
                         if (retrieve) {
                             listener.getLogger().println("Caching library " + name + "@" + version);
