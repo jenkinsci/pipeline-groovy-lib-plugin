@@ -243,8 +243,19 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
 
                         if (retrieve) {
                             listener.getLogger().println("Caching library " + name + "@" + version);
-                            versionCacheDir.mkdirs();
-                            retriever.retrieve(name, version, changelog, versionCacheDir, run, listener);
+                            FilePath tmpVersionCacheDir = new FilePath(LibraryCachingConfiguration.getGlobalLibrariesCacheDir(), record.getDirectoryName() + "@tmp");
+                            try {
+                                if (tmpVersionCacheDir.exists()) {
+                                    tmpVersionCacheDir.deleteRecursive();
+                                }
+                                tmpVersionCacheDir.mkdirs();
+                                retriever.retrieve(name, version, changelog, tmpVersionCacheDir, run, listener);
+                                tmpVersionCacheDir.renameTo(versionCacheDir);
+                            } finally {
+                                if (tmpVersionCacheDir.exists()) {
+                                    tmpVersionCacheDir.deleteRecursive();
+                                }
+                            }
                         }
                         retrieveLock.readLock().lock();
                     } finally {
