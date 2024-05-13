@@ -29,19 +29,21 @@ import hudson.Extension;
 import hudson.Util;
 import java.util.Map;
 import edu.umd.cs.findbugs.annotations.CheckForNull;
-import javax.inject.Inject;
+import java.util.Set;
 import org.jenkinsci.plugins.workflow.cps.CpsFlowExecution;
 import org.jenkinsci.plugins.workflow.flow.FlowExecution;
-import org.jenkinsci.plugins.workflow.steps.AbstractStepDescriptorImpl;
-import org.jenkinsci.plugins.workflow.steps.AbstractStepImpl;
-import org.jenkinsci.plugins.workflow.steps.AbstractSynchronousStepExecution;
+import org.jenkinsci.plugins.workflow.steps.Step;
+import org.jenkinsci.plugins.workflow.steps.StepContext;
+import org.jenkinsci.plugins.workflow.steps.StepDescriptor;
+import org.jenkinsci.plugins.workflow.steps.StepExecution;
+import org.jenkinsci.plugins.workflow.steps.SynchronousStepExecution;
 import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.DataBoundSetter;
 
 /**
  * Step to load a resource from a library.
  */
-public class ResourceStep extends AbstractStepImpl {
+public class ResourceStep extends Step {
 
     private final String resource;
     private String encoding;
@@ -67,11 +69,11 @@ public class ResourceStep extends AbstractStepImpl {
         this.encoding = Util.fixEmptyAndTrim(encoding);
     }
 
-    @Extension public static class DescriptorImpl extends AbstractStepDescriptorImpl {
+    @Override public StepExecution start(StepContext context) throws Exception {
+        return new Execution(this, context);
+    }
 
-        public DescriptorImpl() {
-            super(Execution.class);
-        }
+    @Extension public static class DescriptorImpl extends StepDescriptor {
 
         @Override public String getDisplayName() {
             return "Load a resource file from a library";
@@ -81,13 +83,22 @@ public class ResourceStep extends AbstractStepImpl {
             return "libraryResource";
         }
 
+        @Override public Set<? extends Class<?>> getRequiredContext() {
+            return Set.of(FlowExecution.class);
+        }
+
     }
 
-    public static class Execution extends AbstractSynchronousStepExecution<String> {
+    public static class Execution extends SynchronousStepExecution<String> {
 
         private static final long serialVersionUID = 1L;
 
-        @Inject private transient ResourceStep step;
+        private transient final ResourceStep step;
+
+        public Execution(ResourceStep step, StepContext context) {
+            super(context);
+            this.step = step;
+        }
 
         @Override protected String run() throws Exception {
             String resource = step.resource;
