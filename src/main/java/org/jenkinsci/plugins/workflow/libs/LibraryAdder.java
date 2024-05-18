@@ -244,7 +244,14 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
                         if (retrieve) {
                             listener.getLogger().println("Caching library " + name + "@" + version);
                             versionCacheDir.mkdirs();
-                            retriever.retrieve(name, version, changelog, versionCacheDir, run, listener);
+                            // try to retrieve the library and delete the versionCacheDir if it fails
+                            try {
+                                retriever.retrieve(name, version, changelog, versionCacheDir, run, listener);
+                            } catch (Exception e) {
+                                listener.getLogger().println("Failed to cache library " + name + "@" + version + ". Error message: " + e.getMessage() + ". Cleaning up cache directory.");
+                                versionCacheDir.deleteRecursive();
+                                throw e;
+                            }
                         }
                         retrieveLock.readLock().lock();
                     } finally {
