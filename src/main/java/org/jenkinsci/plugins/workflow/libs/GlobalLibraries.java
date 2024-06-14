@@ -65,7 +65,7 @@ import hudson.ExtensionList;
 
         @NonNull
         @Override
-        protected LibraryConfiguration mayWrapLibrary(LibraryConfiguration library) {
+        protected LibraryConfiguration mayWrapLibrary(@NonNull LibraryConfiguration library) {
             return library;
         }
     }

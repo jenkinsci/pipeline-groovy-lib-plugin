@@ -95,6 +95,6 @@ public abstract class AbstractGlobalLibraries extends GlobalConfiguration {
         }
 
         @NonNull
-        protected abstract LibraryConfiguration mayWrapLibrary(LibraryConfiguration library);
+        protected abstract LibraryConfiguration mayWrapLibrary(@NonNull LibraryConfiguration library);
     }
 }
