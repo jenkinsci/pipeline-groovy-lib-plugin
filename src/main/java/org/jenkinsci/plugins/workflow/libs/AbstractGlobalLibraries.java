@@ -31,6 +31,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 import jenkins.model.GlobalConfiguration;
 import jenkins.model.Jenkins;
 import net.sf.json.JSONObject;
@@ -86,7 +87,11 @@ public abstract class AbstractGlobalLibraries extends GlobalConfiguration {
         }
 
         private List<LibraryConfiguration> getLibraries() {
-            return getConfiguration().getLibraries();
+            return getConfiguration()
+                    .getLibraries()
+                    .stream()
+                    .map(library -> new ResolvedLibraryConfiguration(library, getClass().getName()))
+                    .collect(Collectors.toList());
         }
     }
 }
