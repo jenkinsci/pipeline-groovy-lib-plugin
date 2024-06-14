@@ -61,6 +61,7 @@ import jenkins.model.Jenkins;
     }
 
     @Extension(ordinal=0) public static class ForJob extends AbstractForJob {
+        @NonNull
         protected GlobalUntrustedLibraries getConfiguration() {
             return get();
         }
@@ -70,6 +71,7 @@ import jenkins.model.Jenkins;
             return false;
         }
 
+        @NonNull
         @Override
         protected LibraryConfiguration mayWrapLibrary(LibraryConfiguration library) {
             return new ResolvedLibraryConfiguration(library, getClass().getName());

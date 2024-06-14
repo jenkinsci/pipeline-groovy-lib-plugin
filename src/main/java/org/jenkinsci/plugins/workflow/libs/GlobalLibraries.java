@@ -53,6 +53,7 @@ import hudson.ExtensionList;
     }
 
     @Extension(ordinal=0) public static class ForJob extends AbstractForJob {
+        @NonNull
         protected GlobalLibraries getConfiguration() {
             return get();
         }
@@ -62,6 +63,7 @@ import hudson.ExtensionList;
             return true;
         }
 
+        @NonNull
         @Override
         protected LibraryConfiguration mayWrapLibrary(LibraryConfiguration library) {
             return library;

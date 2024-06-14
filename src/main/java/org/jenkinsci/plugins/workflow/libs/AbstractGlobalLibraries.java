@@ -68,6 +68,7 @@ public abstract class AbstractGlobalLibraries extends GlobalConfiguration {
     }
 
     abstract static class AbstractForJob extends LibraryResolver {
+        @NonNull
         protected abstract AbstractGlobalLibraries getConfiguration();
 
         @NonNull @Override public final Collection<LibraryConfiguration> forJob(@NonNull Job<?,?> job, @NonNull Map<String,String> libraryVersions) {
@@ -93,6 +94,7 @@ public abstract class AbstractGlobalLibraries extends GlobalConfiguration {
                     .collect(Collectors.toList());
         }
 
+        @NonNull
         protected abstract LibraryConfiguration mayWrapLibrary(LibraryConfiguration library);
     }
 }
