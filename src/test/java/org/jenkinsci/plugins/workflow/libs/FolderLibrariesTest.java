@@ -172,19 +172,10 @@ public class FolderLibrariesTest {
 
     /** @see GrapeTest#outsideLibrarySandbox */
     @Test public void noGrape() throws Exception {
-        sampleRepo1.init();
-        sampleRepo1.write("src/pkg/Wrapper.groovy",
-            "package pkg\n" +
-            "@Grab('commons-primitives:commons-primitives:1.0')\n" +
-            "import org.apache.commons.collections.primitives.ArrayIntList\n" +
-            "class Wrapper {static def list() {new ArrayIntList()}}");
-        sampleRepo1.git("add", "src");
-        sampleRepo1.git("commit", "--message=init");
         Folder d = r.jenkins.createProject(Folder.class, "d");
-        d.getProperties().add(new FolderLibraries(Collections.singletonList(new LibraryConfiguration("grape", new SCMSourceRetriever(new GitSCMSource(null, sampleRepo1.toString(), "", "*", "", true))))));
+        d.getProperties().add(new FolderLibraries(List.of(LibraryTestUtils.defineLibraryUsingGrab("grape", sampleRepo1))));
         WorkflowJob p = d.createProject(WorkflowJob.class, "p");
         p.setDefinition(new CpsFlowDefinition("@Library('grape@master') import pkg.Wrapper; echo(/should not have been able to run ${pkg.Wrapper.list()}/)", true));
-        ScriptApproval.get().approveSignature("new org.apache.commons.collections.primitives.ArrayIntList");
         r.assertLogContains("Annotation Grab cannot be used in the sandbox", r.assertBuildStatus(Result.FAILURE, p.scheduleBuild2(0)));
     }
 
