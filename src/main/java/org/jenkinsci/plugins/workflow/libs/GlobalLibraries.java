@@ -56,5 +56,10 @@ import hudson.ExtensionList;
         protected GlobalLibraries getConfiguration() {
             return get();
         }
+
+        @Override
+        public boolean isTrusted() {
+            return true;
+        }
     }
 }

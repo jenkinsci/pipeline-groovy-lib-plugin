@@ -69,10 +69,6 @@ public abstract class AbstractGlobalLibraries extends GlobalConfiguration {
     abstract static class AbstractForJob extends LibraryResolver {
         protected abstract AbstractGlobalLibraries getConfiguration();
 
-        @Override public boolean isTrusted() {
-            return true;
-        }
-
         @NonNull @Override public final Collection<LibraryConfiguration> forJob(@NonNull Job<?,?> job, @NonNull Map<String,String> libraryVersions) {
             return getLibraries();
         }
