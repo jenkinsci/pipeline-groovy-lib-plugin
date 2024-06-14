@@ -90,8 +90,12 @@ public abstract class AbstractGlobalLibraries extends GlobalConfiguration {
             return getConfiguration()
                     .getLibraries()
                     .stream()
-                    .map(library -> new ResolvedLibraryConfiguration(library, getClass().getName()))
+                    .map(this::mayWrapLibrary)
                     .collect(Collectors.toList());
+        }
+
+        protected LibraryConfiguration mayWrapLibrary(LibraryConfiguration library) {
+            return library;
         }
     }
 }
