@@ -94,8 +94,6 @@ public abstract class AbstractGlobalLibraries extends GlobalConfiguration {
                     .collect(Collectors.toList());
         }
 
-        protected LibraryConfiguration mayWrapLibrary(LibraryConfiguration library) {
-            return library;
-        }
+        protected abstract LibraryConfiguration mayWrapLibrary(LibraryConfiguration library);
     }
 }

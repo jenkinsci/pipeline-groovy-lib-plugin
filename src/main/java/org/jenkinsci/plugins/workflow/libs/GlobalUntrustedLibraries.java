@@ -66,13 +66,13 @@ import jenkins.model.Jenkins;
         }
 
         @Override
-        protected LibraryConfiguration mayWrapLibrary(LibraryConfiguration library) {
-            return new ResolvedLibraryConfiguration(library, getClass().getName());
+        public boolean isTrusted() {
+            return false;
         }
 
         @Override
-        public boolean isTrusted() {
-            return false;
+        protected LibraryConfiguration mayWrapLibrary(LibraryConfiguration library) {
+            return new ResolvedLibraryConfiguration(library, getClass().getName());
         }
     }
 }

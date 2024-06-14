@@ -61,5 +61,10 @@ import hudson.ExtensionList;
         public boolean isTrusted() {
             return true;
         }
+
+        @Override
+        protected LibraryConfiguration mayWrapLibrary(LibraryConfiguration library) {
+            return library;
+        }
     }
 }
