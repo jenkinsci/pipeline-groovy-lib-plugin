@@ -68,10 +68,8 @@ import org.kohsuke.stapler.StaplerRequest;
 
     @Override public boolean configure(StaplerRequest req, JSONObject json) throws FormException {
         if (Jenkins.get().hasPermission(Jenkins.ADMINISTER)) {
-            setLibraries(Collections.<LibraryConfiguration>emptyList()); // allow last library to be deleted
-            // TODO 2.19+ super.configure(req, json)
-            req.bindJSON(this, json);
-            return true;
+            setLibraries(Collections.emptyList()); // allow last library to be deleted
+            return super.configure(req, json);
         } else {
             return true;
         }
@@ -83,18 +81,18 @@ import org.kohsuke.stapler.StaplerRequest;
             return true;
         }
 
-        @Override public Collection<LibraryConfiguration> forJob(Job<?,?> job, Map<String,String> libraryVersions) {
+        @NonNull @Override public Collection<LibraryConfiguration> forJob(@NonNull Job<?,?> job, @NonNull Map<String,String> libraryVersions) {
             return GlobalLibraries.get().getLibraries();
         }
 
-        @Override public Collection<LibraryConfiguration> fromConfiguration(StaplerRequest request) {
+        @NonNull @Override public Collection<LibraryConfiguration> fromConfiguration(@NonNull StaplerRequest request) {
             if (Jenkins.get().hasPermission(Jenkins.ADMINISTER)) {
                 return GlobalLibraries.get().getLibraries();
             }
             return Collections.emptySet();
         }
 
-        @Override public Collection<LibraryConfiguration> suggestedConfigurations(ItemGroup<?> group) {
+        @NonNull @Override public Collection<LibraryConfiguration> suggestedConfigurations(@NonNull ItemGroup<?> group) {
             return GlobalLibraries.get().getLibraries();
         }
 
