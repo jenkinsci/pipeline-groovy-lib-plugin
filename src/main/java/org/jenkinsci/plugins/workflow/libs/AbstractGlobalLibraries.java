@@ -75,8 +75,7 @@ public abstract class AbstractGlobalLibraries extends GlobalConfiguration {
         }
 
         @NonNull @Override public final Collection<LibraryConfiguration> fromConfiguration(@NonNull StaplerRequest request) {
-            AbstractGlobalLibraries abstractGlobalLibraries = getConfiguration();
-            if (Jenkins.get().hasPermission(abstractGlobalLibraries.getRequiredGlobalConfigPagePermission())) {
+            if (Jenkins.get().hasPermission(getConfiguration().getRequiredGlobalConfigPagePermission())) {
                 return getLibraries();
             }
             return Collections.emptySet();
