@@ -60,7 +60,7 @@ import jenkins.model.Jenkins;
         return Jenkins.MANAGE;
     }
 
-    @Extension(ordinal=0) public static class ForJob extends AbstractForJob {
+    @Extension(ordinal=1) public static class ForJob extends AbstractForJob {
         @NonNull
         protected GlobalUntrustedLibraries getConfiguration() {
             return get();
