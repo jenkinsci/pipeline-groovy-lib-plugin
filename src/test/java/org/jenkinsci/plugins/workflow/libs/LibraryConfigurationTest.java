@@ -24,7 +24,7 @@
 
 package org.jenkinsci.plugins.workflow.libs;
 
-import java.util.Collections;
+import java.util.List;
 
 import hudson.plugins.git.GitSCM;
 import org.hamcrest.Matchers;
@@ -69,29 +69,24 @@ public class LibraryConfigurationTest {
     }
 
     @Issue("JENKINS-59527")
-    @Test public void emptyStringDefaultVersionAndName() {
-        String libraryName = "";
-        String defaultVersion = "";
+    @Test public void emptyDefaultVersion() {
+        LibraryConfiguration cfg = new LibraryConfiguration("test", new SCMRetriever(new GitSCM("https://phony.jenkins.io/bar.git")));
+        cfg.setDefaultVersion("");
+        assertNull(cfg.getDefaultVersion());
 
-        LibraryConfiguration cfg = new LibraryConfiguration(libraryName, new SCMRetriever(new GitSCM("https://phony.jenkins.io/bar.git")));
-        cfg.setDefaultVersion(defaultVersion);
-
-        assertNull(cfg.getName());
+        cfg = new LibraryConfiguration("test", new SCMRetriever(new GitSCM("https://phony.jenkins.io/bar.git")));
+        cfg.setDefaultVersion(null);
         assertNull(cfg.getDefaultVersion());
     }
 
-    @Issue("JENKINS-59527")
-    @Test public void nullDefaultVersionAndName() {
-        String libraryName = null;
-        String defaultVersion = null;
-
-        LibraryConfiguration cfg = new LibraryConfiguration(libraryName, new SCMRetriever(new GitSCM("https://phony.jenkins.io/bar.git")));
-        cfg.setDefaultVersion(defaultVersion);
-
-        assertNull(cfg.getName());
-        assertNull(cfg.getDefaultVersion());
+    @Issue("JENKINS-63355")
+    @Test public void emptyNameCannotBeSaved() throws Exception {
+        assertThrows(IllegalArgumentException.class, () -> GlobalLibraries.get().setLibraries(List.of(
+            new LibraryConfiguration(null, new SCMRetriever(new GitSCM("https://phony.jenkins.io/bar.git")))
+        )));
+        assertThrows(IllegalArgumentException.class, () -> GlobalLibraries.get().setLibraries(List.of(
+            new LibraryConfiguration("", new SCMRetriever(new GitSCM("https://phony.jenkins.io/bar.git")))
+        )));
     }
-
-
 
 }
