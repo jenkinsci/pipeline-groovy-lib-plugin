@@ -91,7 +91,7 @@ public class LibraryStep extends Step {
     private static final Logger LOGGER = Logger.getLogger(LibraryStep.class.getName());
 
     private final String identifier;
-    private Boolean changelog = true;
+    private Boolean changelog;
     private LibraryRetriever retriever;
 
     @DataBoundConstructor public LibraryStep(String identifier) {
@@ -218,7 +218,7 @@ public class LibraryStep extends Step {
                 verifyRevision(((SingleSCMSource) ((SCMSourceRetriever) retriever).getScm()).getScm(), name, run, listener);
             }
 
-            LibraryRecord record = new LibraryRecord(name, version, trusted, changelog, cachingConfiguration, source);
+            LibraryRecord record = new LibraryRecord(name, version, trusted, Boolean.TRUE.equals(changelog), cachingConfiguration, source);
             LibrariesAction action = run.getAction(LibrariesAction.class);
             if (action == null) {
                 action = new LibrariesAction(Lists.newArrayList(record));
