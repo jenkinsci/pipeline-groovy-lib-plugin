@@ -1,7 +1,7 @@
 /*
  * The MIT License
  *
- * Copyright 2016 CloudBees, Inc.
+ * Copyright 2024 CloudBees, Inc.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -27,46 +27,54 @@ package org.jenkinsci.plugins.workflow.libs;
 import edu.umd.cs.findbugs.annotations.NonNull;
 import hudson.Extension;
 import hudson.ExtensionList;
+import hudson.security.Permission;
+import jenkins.model.Jenkins;
 
 /**
- * Manages libraries available to any job in the system.
+ * Manages untrusted libraries available to any job in the system.
  */
-@Extension public class GlobalLibraries extends AbstractGlobalLibraries {
+@Extension public class GlobalUntrustedLibraries extends AbstractGlobalLibraries {
 
-    public GlobalLibraries() {
+    public GlobalUntrustedLibraries() {
         super();
     }
 
     @Override
     public String getDescription() {
-        return Messages.GlobalLibraries_Description();
+        return Messages.GlobalUntrustedLibraries_Description();
     }
 
     @NonNull
     @Override
     public String getDisplayName() {
-        return Messages.GlobalLibraries_DisplayName();
+        return Messages.GlobalUntrustedLibraries_DisplayName();
     }
 
-    public static @NonNull GlobalLibraries get() {
-        return ExtensionList.lookupSingleton(GlobalLibraries.class);
+    public static @NonNull GlobalUntrustedLibraries get() {
+        return ExtensionList.lookupSingleton(GlobalUntrustedLibraries.class);
     }
 
-    @Extension(ordinal=0) public static class ForJob extends AbstractForJob {
+    @NonNull
+    @Override
+    public Permission getRequiredGlobalConfigPagePermission() {
+        return Jenkins.MANAGE;
+    }
+
+    @Extension(ordinal=1) public static class ForJob extends AbstractForJob {
         @NonNull
-        protected GlobalLibraries getConfiguration() {
+        protected GlobalUntrustedLibraries getConfiguration() {
             return get();
         }
 
         @Override
         public boolean isTrusted() {
-            return true;
+            return false;
         }
 
         @NonNull
         @Override
         protected LibraryConfiguration mayWrapLibrary(@NonNull LibraryConfiguration library) {
-            return library;
+            return new ResolvedLibraryConfiguration(library, getClass().getName());
         }
     }
 }

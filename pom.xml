@@ -65,6 +65,7 @@
         <changelist>999999-SNAPSHOT</changelist>
         <jenkins.version>2.414.3</jenkins.version>
         <gitHubRepo>jenkinsci/${project.artifactId}-plugin</gitHubRepo>
+        <useBeta>true</useBeta>
     </properties>
     <dependencyManagement>
         <dependencies>
@@ -135,6 +136,13 @@
         </dependency>
 
         <!-- test only plugins -->
+        <dependency>
+            <!-- GlobalUntrustedLibrariesTest#configRoundtrip -->
+            <groupId>io.jenkins.plugins</groupId>
+            <artifactId>manage-permission</artifactId>
+            <version>1.0.1</version>
+            <scope>test</scope>
+        </dependency>
         <dependency>
             <groupId>org.jenkins-ci.plugins.workflow</groupId>
             <artifactId>workflow-support</artifactId>
