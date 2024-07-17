@@ -1,0 +1,15 @@
+unclassified:
+  globalLibraries:
+    libraries:
+      - defaultVersion: "dev"
+        includeInChangesets: false
+        name: "cloudbees-shared-library"
+        retriever:
+          modernSCM:
+            clone: true
+            scm:
+              git:
+                credentialsId:
+                remote:
+                traits:
+                  - "gitBranchDiscovery"
