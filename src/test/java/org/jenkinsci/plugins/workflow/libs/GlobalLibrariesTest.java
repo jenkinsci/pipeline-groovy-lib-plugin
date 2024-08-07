@@ -125,13 +125,13 @@ public class GlobalLibrariesTest {
         r.assertEqualDataBoundBeans(Arrays.asList(bar), libs);
         libs = gl.getLibraries();
         r.assertEqualDataBoundBeans(Arrays.asList(bar), libs);
-        boolean noFoo = true;
+        boolean noBar = true;
         for (LibraryConfiguration lib : libs) {
-            if ("foo".equals(lib.getName())) {
-                noFoo = false;
+            if ("bar".equals(lib.getName())) {
+                noBar = false;
                 r.assertEqualDataBoundBeans(lib.getCachingConfiguration(), cachingConfiguration);
             }
         }
-        assertFalse("Missing a library called foo (should not happen)", noFoo);
+        assertFalse("Missing a library called bar (should not happen)", noBar);
     }
 }
