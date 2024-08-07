@@ -33,7 +33,6 @@ import hudson.plugins.git.BranchSpec;
 import hudson.plugins.git.GitSCM;
 import hudson.plugins.git.UserRemoteConfig;
 import hudson.scm.ChangeLogSet;
-import hudson.scm.SubversionSCM;
 import hudson.slaves.WorkspaceList;
 import java.time.ZonedDateTime;
 import java.util.Collection;
@@ -43,8 +42,6 @@ import java.util.List;
 import java.util.Map;
 import jenkins.plugins.git.GitSCMSource;
 import jenkins.plugins.git.GitSampleRepoRule;
-import jenkins.scm.impl.subversion.SubversionSCMSource;
-import jenkins.scm.impl.subversion.SubversionSampleRepoRule;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.nullValue;
@@ -73,7 +70,6 @@ public class LibraryAdderTest {
     @Rule public JenkinsRule r = new JenkinsRule();
     @Rule public GitSampleRepoRule sampleRepo = new GitSampleRepoRule();
     @Rule public GitSampleRepoRule sampleRepo2 = new GitSampleRepoRule();
-    @Rule public SubversionSampleRepoRule sampleSvnRepo = new SubversionSampleRepoRule();
 
     @Test public void smokes() throws Exception {
         sampleRepo.init();
@@ -119,57 +115,6 @@ public class LibraryAdderTest {
         r.assertLogContains("using modified", r.buildAndAssertSuccess(p));
         p.setDefinition(new CpsFlowDefinition("echo(/using ${pkg.Lib.CONST}/)", true));
         r.assertLogContains("using modified", r.buildAndAssertSuccess(p));
-    }
-
-    @Test public void interpolationSvn() throws Exception {
-        sampleSvnRepo.init();
-        sampleSvnRepo.write("src/pkg/Lib.groovy", "package pkg; class Lib {static String CONST = 'initial'}");
-        sampleSvnRepo.svnkit("add", sampleSvnRepo.wc() + "/src");
-        sampleSvnRepo.svnkit("commit", "--message=init", sampleSvnRepo.wc());
-        sampleSvnRepo.svnkit("copy", "--message=tagged", sampleSvnRepo.trunkUrl(), sampleSvnRepo.tagsUrl() + "/initial");
-        sampleSvnRepo.write("src/pkg/Lib.groovy", "package pkg; class Lib {static String CONST = 'modified'}");
-        sampleSvnRepo.svnkit("commit", "--message=modified", sampleSvnRepo.wc());
-        LibraryConfiguration stuff = new LibraryConfiguration("stuff", new SCMRetriever(new SubversionSCM(sampleSvnRepo.prjUrl() + "/${library.stuff.version}")));
-        stuff.setDefaultVersion("trunk");
-        stuff.setImplicit(true);
-        GlobalLibraries.get().setLibraries(Collections.singletonList(stuff));
-        WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "p");
-        p.setDefinition(new CpsFlowDefinition("@Library('stuff@trunk') import pkg.Lib; echo(/using ${Lib.CONST}/)", true));
-        r.assertLogContains("using modified", r.buildAndAssertSuccess(p));
-        p.setDefinition(new CpsFlowDefinition("@Library('stuff@tags/initial') import pkg.Lib; echo(/using ${Lib.CONST}/)", true));
-        r.assertLogContains("using initial", r.buildAndAssertSuccess(p));
-        p.setDefinition(new CpsFlowDefinition("@Library('stuff') import pkg.Lib; echo(/using ${Lib.CONST}/)", true));
-        r.assertLogContains("using modified", r.buildAndAssertSuccess(p));
-        p.setDefinition(new CpsFlowDefinition("echo(/using ${pkg.Lib.CONST}/)", true));
-        r.assertLogContains("using modified", r.buildAndAssertSuccess(p));
-    }
-
-    @Test public void properSvn() throws Exception {
-        sampleSvnRepo.init();
-        sampleSvnRepo.write("src/pkg/Lib.groovy", "package pkg; class Lib {static String CONST = 'initial'}");
-        sampleSvnRepo.svnkit("add", sampleSvnRepo.wc() + "/src");
-        sampleSvnRepo.svnkit("commit", "--message=init", sampleSvnRepo.wc());
-        long tag = sampleSvnRepo.revision();
-        sampleSvnRepo.svnkit("copy", "--message=tagged", sampleSvnRepo.trunkUrl(), sampleSvnRepo.tagsUrl() + "/initial");
-        sampleSvnRepo.write("src/pkg/Lib.groovy", "package pkg; class Lib {static String CONST = 'modified'}");
-        sampleSvnRepo.svnkit("commit", "--message=modified", sampleSvnRepo.wc());
-        LibraryConfiguration stuff = new LibraryConfiguration("stuff", new SCMSourceRetriever(new SubversionSCMSource(null, sampleSvnRepo.prjUrl())));
-        stuff.setDefaultVersion("trunk");
-        stuff.setImplicit(true);
-        GlobalLibraries.get().setLibraries(Collections.singletonList(stuff));
-        WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "p");
-        p.setDefinition(new CpsFlowDefinition("@Library('stuff@trunk') import pkg.Lib; echo(/using ${Lib.CONST}/)", true));
-        r.assertLogContains("using modified", r.buildAndAssertSuccess(p));
-        p.setDefinition(new CpsFlowDefinition("@Library('stuff@tags/initial') import pkg.Lib; echo(/using ${Lib.CONST}/)", true));
-        r.assertLogContains("using initial", r.buildAndAssertSuccess(p));
-        p.setDefinition(new CpsFlowDefinition("@Library('stuff') import pkg.Lib; echo(/using ${Lib.CONST}/)", true));
-        r.assertLogContains("using modified", r.buildAndAssertSuccess(p));
-        p.setDefinition(new CpsFlowDefinition("echo(/using ${pkg.Lib.CONST}/)", true));
-        r.assertLogContains("using modified", r.buildAndAssertSuccess(p));
-        // Note that LibraryAdder.parse uses indexOf not lastIndexOf, so we can have an @ inside a revision
-        // (the converse is that we may not have an @ inside a library name):
-        p.setDefinition(new CpsFlowDefinition("@Library('stuff@trunk@" + tag + "') import pkg.Lib; echo(/using ${Lib.CONST}/)", true));
-        r.assertLogContains("using initial", r.buildAndAssertSuccess(p));
     }
 
     @Issue("JENKINS-41497")

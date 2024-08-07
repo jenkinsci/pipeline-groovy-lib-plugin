@@ -37,7 +37,6 @@ import java.util.List;
 import jenkins.model.Jenkins;
 import jenkins.plugins.git.GitSCMSource;
 import jenkins.plugins.git.GitSampleRepoRule;
-import jenkins.scm.impl.subversion.SubversionSCMSource;
 import org.htmlunit.HttpMethod;
 import org.htmlunit.WebRequest;
 import org.htmlunit.html.HtmlPage;
@@ -108,14 +107,13 @@ public class GlobalLibrariesTest {
 
     static void configRoundtrip(JenkinsRule r, AbstractGlobalLibraries gl, Permission... alicePrivileges) throws Exception {
         assertEquals(Collections.emptyList(), gl.getLibraries());
-        LibraryConfiguration foo = new LibraryConfiguration("foo", new SCMSourceRetriever(new SubversionSCMSource("foo", "https://phony.jenkins.io/foo/")));
         LibraryConfiguration bar = new LibraryConfiguration("bar", new SCMSourceRetriever(new GitSCMSource(null, "https://phony.jenkins.io/bar.git", "", "origin", "+refs/heads/*:refs/remotes/origin/*", "*", "", true)));
         LibraryCachingConfiguration cachingConfiguration = new LibraryCachingConfiguration(120, "develop", "master stable");
-        foo.setCachingConfiguration(cachingConfiguration);
+        bar.setCachingConfiguration(cachingConfiguration);
         bar.setDefaultVersion("master");
         bar.setImplicit(true);
         bar.setAllowVersionOverride(false);
-        gl.setLibraries(Arrays.asList(foo, bar));
+        gl.setLibraries(Arrays.asList(bar));
         r.jenkins.setSecurityRealm(r.createDummySecurityRealm());
         r.jenkins.setAuthorizationStrategy(new MockAuthorizationStrategy().
                 grant(alicePrivileges).everywhere().to("alice")
@@ -124,16 +122,16 @@ public class GlobalLibrariesTest {
         assertThat(configurePage.getWebResponse().getContentAsString(), containsString("https://phony.jenkins.io/bar.git"));
         r.submit(configurePage.getFormByName("config")); // JenkinsRule.configRoundtrip expanded to include login
         List<LibraryConfiguration> libs = gl.getLibraries();
-        r.assertEqualDataBoundBeans(Arrays.asList(foo, bar), libs);
+        r.assertEqualDataBoundBeans(Arrays.asList(bar), libs);
         libs = gl.getLibraries();
-        r.assertEqualDataBoundBeans(Arrays.asList(foo, bar), libs);
-        boolean noFoo = true;
+        r.assertEqualDataBoundBeans(Arrays.asList(bar), libs);
+        boolean noBar = true;
         for (LibraryConfiguration lib : libs) {
-            if ("foo".equals(lib.getName())) {
-                noFoo = false;
+            if ("bar".equals(lib.getName())) {
+                noBar = false;
                 r.assertEqualDataBoundBeans(lib.getCachingConfiguration(), cachingConfiguration);
             }
         }
-        assertFalse("Missing a library called foo (should not happen)", noFoo);
+        assertFalse("Missing a library called bar (should not happen)", noBar);
     }
 }
