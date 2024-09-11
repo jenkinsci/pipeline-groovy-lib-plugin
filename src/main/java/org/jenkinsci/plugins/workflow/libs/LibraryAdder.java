@@ -247,6 +247,24 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
                             // try to retrieve the library and delete the versionCacheDir if it fails
                             try {
                                 retriever.retrieve(name, version, changelog, versionCacheDir, run, listener);
+                                boolean cacheDirIsEmptyAfterRetrieval = true;
+                                // Going by the message ERROR: Library <library> expected to contain at least one of src or vars directories
+                                for (String rootName : new String[] {"src", "vars"}) {
+                                    FilePath root = versionCacheDir.child(rootName);
+                                    if (root.isDirectory() && root.list().size() > 0) {
+                                        cacheDirIsEmptyAfterRetrieval = false;
+                                        break;
+                                    }
+                                }
+                                if (cacheDirIsEmptyAfterRetrieval) {
+                                    String message = "Library " + name + "@" + version + " is empty. Cleaning up cache directory.";
+                                    listener.getLogger().println(message);
+                                    // Log a warning at controller level as well
+                                    LOGGER.log(Level.WARNING, message);
+                                    versionCacheDir.deleteRecursive();
+                                    throw new AbortException("Library " + name + "@" + version + " is empty.");
+                                }
+                                listener.getLogger().println("Library " + name + "@" + version + " successfully cached.");
                             } catch (Exception e) {
                                 listener.getLogger().println("Failed to cache library " + name + "@" + version + ". Error message: " + e.getMessage() + ". Cleaning up cache directory.");
                                 versionCacheDir.deleteRecursive();
