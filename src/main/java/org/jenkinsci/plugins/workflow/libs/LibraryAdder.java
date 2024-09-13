@@ -34,6 +34,7 @@ import hudson.model.TaskListener;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.MalformedURLException;
 import java.net.URL;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -133,8 +134,13 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
                 if (cfg instanceof LibraryResolver.ResolvedLibraryConfiguration) {
                     source = ((LibraryResolver.ResolvedLibraryConfiguration) cfg).getSource();
                 }
-                librariesAdded.put(name, new LibraryRecord(name, version, kindTrusted, changelog, cfg.getCachingConfiguration(), source));
-                retrievers.put(name, cfg.getRetriever());
+                LibraryRetriever retriever = cfg.getRetriever();
+                String libraryPath = null;
+                if (retriever instanceof SCMBasedRetriever) {
+                    libraryPath = ((SCMBasedRetriever) retriever).getLibraryPath();
+                }
+                librariesAdded.put(name, new LibraryRecord(name, version, kindTrusted, changelog, cfg.getCachingConfiguration(), source, libraryPath));
+                retrievers.put(name, retriever);
             }
         }
         for (String name : librariesAdded.keySet()) {
@@ -147,7 +153,7 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
         build.addAction(new LibrariesAction(new ArrayList<>(librariesAdded.values())));
         // Now actually try to retrieve the libraries.
         for (LibraryRecord record : librariesAdded.values()) {
-            listener.getLogger().println("Loading library " + record.name + "@" + record.version);
+            listener.getLogger().println("Loading library " + record.getLogString());
             for (URL u : retrieve(record, retrievers.get(record.name), listener, build, execution)) {
                 additions.add(new Addition(u, record.trusted));
             }
@@ -166,10 +172,11 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
 
     private enum CacheStatus {
         VALID,
+        EMPTY,
         DOES_NOT_EXIST,
         EXPIRED;
     }
-    
+
     private static CacheStatus getCacheStatus(@NonNull LibraryCachingConfiguration cachingConfiguration, @NonNull final FilePath versionCacheDir)
           throws IOException, InterruptedException
     {
@@ -178,6 +185,9 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
 
             if(versionCacheDir.exists()) {
                 if ((versionCacheDir.lastModified() + cachingMilliseconds) > System.currentTimeMillis()) {
+                    if (getUrlsForLibDir(versionCacheDir).isEmpty()) {
+                        return CacheStatus.EMPTY;
+                    }
                     return CacheStatus.VALID;
                 } else {
                     return CacheStatus.EXPIRED;
@@ -187,6 +197,9 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
             }
         } else {
             if (versionCacheDir.exists()) {
+                if (getUrlsForLibDir(versionCacheDir).isEmpty()) {
+                    return CacheStatus.EMPTY;
+                }
                 return CacheStatus.VALID;
             } else {
                 return CacheStatus.DOES_NOT_EXIST;
@@ -199,6 +212,7 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
         String name = record.name;
         String version = record.version;
         boolean changelog = record.changelog;
+        String libraryLogString = record.getLogString();
         LibraryCachingConfiguration cachingConfiguration = record.cachingConfiguration;
         FilePath libDir = new FilePath(execution.getOwner().getRootDir()).child("libs/" + record.getDirectoryName());
         Boolean shouldCache = cachingConfiguration != null;
@@ -207,7 +221,7 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
         final FilePath lastReadFile = new FilePath(versionCacheDir, LibraryCachingConfiguration.LAST_READ_FILE);
 
         if(shouldCache && cachingConfiguration.isExcluded(version)) {
-            listener.getLogger().println("Library " + name + "@" + version + " is excluded from caching.");
+            listener.getLogger().println("Library " + libraryLogString + " is excluded from caching.");
             shouldCache = false;
         }
 
@@ -218,56 +232,51 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
             retrieveLock.readLock().lockInterruptibly();
             try {
                 CacheStatus cacheStatus = getCacheStatus(cachingConfiguration, versionCacheDir);
-                if (cacheStatus == CacheStatus.DOES_NOT_EXIST || cacheStatus == CacheStatus.EXPIRED) {
+                if (cacheStatus == CacheStatus.DOES_NOT_EXIST || cacheStatus == CacheStatus.EXPIRED || cacheStatus == CacheStatus.EMPTY) {
                     retrieveLock.readLock().unlock();
                     retrieveLock.writeLock().lockInterruptibly();
                     try {
                       boolean retrieve = false;
                       switch (getCacheStatus(cachingConfiguration, versionCacheDir)) {
                           case VALID:
-                              listener.getLogger().println("Library " + name + "@" + version + " is cached. Copying from home.");
-                                break;
+                              listener.getLogger().println("Library " + libraryLogString + " is cached. Copying from home.");
+                              break;
+                          case EMPTY:
+                              listener.getLogger().println("Library " + libraryLogString + " should have been cached but is empty, re-caching.");
+                              deleteCacheDirIfExists(versionCacheDir);
+                              retrieve = true;
+                              break;
                           case DOES_NOT_EXIST:
                               retrieve = true;
                               break;
                           case EXPIRED:
                               long cachingMinutes = cachingConfiguration.getRefreshTimeMinutes();
-                              listener.getLogger().println("Library " + name + "@" + version + " is due for a refresh after " + cachingMinutes + " minutes, clearing.");
-                                if (versionCacheDir.exists()) {
-                                    versionCacheDir.deleteRecursive();
-                                    versionCacheDir.withSuffix("-name.txt").delete();
-                                }
-                                retrieve = true;
-                                break;
+                              listener.getLogger().println("Library " + libraryLogString + " is due for a refresh after " + cachingMinutes + " minutes, clearing.");
+                              deleteCacheDirIfExists(versionCacheDir);
+                              retrieve = true;
+                              break;
                       }
 
                         if (retrieve) {
-                            listener.getLogger().println("Caching library " + name + "@" + version);
+                            listener.getLogger().println("Caching library " + libraryLogString);
                             versionCacheDir.mkdirs();
                             // try to retrieve the library and delete the versionCacheDir if it fails
                             try {
                                 retriever.retrieve(name, version, changelog, versionCacheDir, run, listener);
-                                boolean cacheDirIsEmptyAfterRetrieval = true;
-                                // Going by the message ERROR: Library <library> expected to contain at least one of src or vars directories
-                                for (String rootName : new String[] {"src", "vars"}) {
-                                    FilePath root = versionCacheDir.child(rootName);
-                                    if (root.isDirectory() && root.list().size() > 0) {
-                                        cacheDirIsEmptyAfterRetrieval = false;
-                                        break;
-                                    }
-                                }
-                                if (cacheDirIsEmptyAfterRetrieval) {
-                                    String message = "Library " + name + "@" + version + " is empty. Cleaning up cache directory.";
+                                if (getUrlsForLibDir(versionCacheDir).isEmpty()) {
+                                    // Get job name and build number from run
+                                    String jobName = run.getParent().getFullName();
+                                    String message = "Library " + libraryLogString + " is empty after retrieval in job " + jobName + ". Cleaning up cache directory.";
                                     listener.getLogger().println(message);
                                     // Log a warning at controller level as well
                                     LOGGER.log(Level.WARNING, message);
-                                    versionCacheDir.deleteRecursive();
-                                    throw new AbortException("Library " + name + "@" + version + " is empty.");
+                                    deleteCacheDirIfExists(versionCacheDir);
+                                    throw new AbortException("Library " + libraryLogString + " is empty.");
                                 }
-                                listener.getLogger().println("Library " + name + "@" + version + " successfully cached.");
+                                listener.getLogger().println("Library " + libraryLogString + " successfully cached.");
                             } catch (Exception e) {
-                                listener.getLogger().println("Failed to cache library " + name + "@" + version + ". Error message: " + e.getMessage() + ". Cleaning up cache directory.");
-                                versionCacheDir.deleteRecursive();
+                                listener.getLogger().println("Failed to cache library " + libraryLogString + ". Error message: " + e.getMessage() + ". Cleaning up cache directory.");
+                                deleteCacheDirIfExists(versionCacheDir);
                                 throw e;
                             }
                         }
@@ -276,7 +285,7 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
                         retrieveLock.writeLock().unlock();
                     }
                 } else {
-                    listener.getLogger().println("Library " + name + "@" + version + " is cached. Copying from home.");
+                    listener.getLogger().println("Library " + libraryLogString + " is cached. Copying from home.");
                 }
 
                 lastReadFile.touch(System.currentTimeMillis());
@@ -307,6 +316,25 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
                 }
             }
         }
+        List<URL> urls = getUrlsForLibDir(libDir, record);
+        if (urls.isEmpty()) {
+            throw new AbortException("Library " + name + " expected to contain at least one of src or vars directories");
+        }
+        return urls;
+    }
+
+    private static void deleteCacheDirIfExists(FilePath versionCacheDir) throws IOException, InterruptedException {
+        if (versionCacheDir.exists()) {
+            versionCacheDir.deleteRecursive();
+            versionCacheDir.withSuffix("-name.txt").delete();
+        }
+    }
+
+    private static List<URL> getUrlsForLibDir(FilePath libDir) throws MalformedURLException, IOException, InterruptedException {
+        return getUrlsForLibDir(libDir, null);
+    }
+
+    private static List<URL> getUrlsForLibDir(FilePath libDir, LibraryRecord record) throws MalformedURLException, IOException, InterruptedException {
         List<URL> urls = new ArrayList<>();
         FilePath srcDir = libDir.child("src");
         if (srcDir.isDirectory()) {
@@ -315,12 +343,11 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
         FilePath varsDir = libDir.child("vars");
         if (varsDir.isDirectory()) {
             urls.add(varsDir.toURI().toURL());
-            for (FilePath var : varsDir.list("*.groovy")) {
-                record.variables.add(var.getBaseName());
+            if (record != null) {
+                for (FilePath var : varsDir.list("*.groovy")) {
+                    record.variables.add(var.getBaseName());
+                }
             }
-        }
-        if (urls.isEmpty()) {
-            throw new AbortException("Library " + name + " expected to contain at least one of src or vars directories");
         }
         return urls;
     }
