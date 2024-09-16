@@ -52,6 +52,8 @@ import org.jenkinsci.plugins.workflow.cps.global.UserDefinedGlobalVariable;
 import org.jenkinsci.plugins.workflow.cps.replay.ReplayAction;
 import org.jenkinsci.plugins.workflow.job.WorkflowJob;
 import org.jenkinsci.plugins.workflow.job.WorkflowRun;
+import org.jenkinsci.plugins.workflow.libs.ClasspathAdder.Addition;
+
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import org.junit.ClassRule;
@@ -469,4 +471,71 @@ public class LibraryAdderTest {
         assertThat(LibraryAdder.LoadedLibraries.className("C:\\path\\to\\Extra\\lib\\src\\some\\pkg\\Type.groovy", "C:\\path\\to\\Extra\\lib\\src"), is("some.pkg.Type"));
     }
 
+    @Issue("JENKINS-73769")
+    @Test public void libraryPathsAreUsedInBuildDirectoryPathGeneration() throws Exception {
+        sampleRepo.init();
+        sampleRepo.write("vars/globalLibVar.groovy", "def call() { echo('global library root') }");
+        sampleRepo.write("libs/lib1/vars/globalLibVar.groovy", "def call() { echo('global library 1') }");
+        sampleRepo.write("libs/lib2/vars/globalLibVar.groovy", "def call() { echo('global library 2') }");
+        sampleRepo.write("libs/lib3/vars/.gitignore", "# empty library");
+        sampleRepo.git("add", "libs");
+        sampleRepo.git("add", "vars");
+        sampleRepo.git("commit", "--message=init");
+        sampleRepo2.init();
+        SCMBasedRetriever retriever = new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true));
+        LibraryConfiguration globalLib = new LibraryConfiguration("global",
+                retriever);
+        globalLib.setDefaultVersion("master");
+        globalLib.setImplicit(true);
+        globalLib.setCachingConfiguration(new LibraryCachingConfiguration(30, null));
+        GlobalLibraries.get().setLibraries(Collections.singletonList(globalLib));
+        WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "p");
+        p.setDefinition(new CpsFlowDefinition("globalLibVar()", true));
+        // First build should succeed and cache the global library at the root level
+        WorkflowRun b = r.assertBuildStatus(Result.SUCCESS, p.scheduleBuild2(0));
+        r.assertLogContains("Library global@master successfully cached.", b);
+        r.assertLogContains("global library root", b);
+        // Second build should succeed and cache the global library at the root level
+        b = r.assertBuildStatus(Result.SUCCESS, p.scheduleBuild2(0));
+        r.assertLogContains("Library global@master is cached. Copying from home.", b);
+        r.assertLogContains("global library root", b);
+        // Simulate an error which leaves the cache directory empty
+        FilePath globalCacheDir = LibraryCachingConfiguration.getGlobalLibrariesCacheDir();
+        for (FilePath library : globalCacheDir.listDirectories()) {
+            // delete src and vars directories
+            for (String root : new String[] {"src", "vars"}) {
+                FilePath dir = library.child(root);
+                if (dir.isDirectory()) {
+                    dir.deleteRecursive();
+                }
+            }
+        }
+        b = r.assertBuildStatus(Result.SUCCESS, p.scheduleBuild2(0));
+        r.assertLogContains("Library global@master should have been cached but is empty, re-caching.", b);
+        r.assertLogContains("global library root", b);
+        // Third build should succeed and cache the global library at the root level again
+        b = r.assertBuildStatus(Result.SUCCESS, p.scheduleBuild2(0));
+        r.assertLogContains("Library global@master is cached. Copying from home.", b);
+        r.assertLogContains("global library root", b);
+        // Change the library path to lib1 - build should succeed and cache the global library at the lib1 level
+        ((SCMBasedRetriever) globalLib.getRetriever()).setLibraryPath("libs/lib1");
+        b = r.assertBuildStatus(Result.SUCCESS, p.scheduleBuild2(0));
+        r.assertLogContains("Library global@master from libraryPath: libs/lib1/ successfully cached.", b);
+        r.assertLogContains("global library 1", b);
+        // Change the library path to lib2 - build should succeed and cache the global library at the lib2 level
+        ((SCMBasedRetriever) globalLib.getRetriever()).setLibraryPath("libs/lib2");
+        b = r.assertBuildStatus(Result.SUCCESS, p.scheduleBuild2(0));
+        r.assertLogContains("Library global@master from libraryPath: libs/lib2/ successfully cached.", b);
+        r.assertLogContains("global library 2", b);
+        // Change the library path to lib3 - build fails with an empty library
+        ((SCMBasedRetriever) globalLib.getRetriever()).setLibraryPath("libs/lib3");
+        b = r.assertBuildStatus(Result.FAILURE, p.scheduleBuild2(0));
+        r.assertLogContains("Caching library global@master from libraryPath: libs/lib3/", b);
+        r.assertLogContains("Library global@master from libraryPath: libs/lib3/ is empty after retrieval in job p. Cleaning up cache directory.", b);
+        // Subsequent builds should fail as well
+        b = r.assertBuildStatus(Result.FAILURE, p.scheduleBuild2(0));
+        r.assertLogContains("Caching library global@master from libraryPath: libs/lib3/", b);
+        r.assertLogContains("Library global@master from libraryPath: libs/lib3/ is empty after retrieval in job p. Cleaning up cache directory.", b);
+    }
 }
+
