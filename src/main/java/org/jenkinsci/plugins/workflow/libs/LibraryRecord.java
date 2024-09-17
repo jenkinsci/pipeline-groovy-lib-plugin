@@ -70,7 +70,7 @@ public final class LibraryRecord {
         this.changelog = changelog;
         this.cachingConfiguration = cachingConfiguration;
         logString = this.name + "@" + this.version;
-        if (StringUtils.isNotBlank(libraryPath) && libraryPath != ".") {
+        if (StringUtils.isNotBlank(libraryPath) && !libraryPath.equals(".")) {
             this.libraryPath = libraryPath;
             this.directoryName = directoryNameFor(name, version, String.valueOf(trusted), source, libraryPath);
             logString += " from libraryPath: " + libraryPath;
