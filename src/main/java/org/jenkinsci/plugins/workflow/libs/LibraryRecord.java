@@ -24,6 +24,7 @@
 
 package org.jenkinsci.plugins.workflow.libs;
 
+import java.nio.file.Paths;
 import java.util.Collections;
 import java.util.Set;
 import java.util.TreeSet;
@@ -70,14 +71,23 @@ public final class LibraryRecord {
         this.changelog = changelog;
         this.cachingConfiguration = cachingConfiguration;
         logString = this.name + "@" + this.version;
-        if (StringUtils.isNotBlank(libraryPath) && !libraryPath.equals(".")) {
+        if (onTheRoadToNowhere(libraryPath)) {
+            this.libraryPath = "";
+            this.directoryName = directoryNameFor(name, version, String.valueOf(trusted), source);
+        } else {
             this.libraryPath = libraryPath;
             this.directoryName = directoryNameFor(name, version, String.valueOf(trusted), source, libraryPath);
             logString += " from libraryPath: " + libraryPath;
-        } else {
-            this.libraryPath = "";
-            this.directoryName = directoryNameFor(name, version, String.valueOf(trusted), source);
         }
+    }
+
+    private boolean onTheRoadToNowhere(String libraryPath) {
+        if (StringUtils.isBlank(libraryPath)) {
+            return true;
+        }
+        String currentDir = Paths.get("").toAbsolutePath().normalize().toString();
+        String libraryDir = Paths.get(libraryPath).toAbsolutePath().normalize().toString();
+        return currentDir.equals(libraryDir);
     }
 
     @Exported
