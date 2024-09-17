@@ -25,6 +25,8 @@
 package org.jenkinsci.plugins.workflow.libs;
 
 import com.cloudbees.hudson.plugins.folder.Folder;
+
+import hudson.ExtensionList;
 import hudson.FilePath;
 import hudson.model.Job;
 import hudson.model.Result;
@@ -487,36 +489,43 @@ public class LibraryAdderTest {
                 retriever);
         globalLib.setDefaultVersion("master");
         globalLib.setImplicit(true);
-        globalLib.setCachingConfiguration(new LibraryCachingConfiguration(30, null));
-        GlobalLibraries.get().setLibraries(Collections.singletonList(globalLib));
+        // Test default steps with refresh enabled and disabled
+        int[] refreshTimeMinutes = {0, 30};
         WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "p");
-        p.setDefinition(new CpsFlowDefinition("globalLibVar()", true));
-        // First build should succeed and cache the global library at the root level
-        WorkflowRun b = r.assertBuildStatus(Result.SUCCESS, p.scheduleBuild2(0));
-        r.assertLogContains("Library global@master successfully cached.", b);
-        r.assertLogContains("global library root", b);
-        // Second build should succeed and cache the global library at the root level
-        b = r.assertBuildStatus(Result.SUCCESS, p.scheduleBuild2(0));
-        r.assertLogContains("Library global@master is cached. Copying from home.", b);
-        r.assertLogContains("global library root", b);
-        // Simulate an error which leaves the cache directory empty
-        FilePath globalCacheDir = LibraryCachingConfiguration.getGlobalLibrariesCacheDir();
-        for (FilePath library : globalCacheDir.listDirectories()) {
-            // delete src and vars directories
-            for (String root : new String[] {"src", "vars"}) {
-                FilePath dir = library.child(root);
-                if (dir.isDirectory()) {
-                    dir.deleteRecursive();
+        WorkflowRun b = null;
+        for (int refreshTime : refreshTimeMinutes) {
+            globalLib.setCachingConfiguration(new LibraryCachingConfiguration(refreshTime, null));
+            GlobalLibraries.get().setLibraries(Collections.singletonList(globalLib));
+            // Clear the cache initially
+            ExtensionList.lookupSingleton(LibraryCachingConfiguration.DescriptorImpl.class).doClearCache("global", false);
+            p.setDefinition(new CpsFlowDefinition("globalLibVar()", true));
+            // First build should succeed and cache the global library at the root level
+            b = r.assertBuildStatus(Result.SUCCESS, p.scheduleBuild2(0));
+            r.assertLogContains("Library global@master successfully cached.", b);
+            r.assertLogContains("global library root", b);
+            // Second build should succeed and cache the global library at the root level
+            b = r.assertBuildStatus(Result.SUCCESS, p.scheduleBuild2(0));
+            r.assertLogContains("Library global@master is cached. Copying from home.", b);
+            r.assertLogContains("global library root", b);
+            // Simulate an error which leaves the cache directory empty
+            FilePath globalCacheDir = LibraryCachingConfiguration.getGlobalLibrariesCacheDir();
+            for (FilePath library : globalCacheDir.listDirectories()) {
+                // delete src and vars directories
+                for (String root : new String[] {"src", "vars"}) {
+                    FilePath dir = library.child(root);
+                    if (dir.isDirectory()) {
+                        dir.deleteRecursive();
+                    }
                 }
             }
+            b = r.assertBuildStatus(Result.SUCCESS, p.scheduleBuild2(0));
+            r.assertLogContains("Library global@master should have been cached but is empty, re-caching.", b);
+            r.assertLogContains("global library root", b);
+            // Third build should succeed and cache the global library at the root level again
+            b = r.assertBuildStatus(Result.SUCCESS, p.scheduleBuild2(0));
+            r.assertLogContains("Library global@master is cached. Copying from home.", b);
+            r.assertLogContains("global library root", b);
         }
-        b = r.assertBuildStatus(Result.SUCCESS, p.scheduleBuild2(0));
-        r.assertLogContains("Library global@master should have been cached but is empty, re-caching.", b);
-        r.assertLogContains("global library root", b);
-        // Third build should succeed and cache the global library at the root level again
-        b = r.assertBuildStatus(Result.SUCCESS, p.scheduleBuild2(0));
-        r.assertLogContains("Library global@master is cached. Copying from home.", b);
-        r.assertLogContains("global library root", b);
         // Change the library path to lib1 - build should succeed and cache the global library at the lib1 level
         ((SCMBasedRetriever) globalLib.getRetriever()).setLibraryPath("libs/lib1");
         b = r.assertBuildStatus(Result.SUCCESS, p.scheduleBuild2(0));
