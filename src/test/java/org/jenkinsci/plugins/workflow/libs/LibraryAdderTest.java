@@ -529,22 +529,22 @@ public class LibraryAdderTest {
         // Change the library path to lib1 - build should succeed and cache the global library at the lib1 level
         ((SCMBasedRetriever) globalLib.getRetriever()).setLibraryPath("libs/lib1");
         b = r.assertBuildStatus(Result.SUCCESS, p.scheduleBuild2(0));
-        r.assertLogContains("Library global@master from libraryPath: libs/lib1/ successfully cached.", b);
+        r.assertLogContains("Library global@master:libs/lib1/ successfully cached.", b);
         r.assertLogContains("global library 1", b);
         // Change the library path to lib2 - build should succeed and cache the global library at the lib2 level
         ((SCMBasedRetriever) globalLib.getRetriever()).setLibraryPath("libs/lib2");
         b = r.assertBuildStatus(Result.SUCCESS, p.scheduleBuild2(0));
-        r.assertLogContains("Library global@master from libraryPath: libs/lib2/ successfully cached.", b);
+        r.assertLogContains("Library global@master:libs/lib2/ successfully cached.", b);
         r.assertLogContains("global library 2", b);
         // Change the library path to lib3 - build fails with an empty library
         ((SCMBasedRetriever) globalLib.getRetriever()).setLibraryPath("libs/lib3");
         b = r.assertBuildStatus(Result.FAILURE, p.scheduleBuild2(0));
-        r.assertLogContains("Caching library global@master from libraryPath: libs/lib3/", b);
-        r.assertLogContains("Library global@master from libraryPath: libs/lib3/ is empty after retrieval in job p. Cleaning up cache directory.", b);
+        r.assertLogContains("Caching library global@master:libs/lib3/", b);
+        r.assertLogContains("Library global@master:libs/lib3/ is empty after retrieval in job p. Cleaning up cache directory.", b);
         // Subsequent builds should fail as well
         b = r.assertBuildStatus(Result.FAILURE, p.scheduleBuild2(0));
-        r.assertLogContains("Caching library global@master from libraryPath: libs/lib3/", b);
-        r.assertLogContains("Library global@master from libraryPath: libs/lib3/ is empty after retrieval in job p. Cleaning up cache directory.", b);
+        r.assertLogContains("Caching library global@master:libs/lib3/", b);
+        r.assertLogContains("Library global@master:libs/lib3/ is empty after retrieval in job p. Cleaning up cache directory.", b);
     }
 }
 

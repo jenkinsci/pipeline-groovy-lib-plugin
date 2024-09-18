@@ -77,7 +77,7 @@ public final class LibraryRecord {
         } else {
             this.libraryPath = libraryPath;
             this.directoryName = directoryNameFor(name, version, String.valueOf(trusted), source, libraryPath);
-            logString += " from libraryPath: " + libraryPath;
+            logString += ":" + libraryPath;
         }
     }
 
