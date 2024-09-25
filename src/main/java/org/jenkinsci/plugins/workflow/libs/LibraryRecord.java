@@ -24,12 +24,17 @@
 
 package org.jenkinsci.plugins.workflow.libs;
 
+import java.nio.file.Paths;
 import java.util.Collections;
 import java.util.Set;
 import java.util.TreeSet;
 import jenkins.security.HMACConfidentialKey;
+
+import org.apache.commons.lang.StringUtils;
 import org.kohsuke.stapler.export.Exported;
 import org.kohsuke.stapler.export.ExportedBean;
+
+import edu.umd.cs.findbugs.annotations.CheckForNull;
 
 /**
  * Record of a library being used in a particular build.
@@ -46,6 +51,8 @@ public final class LibraryRecord {
     final boolean trusted;
     final boolean changelog;
     final LibraryCachingConfiguration cachingConfiguration;
+    final String libraryPath;
+    private String logString;
     private String directoryName;
 
     /**
@@ -54,15 +61,33 @@ public final class LibraryRecord {
      * @param trusted Whether the library is trusted. Typically determined by {@link LibraryResolver#isTrusted}, but see also {@link LibraryStep}.
      * @param changelog Whether we should include any SCM changes in this library in the build's changelog.
      * @param cachingConfiguration If non-null, contains cache-related configuration.
+     * @param libraryPath The path to the library within the repository. Used in {@link SCMBasedRetriever}. If null, the library is assumed to be at the root of the repository.
      * @param source A string describing the source of the configuration of this library. Typically the class name of a {@link LibraryResolver}, sometimes with additional data, but see also {@link LibraryStep}.
      */
-    LibraryRecord(String name, String version, boolean trusted, boolean changelog, LibraryCachingConfiguration cachingConfiguration, String source) {
+    LibraryRecord(String name, String version, boolean trusted, boolean changelog, LibraryCachingConfiguration cachingConfiguration, String source, @CheckForNull String libraryPath) {
         this.name = name;
         this.version = version;
         this.trusted = trusted;
         this.changelog = changelog;
         this.cachingConfiguration = cachingConfiguration;
-        this.directoryName = directoryNameFor(name, version, String.valueOf(trusted), source);
+        logString = this.name + "@" + this.version;
+        if (onTheRoadToNowhere(libraryPath)) {
+            this.libraryPath = "";
+            this.directoryName = directoryNameFor(name, version, String.valueOf(trusted), source);
+        } else {
+            this.libraryPath = libraryPath;
+            this.directoryName = directoryNameFor(name, version, String.valueOf(trusted), source, libraryPath);
+            logString += ":" + libraryPath;
+        }
+    }
+
+    private boolean onTheRoadToNowhere(String libraryPath) {
+        if (StringUtils.isBlank(libraryPath)) {
+            return true;
+        }
+        String currentDir = Paths.get("").toAbsolutePath().normalize().toString();
+        String libraryDir = Paths.get(libraryPath).toAbsolutePath().normalize().toString();
+        return currentDir.equals(libraryDir);
     }
 
     @Exported
@@ -78,6 +103,13 @@ public final class LibraryRecord {
      */
     public String getDirectoryName() {
         return directoryName;
+    }
+
+    /**
+     * Returns a string representation to be used for example in the {@link LibraryAdder}.
+     */
+    public String getLogString() {
+        return logString;
     }
 
     @Exported
