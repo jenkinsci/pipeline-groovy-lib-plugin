@@ -2,11 +2,12 @@ package org.jenkinsci.plugins.workflow.libs;
 
 import hudson.Extension;
 import hudson.FilePath;
-import hudson.RestrictedSince;
 import hudson.model.AbstractDescribableImpl;
 import hudson.model.Descriptor;
 import hudson.util.FormValidation;
+import java.io.File;
 import jenkins.model.Jenkins;
+import jenkins.util.SystemProperties;
 import org.kohsuke.accmod.Restricted;
 import org.kohsuke.accmod.restrictions.NoExternalUse;
 import org.kohsuke.stapler.DataBoundConstructor;
@@ -36,7 +37,7 @@ public final class LibraryCachingConfiguration extends AbstractDescribableImpl<L
     private String includedVersionsStr;
 
     private static final String VERSIONS_SEPARATOR = " ";
-    public static final String GLOBAL_LIBRARIES_DIR = "global-libraries-cache";
+    private static final String GLOBAL_LIBRARIES_DIR = "global-libraries-cache";
     public static final String LAST_READ_FILE = "last_read";
 
     @DataBoundConstructor public LibraryCachingConfiguration(int refreshTimeMinutes, String excludedVersionsStr) {
@@ -134,8 +135,9 @@ public final class LibraryCachingConfiguration extends AbstractDescribableImpl<L
     }
 
     public static FilePath getGlobalLibrariesCacheDir() {
-        Jenkins jenkins = Jenkins.get();
-        return new FilePath(jenkins.getRootPath(), LibraryCachingConfiguration.GLOBAL_LIBRARIES_DIR);
+        String cacheRootDirOverride = SystemProperties.getString(LibraryCachingConfiguration.class.getName() + ".cacheRootDir");
+        File cacheRootDir = cacheRootDirOverride != null ? new File(cacheRootDirOverride) : new File(Jenkins.get().getRootDir(), GLOBAL_LIBRARIES_DIR);
+        return new FilePath(cacheRootDir);
     }
 
     @Extension public static class DescriptorImpl extends Descriptor<LibraryCachingConfiguration> {
