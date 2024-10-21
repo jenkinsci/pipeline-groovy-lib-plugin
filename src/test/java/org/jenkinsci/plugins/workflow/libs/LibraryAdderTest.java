@@ -505,7 +505,7 @@ public class LibraryAdderTest {
             r.assertLogContains("global library root", b);
             // Second build should succeed and cache the global library at the root level
             b = r.assertBuildStatus(Result.SUCCESS, p.scheduleBuild2(0));
-            r.assertLogContains("Library global@master is cached. Copying from home.", b);
+            r.assertLogContains("Library global@master is cached. Copying from cache.", b);
             r.assertLogContains("global library root", b);
             // Simulate an error which leaves the cache directory empty
             FilePath globalCacheDir = LibraryCachingConfiguration.getGlobalLibrariesCacheDir();
@@ -523,7 +523,7 @@ public class LibraryAdderTest {
             r.assertLogContains("global library root", b);
             // Third build should succeed and cache the global library at the root level again
             b = r.assertBuildStatus(Result.SUCCESS, p.scheduleBuild2(0));
-            r.assertLogContains("Library global@master is cached. Copying from home.", b);
+            r.assertLogContains("Library global@master is cached. Copying from cache.", b);
             r.assertLogContains("global library root", b);
         }
         // Change the library path to lib1 - build should succeed and cache the global library at the lib1 level

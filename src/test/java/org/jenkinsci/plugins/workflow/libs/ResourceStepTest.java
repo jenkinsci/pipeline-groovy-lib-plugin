@@ -83,7 +83,7 @@ public class ResourceStepTest {
 
         WorkflowRun secondBuild = r.buildAndAssertSuccess(p);
         r.assertLogContains("got fixed contents", secondBuild);
-        r.assertLogContains("Library stuff@master is cached. Copying from home.", secondBuild);
+        r.assertLogContains("Library stuff@master is cached. Copying from cache.", secondBuild);
         r.assertLogNotContains("git", secondBuild); // git is not called
     }
 
@@ -127,7 +127,7 @@ public class ResourceStepTest {
         modifyCacheTimestamp("stuff", "master", System.currentTimeMillis() - 60000 * 55); // 55 minutes have passed, still cached
         WorkflowRun secondBuild = r.buildAndAssertSuccess(p);
         r.assertLogContains("got fixed contents", secondBuild);
-        r.assertLogContains("Library stuff@master is cached. Copying from home.", secondBuild);
+        r.assertLogContains("Library stuff@master is cached. Copying from cache.", secondBuild);
         r.assertLogNotContains("git", secondBuild); // git is not called
 
         modifyCacheTimestamp("stuff", "master", System.currentTimeMillis() - 60000 * 61); // 61 minutes have passed, due for a refresh
