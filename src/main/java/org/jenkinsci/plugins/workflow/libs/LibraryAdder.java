@@ -239,7 +239,7 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
                       boolean retrieve = false;
                       switch (getCacheStatus(cachingConfiguration, versionCacheDir)) {
                           case VALID:
-                              listener.getLogger().println("Library " + libraryLogString + " is cached. Copying from home.");
+                              listener.getLogger().println("Library " + libraryLogString + " is cached. Copying from cache.");
                               break;
                           case EMPTY:
                               listener.getLogger().println("Library " + libraryLogString + " should have been cached but is empty, re-caching.");
@@ -285,7 +285,7 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
                         retrieveLock.writeLock().unlock();
                     }
                 } else {
-                    listener.getLogger().println("Library " + libraryLogString + " is cached. Copying from home.");
+                    listener.getLogger().println("Library " + libraryLogString + " is cached. Copying from cache.");
                 }
 
                 lastReadFile.touch(System.currentTimeMillis());
