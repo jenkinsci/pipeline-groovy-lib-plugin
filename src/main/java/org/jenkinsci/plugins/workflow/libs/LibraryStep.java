@@ -221,7 +221,11 @@ public class LibraryStep extends Step {
                 verifyRevision(((SingleSCMSource) ((SCMSourceRetriever) retriever).getScm()).getScm(), name, run, listener);
             }
 
-            LibraryRecord record = new LibraryRecord(name, version, trusted, changelog, cachingConfiguration, source);
+            String libraryPath = null;
+            if (retriever instanceof SCMBasedRetriever) {
+                libraryPath = ((SCMBasedRetriever) retriever).getLibraryPath();
+            }
+            LibraryRecord record = new LibraryRecord(name, version, trusted, changelog, cachingConfiguration, source, libraryPath);
             LibrariesAction action = run.getAction(LibrariesAction.class);
             if (action == null) {
                 action = new LibrariesAction(Lists.newArrayList(record));

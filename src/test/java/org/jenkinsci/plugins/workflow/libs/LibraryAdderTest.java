@@ -25,6 +25,8 @@
 package org.jenkinsci.plugins.workflow.libs;
 
 import com.cloudbees.hudson.plugins.folder.Folder;
+
+import hudson.ExtensionList;
 import hudson.FilePath;
 import hudson.model.Job;
 import hudson.model.Result;
@@ -33,7 +35,6 @@ import hudson.plugins.git.BranchSpec;
 import hudson.plugins.git.GitSCM;
 import hudson.plugins.git.UserRemoteConfig;
 import hudson.scm.ChangeLogSet;
-import hudson.scm.SubversionSCM;
 import hudson.slaves.WorkspaceList;
 import java.time.ZonedDateTime;
 import java.util.Collection;
@@ -43,8 +44,6 @@ import java.util.List;
 import java.util.Map;
 import jenkins.plugins.git.GitSCMSource;
 import jenkins.plugins.git.GitSampleRepoRule;
-import jenkins.scm.impl.subversion.SubversionSCMSource;
-import jenkins.scm.impl.subversion.SubversionSampleRepoRule;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.nullValue;
@@ -55,6 +54,8 @@ import org.jenkinsci.plugins.workflow.cps.global.UserDefinedGlobalVariable;
 import org.jenkinsci.plugins.workflow.cps.replay.ReplayAction;
 import org.jenkinsci.plugins.workflow.job.WorkflowJob;
 import org.jenkinsci.plugins.workflow.job.WorkflowRun;
+import org.jenkinsci.plugins.workflow.libs.ClasspathAdder.Addition;
+
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import org.junit.ClassRule;
@@ -73,7 +74,6 @@ public class LibraryAdderTest {
     @Rule public JenkinsRule r = new JenkinsRule();
     @Rule public GitSampleRepoRule sampleRepo = new GitSampleRepoRule();
     @Rule public GitSampleRepoRule sampleRepo2 = new GitSampleRepoRule();
-    @Rule public SubversionSampleRepoRule sampleSvnRepo = new SubversionSampleRepoRule();
 
     @Test public void smokes() throws Exception {
         sampleRepo.init();
@@ -119,57 +119,6 @@ public class LibraryAdderTest {
         r.assertLogContains("using modified", r.buildAndAssertSuccess(p));
         p.setDefinition(new CpsFlowDefinition("echo(/using ${pkg.Lib.CONST}/)", true));
         r.assertLogContains("using modified", r.buildAndAssertSuccess(p));
-    }
-
-    @Test public void interpolationSvn() throws Exception {
-        sampleSvnRepo.init();
-        sampleSvnRepo.write("src/pkg/Lib.groovy", "package pkg; class Lib {static String CONST = 'initial'}");
-        sampleSvnRepo.svnkit("add", sampleSvnRepo.wc() + "/src");
-        sampleSvnRepo.svnkit("commit", "--message=init", sampleSvnRepo.wc());
-        sampleSvnRepo.svnkit("copy", "--message=tagged", sampleSvnRepo.trunkUrl(), sampleSvnRepo.tagsUrl() + "/initial");
-        sampleSvnRepo.write("src/pkg/Lib.groovy", "package pkg; class Lib {static String CONST = 'modified'}");
-        sampleSvnRepo.svnkit("commit", "--message=modified", sampleSvnRepo.wc());
-        LibraryConfiguration stuff = new LibraryConfiguration("stuff", new SCMRetriever(new SubversionSCM(sampleSvnRepo.prjUrl() + "/${library.stuff.version}")));
-        stuff.setDefaultVersion("trunk");
-        stuff.setImplicit(true);
-        GlobalLibraries.get().setLibraries(Collections.singletonList(stuff));
-        WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "p");
-        p.setDefinition(new CpsFlowDefinition("@Library('stuff@trunk') import pkg.Lib; echo(/using ${Lib.CONST}/)", true));
-        r.assertLogContains("using modified", r.buildAndAssertSuccess(p));
-        p.setDefinition(new CpsFlowDefinition("@Library('stuff@tags/initial') import pkg.Lib; echo(/using ${Lib.CONST}/)", true));
-        r.assertLogContains("using initial", r.buildAndAssertSuccess(p));
-        p.setDefinition(new CpsFlowDefinition("@Library('stuff') import pkg.Lib; echo(/using ${Lib.CONST}/)", true));
-        r.assertLogContains("using modified", r.buildAndAssertSuccess(p));
-        p.setDefinition(new CpsFlowDefinition("echo(/using ${pkg.Lib.CONST}/)", true));
-        r.assertLogContains("using modified", r.buildAndAssertSuccess(p));
-    }
-
-    @Test public void properSvn() throws Exception {
-        sampleSvnRepo.init();
-        sampleSvnRepo.write("src/pkg/Lib.groovy", "package pkg; class Lib {static String CONST = 'initial'}");
-        sampleSvnRepo.svnkit("add", sampleSvnRepo.wc() + "/src");
-        sampleSvnRepo.svnkit("commit", "--message=init", sampleSvnRepo.wc());
-        long tag = sampleSvnRepo.revision();
-        sampleSvnRepo.svnkit("copy", "--message=tagged", sampleSvnRepo.trunkUrl(), sampleSvnRepo.tagsUrl() + "/initial");
-        sampleSvnRepo.write("src/pkg/Lib.groovy", "package pkg; class Lib {static String CONST = 'modified'}");
-        sampleSvnRepo.svnkit("commit", "--message=modified", sampleSvnRepo.wc());
-        LibraryConfiguration stuff = new LibraryConfiguration("stuff", new SCMSourceRetriever(new SubversionSCMSource(null, sampleSvnRepo.prjUrl())));
-        stuff.setDefaultVersion("trunk");
-        stuff.setImplicit(true);
-        GlobalLibraries.get().setLibraries(Collections.singletonList(stuff));
-        WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "p");
-        p.setDefinition(new CpsFlowDefinition("@Library('stuff@trunk') import pkg.Lib; echo(/using ${Lib.CONST}/)", true));
-        r.assertLogContains("using modified", r.buildAndAssertSuccess(p));
-        p.setDefinition(new CpsFlowDefinition("@Library('stuff@tags/initial') import pkg.Lib; echo(/using ${Lib.CONST}/)", true));
-        r.assertLogContains("using initial", r.buildAndAssertSuccess(p));
-        p.setDefinition(new CpsFlowDefinition("@Library('stuff') import pkg.Lib; echo(/using ${Lib.CONST}/)", true));
-        r.assertLogContains("using modified", r.buildAndAssertSuccess(p));
-        p.setDefinition(new CpsFlowDefinition("echo(/using ${pkg.Lib.CONST}/)", true));
-        r.assertLogContains("using modified", r.buildAndAssertSuccess(p));
-        // Note that LibraryAdder.parse uses indexOf not lastIndexOf, so we can have an @ inside a revision
-        // (the converse is that we may not have an @ inside a library name):
-        p.setDefinition(new CpsFlowDefinition("@Library('stuff@trunk@" + tag + "') import pkg.Lib; echo(/using ${Lib.CONST}/)", true));
-        r.assertLogContains("using initial", r.buildAndAssertSuccess(p));
     }
 
     @Issue("JENKINS-41497")
@@ -524,4 +473,78 @@ public class LibraryAdderTest {
         assertThat(LibraryAdder.LoadedLibraries.className("C:\\path\\to\\Extra\\lib\\src\\some\\pkg\\Type.groovy", "C:\\path\\to\\Extra\\lib\\src"), is("some.pkg.Type"));
     }
 
+    @Issue("JENKINS-73769")
+    @Test public void libraryPathsAreUsedInBuildDirectoryPathGeneration() throws Exception {
+        sampleRepo.init();
+        sampleRepo.write("vars/globalLibVar.groovy", "def call() { echo('global library root') }");
+        sampleRepo.write("libs/lib1/vars/globalLibVar.groovy", "def call() { echo('global library 1') }");
+        sampleRepo.write("libs/lib2/vars/globalLibVar.groovy", "def call() { echo('global library 2') }");
+        sampleRepo.write("libs/lib3/vars/.gitignore", "# empty library");
+        sampleRepo.git("add", "libs");
+        sampleRepo.git("add", "vars");
+        sampleRepo.git("commit", "--message=init");
+        sampleRepo2.init();
+        SCMBasedRetriever retriever = new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true));
+        LibraryConfiguration globalLib = new LibraryConfiguration("global",
+                retriever);
+        globalLib.setDefaultVersion("master");
+        globalLib.setImplicit(true);
+        // Test default steps with refresh enabled and disabled
+        int[] refreshTimeMinutes = {0, 30};
+        WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "p");
+        WorkflowRun b = null;
+        for (int refreshTime : refreshTimeMinutes) {
+            globalLib.setCachingConfiguration(new LibraryCachingConfiguration(refreshTime, null));
+            GlobalLibraries.get().setLibraries(Collections.singletonList(globalLib));
+            // Clear the cache initially
+            ExtensionList.lookupSingleton(LibraryCachingConfiguration.DescriptorImpl.class).doClearCache("global", false);
+            p.setDefinition(new CpsFlowDefinition("globalLibVar()", true));
+            // First build should succeed and cache the global library at the root level
+            b = r.assertBuildStatus(Result.SUCCESS, p.scheduleBuild2(0));
+            r.assertLogContains("Library global@master successfully cached.", b);
+            r.assertLogContains("global library root", b);
+            // Second build should succeed and cache the global library at the root level
+            b = r.assertBuildStatus(Result.SUCCESS, p.scheduleBuild2(0));
+            r.assertLogContains("Library global@master is cached. Copying from cache.", b);
+            r.assertLogContains("global library root", b);
+            // Simulate an error which leaves the cache directory empty
+            FilePath globalCacheDir = LibraryCachingConfiguration.getGlobalLibrariesCacheDir();
+            for (FilePath library : globalCacheDir.listDirectories()) {
+                // delete src and vars directories
+                for (String root : new String[] {"src", "vars"}) {
+                    FilePath dir = library.child(root);
+                    if (dir.isDirectory()) {
+                        dir.deleteRecursive();
+                    }
+                }
+            }
+            b = r.assertBuildStatus(Result.SUCCESS, p.scheduleBuild2(0));
+            r.assertLogContains("Library global@master should have been cached but is empty, re-caching.", b);
+            r.assertLogContains("global library root", b);
+            // Third build should succeed and cache the global library at the root level again
+            b = r.assertBuildStatus(Result.SUCCESS, p.scheduleBuild2(0));
+            r.assertLogContains("Library global@master is cached. Copying from cache.", b);
+            r.assertLogContains("global library root", b);
+        }
+        // Change the library path to lib1 - build should succeed and cache the global library at the lib1 level
+        ((SCMBasedRetriever) globalLib.getRetriever()).setLibraryPath("libs/lib1");
+        b = r.assertBuildStatus(Result.SUCCESS, p.scheduleBuild2(0));
+        r.assertLogContains("Library global@master:libs/lib1/ successfully cached.", b);
+        r.assertLogContains("global library 1", b);
+        // Change the library path to lib2 - build should succeed and cache the global library at the lib2 level
+        ((SCMBasedRetriever) globalLib.getRetriever()).setLibraryPath("libs/lib2");
+        b = r.assertBuildStatus(Result.SUCCESS, p.scheduleBuild2(0));
+        r.assertLogContains("Library global@master:libs/lib2/ successfully cached.", b);
+        r.assertLogContains("global library 2", b);
+        // Change the library path to lib3 - build fails with an empty library
+        ((SCMBasedRetriever) globalLib.getRetriever()).setLibraryPath("libs/lib3");
+        b = r.assertBuildStatus(Result.FAILURE, p.scheduleBuild2(0));
+        r.assertLogContains("Caching library global@master:libs/lib3/", b);
+        r.assertLogContains("Library global@master:libs/lib3/ is empty after retrieval in job p. Cleaning up cache directory.", b);
+        // Subsequent builds should fail as well
+        b = r.assertBuildStatus(Result.FAILURE, p.scheduleBuild2(0));
+        r.assertLogContains("Caching library global@master:libs/lib3/", b);
+        r.assertLogContains("Library global@master:libs/lib3/ is empty after retrieval in job p. Cleaning up cache directory.", b);
+    }
 }
+
