@@ -35,7 +35,7 @@ import java.util.stream.Collectors;
 import jenkins.model.GlobalConfiguration;
 import jenkins.model.Jenkins;
 import net.sf.json.JSONObject;
-import org.kohsuke.stapler.StaplerRequest;
+import org.kohsuke.stapler.StaplerRequest2;
 
 /**
  * Common code between {@link GlobalLibraries} and {@link GlobalUntrustedLibraries}.
@@ -58,7 +58,7 @@ public abstract class AbstractGlobalLibraries extends GlobalConfiguration {
         save();
     }
 
-    @Override public boolean configure(StaplerRequest req, JSONObject json) throws FormException {
+    @Override public boolean configure(StaplerRequest2 req, JSONObject json) throws FormException {
         if (Jenkins.get().hasPermission(getRequiredGlobalConfigPagePermission())) {
             setLibraries(Collections.emptyList()); // allow last library to be deleted
             return super.configure(req, json);
@@ -75,7 +75,7 @@ public abstract class AbstractGlobalLibraries extends GlobalConfiguration {
             return getLibraries();
         }
 
-        @NonNull @Override public final Collection<LibraryConfiguration> fromConfiguration(@NonNull StaplerRequest request) {
+        @NonNull @Override public final Collection<LibraryConfiguration> fromConfiguration(@NonNull StaplerRequest2 request) {
             if (Jenkins.get().hasPermission(getConfiguration().getRequiredGlobalConfigPagePermission())) {
                 return getLibraries();
             }
