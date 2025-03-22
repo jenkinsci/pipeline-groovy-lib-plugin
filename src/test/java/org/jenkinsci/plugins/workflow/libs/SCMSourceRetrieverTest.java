@@ -141,15 +141,31 @@ public class SCMSourceRetrieverTest {
     }
 
     private void sampleRepo1ContentMaster() throws Exception {
-        sampleRepo1ContentMaster(null);
+        sampleRepo1ContentMaster(null, null);
     }
 
     private void sampleRepo1ContentMaster(String subdir) throws Exception {
+        sampleRepo1ContentMaster(subdir, null);
+    }
+
+    private void sampleRepo1ContentMaster(String subdir, String addCustom) throws Exception {
         if (subdir != null && !(subdir.endsWith("/"))) subdir += "/";
         if (subdir == null) subdir = "";
         sampleRepo.init();
         sampleRepo.write(subdir + "vars/myecho.groovy", "def call() {echo 'something special'}");
-        sampleRepo.git("add", subdir + "vars");
+        if (addCustom == null) {
+            sampleRepo.git("add", subdir + "vars");
+        } else {
+            if (addCustom == "") {
+                if (subdir == "") {
+                    sampleRepo.git("add", ".");
+                } else {
+                    sampleRepo.git("add", subdir);
+                }
+            } else {
+                sampleRepo.git("add", addCustom);
+            }
+        }
         sampleRepo.git("commit", "--message=init");
     }
 
@@ -1558,10 +1574,7 @@ public class SCMSourceRetrieverTest {
     }
 
     @Test public void cloneModeLibraryPath() throws Exception {
-        sampleRepo.init();
-        sampleRepo.write("sub/path/vars/myecho.groovy", "def call() {echo 'something special'}");
-        sampleRepo.git("add", "sub");
-        sampleRepo.git("commit", "--message=init");
+        sampleRepo1ContentMaster("sub/path", "sub");
         SCMSourceRetriever scm = new SCMSourceRetriever(new GitSCMSource(sampleRepo.toString()));
         LibraryConfiguration lc = new LibraryConfiguration("root_sub_path", scm);
         lc.setIncludeInChangesets(false);
@@ -1579,10 +1592,7 @@ public class SCMSourceRetrieverTest {
     }
 
     @Test public void cloneModeLibraryPathSecurity() throws Exception {
-        sampleRepo.init();
-        sampleRepo.write("sub/path/vars/myecho.groovy", "def call() {echo 'something special'}");
-        sampleRepo.git("add", "sub");
-        sampleRepo.git("commit", "--message=init");
+        sampleRepo1ContentMaster("sub/path", "sub");
         SCMSourceRetriever scm = new SCMSourceRetriever(new GitSCMSource(sampleRepo.toString()));
         LibraryConfiguration lc = new LibraryConfiguration("root_sub_path", scm);
         lc.setIncludeInChangesets(false);
