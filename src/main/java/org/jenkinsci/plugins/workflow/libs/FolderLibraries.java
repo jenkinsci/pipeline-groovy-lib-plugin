@@ -38,7 +38,7 @@ import java.util.Map;
 import edu.umd.cs.findbugs.annotations.CheckForNull;
 import net.sf.json.JSONObject;
 import org.kohsuke.stapler.DataBoundConstructor;
-import org.kohsuke.stapler.StaplerRequest;
+import org.kohsuke.stapler.StaplerRequest2;
 
 /**
  * Like {@link GlobalLibraries} but scoped to a folder.
@@ -57,7 +57,7 @@ public class FolderLibraries extends AbstractFolderProperty<AbstractFolder<?>> {
 
     @Extension public static class DescriptorImpl extends AbstractFolderPropertyDescriptor {
 
-        @Override public AbstractFolderProperty<?> newInstance(StaplerRequest req, JSONObject formData) throws FormException {
+        @Override public AbstractFolderProperty<?> newInstance(StaplerRequest2 req, JSONObject formData) throws FormException {
             FolderLibraries prop = (FolderLibraries) super.newInstance(req, formData);
             return prop.libraries.isEmpty() ? null : prop;
         }
@@ -91,7 +91,7 @@ public class FolderLibraries extends AbstractFolderProperty<AbstractFolder<?>> {
             return forGroup(job.getParent(), false);
         }
 
-        @Override public Collection<LibraryConfiguration> fromConfiguration(StaplerRequest request) {
+        @Override public Collection<LibraryConfiguration> fromConfiguration(StaplerRequest2 request) {
             return forGroup(request.findAncestorObject(AbstractFolder.class), true);
         }
 

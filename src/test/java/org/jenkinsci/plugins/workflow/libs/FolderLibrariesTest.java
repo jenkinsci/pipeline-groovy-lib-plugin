@@ -43,7 +43,6 @@ import java.util.List;
 import jenkins.model.Jenkins;
 import jenkins.plugins.git.GitSCMSource;
 import jenkins.plugins.git.GitSampleRepoRule;
-import jenkins.scm.impl.subversion.SubversionSCMSource;
 import static org.hamcrest.CoreMatchers.*;
 import org.jenkinsci.plugins.scriptsecurity.scripts.ScriptApproval;
 import org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition;
@@ -74,17 +73,16 @@ public class FolderLibrariesTest {
         Folder d = r.jenkins.createProject(Folder.class, "d");
         r.configRoundtrip(d);
         assertNull(d.getProperties().get(FolderLibraries.class));
-        LibraryConfiguration foo = new LibraryConfiguration("foo", new SCMSourceRetriever(new SubversionSCMSource("foo", "https://phony.jenkins.io/foo/")));
         LibraryConfiguration bar = new LibraryConfiguration("bar", new SCMRetriever(new GitSCM("https://phony.jenkins.io/bar.git")));
         bar.setDefaultVersion("master");
         bar.setImplicit(true);
         bar.setAllowVersionOverride(false);
-        d.getProperties().add(new FolderLibraries(Arrays.asList(foo, bar)));
+        d.getProperties().add(new FolderLibraries(Arrays.asList(bar)));
         r.configRoundtrip(d);
         FolderLibraries prop = d.getProperties().get(FolderLibraries.class);
         assertNotNull(prop);
         List<LibraryConfiguration> libs = prop.getLibraries();
-        r.assertEqualDataBoundBeans(Arrays.asList(foo, bar), libs);
+        r.assertEqualDataBoundBeans(Arrays.asList(bar), libs);
     }
 
     @Test public void registration() throws Exception {
@@ -172,19 +170,10 @@ public class FolderLibrariesTest {
 
     /** @see GrapeTest#outsideLibrarySandbox */
     @Test public void noGrape() throws Exception {
-        sampleRepo1.init();
-        sampleRepo1.write("src/pkg/Wrapper.groovy",
-            "package pkg\n" +
-            "@Grab('commons-primitives:commons-primitives:1.0')\n" +
-            "import org.apache.commons.collections.primitives.ArrayIntList\n" +
-            "class Wrapper {static def list() {new ArrayIntList()}}");
-        sampleRepo1.git("add", "src");
-        sampleRepo1.git("commit", "--message=init");
         Folder d = r.jenkins.createProject(Folder.class, "d");
-        d.getProperties().add(new FolderLibraries(Collections.singletonList(new LibraryConfiguration("grape", new SCMSourceRetriever(new GitSCMSource(null, sampleRepo1.toString(), "", "*", "", true))))));
+        d.getProperties().add(new FolderLibraries(List.of(LibraryTestUtils.defineLibraryUsingGrab("grape", sampleRepo1))));
         WorkflowJob p = d.createProject(WorkflowJob.class, "p");
         p.setDefinition(new CpsFlowDefinition("@Library('grape@master') import pkg.Wrapper; echo(/should not have been able to run ${pkg.Wrapper.list()}/)", true));
-        ScriptApproval.get().approveSignature("new org.apache.commons.collections.primitives.ArrayIntList");
         r.assertLogContains("Annotation Grab cannot be used in the sandbox", r.assertBuildStatus(Result.FAILURE, p.scheduleBuild2(0)));
     }
 

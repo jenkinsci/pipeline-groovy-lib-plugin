@@ -31,7 +31,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.Map;
 import edu.umd.cs.findbugs.annotations.NonNull;
-import org.kohsuke.stapler.StaplerRequest;
+import org.kohsuke.stapler.StaplerRequest2;
 
 /**
  * Allows a provider of libraries to indicate which libraries should be visible to a given job.
@@ -70,7 +70,7 @@ public abstract class LibraryResolver implements ExtensionPoint {
      * @param request a web request
      * @return known libraries, if any (empty by default)
      */
-    public @NonNull Collection<LibraryConfiguration> fromConfiguration(@NonNull StaplerRequest request) {
+    public @NonNull Collection<LibraryConfiguration> fromConfiguration(@NonNull StaplerRequest2 request) {
         return Collections.emptySet();
     }
 
