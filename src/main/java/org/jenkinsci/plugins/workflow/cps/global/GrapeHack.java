@@ -49,7 +49,6 @@ public class GrapeHack {
     public static boolean DISABLE_NIO_FILE_LOCK =
             Boolean.getBoolean(GrapeHack.class.getName() + ".DISABLE_NIO_FILE_LOCK");
 
-    @SuppressFBWarnings(value="DP_CREATE_CLASSLOADER_INSIDE_DO_PRIVILEGED", justification="the least of our concerns")
     @Initializer(after=InitMilestone.PLUGINS_PREPARED, fatal=false)
     public static void hack() throws Exception {
         try {
