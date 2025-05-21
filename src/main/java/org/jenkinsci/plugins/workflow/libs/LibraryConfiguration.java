@@ -41,7 +41,7 @@ import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.DataBoundSetter;
 import org.kohsuke.stapler.QueryParameter;
 import org.kohsuke.stapler.Stapler;
-import org.kohsuke.stapler.StaplerRequest;
+import org.kohsuke.stapler.StaplerRequest2;
 import org.kohsuke.stapler.interceptor.RequirePOST;
 
 import edu.umd.cs.findbugs.annotations.CheckForNull;
@@ -162,7 +162,7 @@ public class LibraryConfiguration extends AbstractDescribableImpl<LibraryConfigu
         // TODO JENKINS-20020 ought to be unnecessary
         @Restricted(NoExternalUse.class) // Jelly
         public Collection<LibraryRetrieverDescriptor> getRetrieverDescriptors() {
-            StaplerRequest req = Stapler.getCurrentRequest();
+            StaplerRequest2 req = Stapler.getCurrentRequest2();
             Item it = req != null ? req.findAncestorObject(Item.class) : null;
             return DescriptorVisibilityFilter.apply(it != null ? it : Jenkins.get(), ExtensionList.lookup(LibraryRetrieverDescriptor.class));
         }
@@ -190,8 +190,8 @@ public class LibraryConfiguration extends AbstractDescribableImpl<LibraryConfigu
                 return FormValidation.ok();
             } else {
                 for (LibraryResolver resolver : ExtensionList.lookup(LibraryResolver.class)) {
-                    for (LibraryConfiguration config : resolver.fromConfiguration(Stapler.getCurrentRequest())) {
-                        if (name.equals(config.getName())) {
+                    for (LibraryConfiguration config : resolver.fromConfiguration(Stapler.getCurrentRequest2())) {
+                        if (config.getName().equals(name)) {
                             return config.getRetriever().validateVersion(name, defaultVersion, context);
                         }
                     }
@@ -204,7 +204,7 @@ public class LibraryConfiguration extends AbstractDescribableImpl<LibraryConfigu
         public AutoCompletionCandidates doAutoCompleteDefaultVersion(@AncestorInPath Item context, @QueryParameter String defaultVersion, @QueryParameter String name) {
             AutoCompletionCandidates candidates = new AutoCompletionCandidates();
             for (LibraryResolver resolver : ExtensionList.lookup(LibraryResolver.class)) {
-                for LibraryConfiguration config : resolver.fromConfiguration(Stapler.getCurrentRequest()) {
+                for LibraryConfiguration config : resolver.fromConfiguration(Stapler.getCurrentRequest2()) {
                     // TODO define LibraryRetriever.completeVersions
                     if (config.getName().equals(name) && config.getRetriever() instanceof SCMSourceRetriever) {
                         try {

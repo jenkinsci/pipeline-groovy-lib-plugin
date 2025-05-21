@@ -40,103 +40,89 @@ import org.junit.Test;
 import static org.junit.Assert.*;
 import org.junit.ClassRule;
 import org.junit.Rule;
-import org.junit.runners.model.Statement;
 import org.jvnet.hudson.test.BuildWatcher;
 import org.jvnet.hudson.test.Issue;
-import org.jvnet.hudson.test.RestartableJenkinsRule;
+import org.jvnet.hudson.test.JenkinsSessionRule;
 
 public class RestartTest {
 
     @ClassRule public static BuildWatcher buildWatcher = new BuildWatcher();
-    @Rule public RestartableJenkinsRule rr = new RestartableJenkinsRule();
+    @Rule public JenkinsSessionRule rr = new JenkinsSessionRule();
     @Rule public GitSampleRepoRule sampleRepo = new GitSampleRepoRule();
 
-    @Test public void smokes() {
-        rr.addStep(new Statement() {
-            @Override public void evaluate() throws Throwable {
+    @Test public void smokes() throws Throwable {
+        rr.then(j -> {
                 sampleRepo.init();
                 sampleRepo.write("src/pkg/Slow.groovy", "package pkg; class Slow {static void wait(script) {script.semaphore 'wait-class'}}");
                 sampleRepo.write("vars/slow.groovy", "def call() {semaphore 'wait-var'}");
                 sampleRepo.git("add", "src", "vars");
                 sampleRepo.git("commit", "--message=init");
                 GlobalLibraries.get().setLibraries(Collections.singletonList(new LibraryConfiguration("stuff", new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true)))));
-                WorkflowJob p = rr.j.jenkins.createProject(WorkflowJob.class, "p");
+                WorkflowJob p = j.jenkins.createProject(WorkflowJob.class, "p");
                 p.setDefinition(new CpsFlowDefinition("@Library('stuff@master') import pkg.Slow; echo 'at the beginning'; Slow.wait(this); echo 'in the middle'; slow(); echo 'at the end'", true));
                 WorkflowRun b = p.scheduleBuild2(0).waitForStart();
                 SemaphoreStep.waitForStart("wait-class/1", b);
-            }
         });
-        rr.addStep(new Statement() {
-            @Override public void evaluate() throws Throwable {
-                WorkflowJob p = rr.j.jenkins.getItemByFullName("p", WorkflowJob.class);
+        rr.then(j -> {
+                WorkflowJob p = j.jenkins.getItemByFullName("p", WorkflowJob.class);
                 WorkflowRun b = p.getLastBuild();
                 SemaphoreStep.success("wait-class/1", null);
                 SemaphoreStep.waitForStart("wait-var/1", b);
-            }
         });
-        rr.addStep(new Statement() {
-            @Override public void evaluate() throws Throwable {
-                WorkflowJob p = rr.j.jenkins.getItemByFullName("p", WorkflowJob.class);
+        rr.then(j -> {
+                WorkflowJob p = j.jenkins.getItemByFullName("p", WorkflowJob.class);
                 WorkflowRun b = p.getLastBuild();
                 SemaphoreStep.success("wait-var/1", null);
-                rr.j.assertLogContains("at the end", rr.j.waitForCompletion(b));
+                j.assertLogContains("at the end", j.waitForCompletion(b));
                 assertEquals(1, b.getActions(LibrariesAction.class).size());
-            }
         });
     }
 
-    @Test public void replay() {
+    @Test public void replay() throws Throwable {
         final String initialScript = "def call() {semaphore 'wait'; echo 'initial content'}";
-        rr.addStep(new Statement() {
-            @Override public void evaluate() throws Throwable {
+        rr.then(j -> {
                 sampleRepo.init();
                 sampleRepo.write("vars/slow.groovy", initialScript);
                 sampleRepo.git("add", "vars");
                 sampleRepo.git("commit", "--message=init");
-                Folder d = rr.j.jenkins.createProject(Folder.class, "d");
+                Folder d = j.jenkins.createProject(Folder.class, "d");
                 d.getProperties().add(new FolderLibraries(Collections.singletonList(new LibraryConfiguration("stuff", new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true))))));
                 WorkflowJob p = d.createProject(WorkflowJob.class, "p");
                 p.setDefinition(new CpsFlowDefinition("@Library('stuff@master') _ = slow()", true));
                 p.save(); // TODO should probably be implicit in setDefinition
                 WorkflowRun b1 = p.scheduleBuild2(0).waitForStart();
                 SemaphoreStep.waitForStart("wait/1", b1);
-            }
         });
-        rr.addStep(new Statement() {
-            @Override public void evaluate() throws Throwable {
-                WorkflowJob p = rr.j.jenkins.getItemByFullName("d/p", WorkflowJob.class);
+        rr.then(j -> {
+                WorkflowJob p = j.jenkins.getItemByFullName("d/p", WorkflowJob.class);
                 WorkflowRun b1 = p.getLastBuild();
                 SemaphoreStep.success("wait/1", null);
-                rr.j.assertLogContains("initial content", rr.j.waitForCompletion(b1));
+                j.assertLogContains("initial content", j.waitForCompletion(b1));
                 ReplayAction ra = b1.getAction(ReplayAction.class);
                 assertEquals(Collections.singletonMap("slow", initialScript), ra.getOriginalLoadedScripts());
                 WorkflowRun b2 = (WorkflowRun) ra.run(ra.getOriginalScript(), Collections.singletonMap("slow", initialScript.replace("initial", "subsequent"))).waitForStart();
                 SemaphoreStep.waitForStart("wait/2", b2);
-            }
         });
-        rr.addStep(new Statement() {
-            @Override public void evaluate() throws Throwable {
-                WorkflowJob p = rr.j.jenkins.getItemByFullName("d/p", WorkflowJob.class);
+        rr.then(j -> {
+                WorkflowJob p = j.jenkins.getItemByFullName("d/p", WorkflowJob.class);
                 WorkflowRun b2 = p.getLastBuild();
                 SemaphoreStep.success("wait/2", null);
-                rr.j.assertLogContains("subsequent content", rr.j.waitForCompletion(b2));
-            }
+                j.assertLogContains("subsequent content", j.waitForCompletion(b2));
         });
     }
 
     @Issue("JENKINS-39719")
-    @Test public void syntheticMethodOverride() throws Exception {
-        rr.addStep(new Statement() {
-            @Override public void evaluate() throws Throwable {
+    @Test public void syntheticMethodOverride() throws Throwable {
+        rr.then(j -> {
                 sampleRepo.init();
                 sampleRepo.write("src/p/MyTest.groovy", "package p; class MyTest {def mytest1() {}}");
                 sampleRepo.write("src/p/MyOtherTest.groovy", "package p; class MyOtherTest {def test1() {}; def test2() {}}");
                 sampleRepo.git("add", "src");
                 sampleRepo.git("commit", "--message=init");
                 GlobalLibraries.get().setLibraries(Collections.singletonList(new LibraryConfiguration("test", new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true)))));
-                WorkflowJob p = rr.j.jenkins.createProject(WorkflowJob.class, "p");
+                WorkflowJob p = j.jenkins.createProject(WorkflowJob.class, "p");
                 p.setDefinition(new CpsFlowDefinition("@Library('test@master') _; import p.MyTest; import p.MyOtherTest; class MyTestExtended extends MyTest {def mytestfunction() {}}", true));
-                rr.j.buildAndAssertSuccess(p);
+                j.buildAndAssertSuccess(p);
                 // Variant after restart.
                 Field f = CpsTransformer.class.getDeclaredField("iota");
                 f.setAccessible(true);
@@ -144,58 +130,47 @@ public class RestartTest {
                 p.setDefinition(new CpsFlowDefinition("@Library('test@master') _; import p.MyTest; import p.MyOtherTest; semaphore 'wait'; evaluate 'class MyTestExtended extends p.MyTest {def mytestfunction() {}}; true'", true));
                 SemaphoreStep.waitForStart("wait/1", p.scheduleBuild2(0).waitForStart());
                 ((AtomicLong) f.get(null)).set(0);
-            }
         });
-        rr.addStep(new Statement() {
-            @Override public void evaluate() throws Throwable {
-                WorkflowJob p = rr.j.jenkins.getItemByFullName("p", WorkflowJob.class);
+        rr.then(j -> {
+                WorkflowJob p = j.jenkins.getItemByFullName("p", WorkflowJob.class);
                 WorkflowRun b2 = p.getLastBuild();
                 assertEquals(2, b2.getNumber());
                 SemaphoreStep.success("wait/1", null);
-                rr.j.assertBuildStatusSuccess(rr.j.waitForCompletion(b2));
-            }
+                j.assertBuildStatusSuccess(j.waitForCompletion(b2));
         });
     }
 
-    @Test public void step() throws Exception {
-        rr.addStep(new Statement() {
-            @Override public void evaluate() throws Throwable {
+    @Test public void step() throws Throwable {
+        rr.then(j -> {
                 sampleRepo.init();
                 sampleRepo.write("src/pkg/Slow.groovy", "package pkg; class Slow {static void wait(script) {script.semaphore 'wait-class'}}");
                 sampleRepo.write("vars/slow.groovy", "def call() {semaphore 'wait-var'}");
                 sampleRepo.git("add", "src", "vars");
                 sampleRepo.git("commit", "--message=init");
                 GlobalLibraries.get().setLibraries(Collections.singletonList(new LibraryConfiguration("stuff", new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true)))));
-                WorkflowJob p = rr.j.jenkins.createProject(WorkflowJob.class, "p");
+                WorkflowJob p = j.jenkins.createProject(WorkflowJob.class, "p");
                 p.setDefinition(new CpsFlowDefinition("semaphore 'start'; def lib = library('stuff@master'); echo 'at the beginning'; lib.pkg.Slow.wait(this); echo 'in the middle'; slow(); echo 'at the end'", true));
                 WorkflowRun b = p.scheduleBuild2(0).waitForStart();
                 SemaphoreStep.waitForStart("start/1", b);
-            }
         });
-        rr.addStep(new Statement() {
-            @Override public void evaluate() throws Throwable {
-                WorkflowJob p = rr.j.jenkins.getItemByFullName("p", WorkflowJob.class);
+        rr.then(j -> {
+                WorkflowJob p = j.jenkins.getItemByFullName("p", WorkflowJob.class);
                 WorkflowRun b = p.getLastBuild();
                 SemaphoreStep.success("start/1", null);
                 SemaphoreStep.waitForStart("wait-class/1", b);
-            }
         });
-        rr.addStep(new Statement() {
-            @Override public void evaluate() throws Throwable {
-                WorkflowJob p = rr.j.jenkins.getItemByFullName("p", WorkflowJob.class);
+        rr.then(j -> {
+                WorkflowJob p = j.jenkins.getItemByFullName("p", WorkflowJob.class);
                 WorkflowRun b = p.getLastBuild();
                 SemaphoreStep.success("wait-class/1", null);
                 SemaphoreStep.waitForStart("wait-var/1", b);
-            }
         });
-        rr.addStep(new Statement() {
-            @Override public void evaluate() throws Throwable {
-                WorkflowJob p = rr.j.jenkins.getItemByFullName("p", WorkflowJob.class);
+        rr.then(j -> {
+                WorkflowJob p = j.jenkins.getItemByFullName("p", WorkflowJob.class);
                 WorkflowRun b = p.getLastBuild();
                 SemaphoreStep.success("wait-var/1", null);
-                rr.j.assertLogContains("at the end", rr.j.waitForCompletion(b));
+                j.assertLogContains("at the end", j.waitForCompletion(b));
                 assertEquals(1, b.getActions(LibrariesAction.class).size());
-            }
         });
     }
 
