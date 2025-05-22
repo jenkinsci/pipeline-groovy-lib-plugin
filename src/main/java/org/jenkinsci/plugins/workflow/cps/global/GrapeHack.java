@@ -35,12 +35,20 @@ import java.net.URL;
 import java.net.URLClassLoader;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import org.apache.ivy.core.cache.DefaultRepositoryCacheManager;
+import org.apache.ivy.core.cache.RepositoryCacheManager;
+import org.apache.ivy.core.settings.IvySettings;
+import org.apache.ivy.plugins.lock.LockStrategy;
+import org.apache.ivy.plugins.lock.NoLockStrategy;
 
 public class GrapeHack {
 
     private static final Logger LOGGER = Logger.getLogger(GrapeHack.class.getName());
 
-    @SuppressFBWarnings(value="DP_CREATE_CLASSLOADER_INSIDE_DO_PRIVILEGED", justification="the least of our concerns")
+    @SuppressFBWarnings(value = "MS_SHOULD_BE_FINAL", justification = "for script console")
+    public static boolean DISABLE_NIO_FILE_LOCK =
+            Boolean.getBoolean(GrapeHack.class.getName() + ".DISABLE_NIO_FILE_LOCK");
+
     @Initializer(after=InitMilestone.PLUGINS_PREPARED, fatal=false)
     public static void hack() throws Exception {
         try {
@@ -63,6 +71,32 @@ public class GrapeHack {
         l = engine.getClass().getClassLoader();
         LOGGER.log(Level.FINE, "was also able to load {0}", l.loadClass(ivyGrabRecordName));
         LOGGER.log(Level.FINE, "linked to {0}", l.loadClass("org.apache.ivy.core.module.id.ModuleRevisionId").getProtectionDomain().getCodeSource().getLocation());
+        if (!DISABLE_NIO_FILE_LOCK) {
+            try {
+                /*
+                 * We must use reflection instead of simply casting to GrapeIvy and invoking directly due to the use of
+                 * MaskingClassLoader a few lines above.
+                 */
+                IvySettings settings = (IvySettings) c.getMethod("getSettings").invoke(instance.get(null));
+                RepositoryCacheManager repositoryCacheManager = settings.getDefaultRepositoryCacheManager();
+                if (repositoryCacheManager instanceof DefaultRepositoryCacheManager) {
+                    DefaultRepositoryCacheManager defaultRepositoryCacheManager =
+                            (DefaultRepositoryCacheManager) repositoryCacheManager;
+                    LockStrategy lockStrategy = defaultRepositoryCacheManager.getLockStrategy();
+                    LOGGER.log(Level.FINE, "default lock strategy {0}", lockStrategy);
+                    if (lockStrategy == null || lockStrategy instanceof NoLockStrategy) {
+                        lockStrategy = settings.getLockStrategy("artifact-lock-nio");
+                        if (lockStrategy != null) {
+                            defaultRepositoryCacheManager.setLockStrategy(lockStrategy.getName());
+                            defaultRepositoryCacheManager.setLockStrategy(lockStrategy);
+                        }
+                    }
+                    LOGGER.log(Level.FINE, "using lock strategy {0}", defaultRepositoryCacheManager.getLockStrategy());
+                }
+            } catch (RuntimeException | LinkageError x) {
+                LOGGER.log(Level.FINE, "failed to enable NIO file lock", x);
+            }
+        }
     }
 
     private GrapeHack() {}
