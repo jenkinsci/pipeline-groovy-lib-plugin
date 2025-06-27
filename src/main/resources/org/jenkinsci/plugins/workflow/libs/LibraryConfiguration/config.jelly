@@ -34,8 +34,20 @@ THE SOFTWARE.
     <f:entry field="implicit" title="${%Load implicitly}">
         <f:checkbox/>
     </f:entry>
-    <f:entry field="allowVersionOverride" title="${%Allow default version to be overridden}">
+    <f:entry field="allowVersionOverride" title="${%Allow default version to be overridden by a fixed string - branch name etc.}">
         <f:checkbox default="true"/>
+    </f:entry>
+    <f:entry field="allowVersionEnvvar" title="${%Allow literal use of @Library 'libname@${env.VARNAME}' pattern in pipeline scripts; falls back to default version if such custom VARNAME is not available among environment variables for the build or not found as branch name in SCM}">
+        <f:checkbox default="false"/>
+    </f:entry>
+    <f:entry field="allowBRANCH_NAME" title="${%Allow literal use of @Library 'libname@${BRANCH_NAME}' in pipeline scripts from SCM; falls back to default version if BRANCH_NAME is not available or not found}">
+        <f:checkbox default="false"/>
+    </f:entry>
+    <f:entry field="allowBRANCH_NAME_PR" title="${%If you allow literal use of @Library 'libname@${BRANCH_NAME}' above, you can also allow fallback to CHANGE_BRANCH and/or CHANGE_TARGET for pull request builds}">
+        <f:checkbox default="false"/>
+    </f:entry>
+    <f:entry field="traceDefaultedVersion" title="${%Request tracing of 'libname@${BRANCH_NAME}' resolution into build log}">
+        <f:checkbox default="false"/>
     </f:entry>
     <f:entry field="includeInChangesets" title="${%Include @Library changes in job recent changes}">
         <f:checkbox default="true"/>
