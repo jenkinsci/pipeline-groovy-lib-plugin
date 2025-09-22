@@ -30,7 +30,7 @@ import java.util.Set;
 import java.util.TreeSet;
 import jenkins.security.HMACConfidentialKey;
 
-import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang.StringUtils;
 import org.kohsuke.stapler.export.Exported;
 import org.kohsuke.stapler.export.ExportedBean;
 
