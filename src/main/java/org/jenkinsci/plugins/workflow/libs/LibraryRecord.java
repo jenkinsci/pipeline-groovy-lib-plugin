@@ -30,7 +30,6 @@ import java.util.Set;
 import java.util.TreeSet;
 import jenkins.security.HMACConfidentialKey;
 
-import org.apache.commons.lang.StringUtils;
 import org.kohsuke.stapler.export.Exported;
 import org.kohsuke.stapler.export.ExportedBean;
 
@@ -51,7 +50,6 @@ public final class LibraryRecord {
     final boolean trusted;
     final boolean changelog;
     final LibraryCachingConfiguration cachingConfiguration;
-    final String libraryPath;
     private String logString;
     private String directoryName;
 
@@ -72,17 +70,16 @@ public final class LibraryRecord {
         this.cachingConfiguration = cachingConfiguration;
         logString = this.name + "@" + this.version;
         if (onTheRoadToNowhere(libraryPath)) {
-            this.libraryPath = "";
             this.directoryName = directoryNameFor(name, version, String.valueOf(trusted), source);
         } else {
-            this.libraryPath = libraryPath;
             this.directoryName = directoryNameFor(name, version, String.valueOf(trusted), source, libraryPath);
             logString += ":" + libraryPath;
         }
     }
 
-    private boolean onTheRoadToNowhere(String libraryPath) {
-        if (StringUtils.isBlank(libraryPath)) {
+    // TODO what is this method supposed to be checking? No Jenkins code should consider the CWD
+    private boolean onTheRoadToNowhere(@CheckForNull String libraryPath) {
+        if (libraryPath == null) {
             return true;
         }
         String currentDir = Paths.get("").toAbsolutePath().normalize().toString();
