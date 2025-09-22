@@ -83,6 +83,10 @@
     </dependencyManagement>
     <dependencies>
         <!-- libraries -->
+    <dependency>
+      <groupId>io.jenkins.plugins</groupId>
+      <artifactId>commons-lang3-api</artifactId>
+    </dependency>
         <dependency>
             <groupId>org.apache.ivy</groupId>
             <artifactId>ivy</artifactId>
