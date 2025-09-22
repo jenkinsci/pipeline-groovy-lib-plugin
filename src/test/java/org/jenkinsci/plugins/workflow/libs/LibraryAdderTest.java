@@ -194,7 +194,25 @@ public class LibraryAdderTest {
         r.assertLogContains("something special", b);
         GlobalVariable var = GlobalVariable.byName("myecho", b);
         assertNotNull(var);
-        assertEquals("Says something very special!", ((UserDefinedGlobalVariable) var).getHelpHtml());
+        assertEquals("<div class=\"library-step-help\">\nSays something very special!</div>", ((UserDefinedGlobalVariable) var).getHelpHtml());
+    }
+
+    @Test public void globalVariableWithMarkdown() throws Exception {
+        sampleRepo.init();
+        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something special'}");
+        sampleRepo.write("vars/myecho.md", "# Says something very special!");
+        sampleRepo.git("add", "vars");
+        sampleRepo.git("commit", "--message=init");
+        GlobalLibraries.get().setLibraries(Collections.singletonList(
+                new LibraryConfiguration("echo-utils",
+                        new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true)))));
+        WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "p");
+        p.setDefinition(new CpsFlowDefinition("@Library('echo-utils@master') import myecho; myecho()", true));
+        WorkflowRun b = r.buildAndAssertSuccess(p);
+        r.assertLogContains("something special", b);
+        GlobalVariable var = GlobalVariable.byName("myecho", b);
+        assertNotNull(var);
+        assertEquals("<div class=\"library-step-help\">\n<h1>Says something very special!</h1>\n</div>", ((UserDefinedGlobalVariable) var).getHelpHtml());
     }
 
     @Test public void dynamicLibraries() throws Exception {
