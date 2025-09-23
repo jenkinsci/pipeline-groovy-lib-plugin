@@ -41,6 +41,7 @@ import java.util.List;
 import java.util.logging.Level;
 import jenkins.plugins.git.GitSCMSource;
 import jenkins.plugins.git.GitSampleRepoRule;
+import jenkins.plugins.git.junit.jupiter.WithGitSampleRepo;
 import jenkins.scm.api.SCMHead;
 import jenkins.scm.api.SCMHeadEvent;
 import jenkins.scm.api.SCMHeadObserver;
@@ -56,18 +57,21 @@ import static hudson.ExtensionList.lookupSingleton;
 import hudson.plugins.git.extensions.impl.CloneOption;
 import jenkins.plugins.git.traits.CloneOptionTrait;
 import jenkins.plugins.git.traits.RefSpecsSCMSourceTrait;
-import jenkins.scm.api.trait.SCMSourceTrait;
+
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.instanceOf;
 import static org.hamcrest.Matchers.not;
-import static org.junit.Assert.*;
-import org.junit.ClassRule;
-import org.junit.Rule;
-import org.junit.Test;
-import org.jvnet.hudson.test.BuildWatcher;
+import static org.junit.jupiter.api.Assertions.*;
+
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.jvnet.hudson.test.Issue;
 import org.jvnet.hudson.test.JenkinsRule;
+import org.jvnet.hudson.test.LogRecorder;
 import org.jvnet.hudson.test.SingleFileSCM;
 import org.jvnet.hudson.test.TestExtension;
 import org.jvnet.hudson.test.WithoutJenkins;
@@ -78,19 +82,39 @@ import static org.hamcrest.Matchers.arrayWithSize;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.matchesPattern;
 import static org.jenkinsci.plugins.workflow.libs.SCMBasedRetriever.PROHIBITED_DOUBLE_DOT;
-import org.jvnet.hudson.test.FlagRule;
-import org.jvnet.hudson.test.LoggerRule;
 
-public class SCMSourceRetrieverTest {
+import org.jvnet.hudson.test.junit.jupiter.BuildWatcherExtension;
+import org.jvnet.hudson.test.junit.jupiter.WithJenkins;
 
-    @ClassRule public static BuildWatcher buildWatcher = new BuildWatcher();
-    @Rule public JenkinsRule r = new JenkinsRule();
-    @Rule public GitSampleRepoRule sampleRepo = new GitSampleRepoRule();
-    @Rule public FlagRule<Boolean> includeSrcTest = new FlagRule<>(() -> SCMBasedRetriever.INCLUDE_SRC_TEST_IN_LIBRARIES, v -> SCMBasedRetriever.INCLUDE_SRC_TEST_IN_LIBRARIES = v);
-    @Rule public LoggerRule logging = new LoggerRule().record(SCMBasedRetriever.class, Level.FINE);
+@WithJenkins
+@WithGitSampleRepo
+class SCMSourceRetrieverTest {
+
+    @SuppressWarnings("unused")
+    @RegisterExtension
+    private static final BuildWatcherExtension BUILD_WATCHER = new BuildWatcherExtension();
+    private JenkinsRule r;
+    private GitSampleRepoRule sampleRepo;
+
+    private boolean includeSrcTest;
+    private final LogRecorder logging = new LogRecorder().record(SCMBasedRetriever.class, Level.FINE);
+
+    @BeforeEach
+    void beforeEach(JenkinsRule rule, GitSampleRepoRule repo) {
+        r = rule;
+        sampleRepo = repo;
+
+        includeSrcTest = SCMBasedRetriever.INCLUDE_SRC_TEST_IN_LIBRARIES;
+    }
+
+    @AfterEach
+    void afterEach() {
+        SCMBasedRetriever.INCLUDE_SRC_TEST_IN_LIBRARIES = includeSrcTest;
+    }
 
     @Issue("JENKINS-40408")
-    @Test public void lease() throws Exception {
+    @Test
+    void lease() throws Exception {
         sampleRepo.init();
         sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something special'}");
         sampleRepo.git("add", "vars");
@@ -114,7 +138,8 @@ public class SCMSourceRetrieverTest {
     }
 
     @Issue("JENKINS-41497")
-    @Test public void includeChanges() throws Exception {
+    @Test
+    void includeChanges() throws Exception {
         sampleRepo.init();
         sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something special'}");
         sampleRepo.git("add", "vars");
@@ -148,7 +173,8 @@ public class SCMSourceRetrieverTest {
     }
 
     @Issue("JENKINS-41497")
-    @Test public void dontIncludeChanges() throws Exception {
+    @Test
+    void dontIncludeChanges() throws Exception {
         sampleRepo.init();
         sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something special'}");
         sampleRepo.git("add", "vars");
@@ -174,7 +200,8 @@ public class SCMSourceRetrieverTest {
     }
 
     @Issue("JENKINS-38609")
-    @Test public void libraryPath() throws Exception {
+    @Test
+    void libraryPath() throws Exception {
         sampleRepo.init();
         sampleRepo.write("sub/path/vars/myecho.groovy", "def call() {echo 'something special'}");
         sampleRepo.git("add", "sub");
@@ -191,7 +218,8 @@ public class SCMSourceRetrieverTest {
     }
 
     @Issue("JENKINS-38609")
-    @Test public void libraryPathSecurity() throws Exception {
+    @Test
+    void libraryPathSecurity() throws Exception {
         sampleRepo.init();
         sampleRepo.write("sub/path/vars/myecho.groovy", "def call() {echo 'something special'}");
         sampleRepo.git("add", "sub");
@@ -208,7 +236,8 @@ public class SCMSourceRetrieverTest {
     }
 
     @WithoutJenkins
-    @Test public void libraryPathMatcher() {
+    @Test
+    void libraryPathMatcher() {
         assertThat("..", matchesPattern(PROHIBITED_DOUBLE_DOT));
         assertThat("./..", matchesPattern(PROHIBITED_DOUBLE_DOT));
         assertThat("../foo", matchesPattern(PROHIBITED_DOUBLE_DOT));
@@ -219,7 +248,8 @@ public class SCMSourceRetrieverTest {
     }
 
     @Issue("JENKINS-43802")
-    @Test public void owner() throws Exception {
+    @Test
+    void owner() throws Exception {
         GlobalLibraries.get().setLibraries(Collections.singletonList(
             new LibraryConfiguration("test", new SCMSourceRetriever(new NeedsOwnerSCMSource()))));
         WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "p");
@@ -228,8 +258,11 @@ public class SCMSourceRetrieverTest {
         r.assertLogContains("loaded lib #abc123", b);
         r.assertLogContains("Running in retrieve from p", b);
     }
+
     public static final class NeedsOwnerSCMSource extends SCMSource {
-        @Override protected SCMRevision retrieve(String version, TaskListener listener, Item context) throws IOException, InterruptedException {
+
+        @Override
+        protected SCMRevision retrieve(String version, TaskListener listener, Item context) throws IOException, InterruptedException {
             if (context == null) {
                 throw new AbortException("No context in retrieve!");
             } else {
@@ -237,36 +270,50 @@ public class SCMSourceRetrieverTest {
             }
             return new DummySCMRevision(version, new SCMHead("trunk"));
         }
-        @Override public SCM build(SCMHead head, SCMRevision revision) {
+
+        @Override
+        public SCM build(SCMHead head, SCMRevision revision) {
             String version = ((DummySCMRevision) revision).version;
             return new SingleFileSCM("vars/libVersion.groovy", ("def call() {'" + version + "'}").getBytes());
         }
+
         private static final class DummySCMRevision extends SCMRevision {
             private final String version;
+
             DummySCMRevision(String version, SCMHead head) {
                 super(head);
                 this.version = version;
             }
-            @Override public boolean equals(Object obj) {
+
+            @Override
+            public boolean equals(Object obj) {
                 return obj instanceof DummySCMRevision && version.equals(((DummySCMRevision) obj).version);
             }
-            @Override public int hashCode() {
+
+            @Override
+            public int hashCode() {
                 return version.hashCode();
             }
         }
-        @Override protected void retrieve(SCMSourceCriteria criteria, SCMHeadObserver observer, SCMHeadEvent<?> event, TaskListener listener) throws IOException, InterruptedException {
+
+        @Override
+        protected void retrieve(SCMSourceCriteria criteria, SCMHeadObserver observer, SCMHeadEvent<?> event, TaskListener listener) throws IOException, InterruptedException {
             throw new IOException("not implemented");
         }
-        @TestExtension("owner") public static final class DescriptorImpl extends SCMSourceDescriptor {}
+
+        @TestExtension("owner")
+        public static final class DescriptorImpl extends SCMSourceDescriptor {}
     }
 
-    @Test public void retry() throws Exception {
+    @Test
+    void retry() throws Exception {
         WorkflowRun b = prepareRetryTests(new FailingSCMSource());
         r.assertLogContains("Failing 'checkout' on purpose!", b);
         r.assertLogContains("Retrying after 10 seconds", b);
     }
 
-    @Test public void retryDuringFetch() throws Exception {
+    @Test
+    void retryDuringFetch() throws Exception {
         WorkflowRun b = prepareRetryTests(new FailingSCMSourceDuringFetch());
         r.assertLogContains("Failing 'fetch' on purpose!", b);
         r.assertLogContains("Retrying after 10 seconds", b);
@@ -287,44 +334,66 @@ public class SCMSourceRetrieverTest {
     }
 
     @Test
-    public void modernAndLegacyImpls() {
+    void modernAndLegacyImpls() {
         SCMSourceRetriever.DescriptorImpl modern = lookupSingleton(SCMSourceRetriever.DescriptorImpl.class);
 
         containsInAnyOrder(modern.getSCMDescriptors(), contains(instanceOf(FakeModernSCM.DescriptorImpl.class)));
         containsInAnyOrder(modern.getSCMDescriptors(), contains(instanceOf(FakeAlsoModernSCM.DescriptorImpl.class)));
         containsInAnyOrder(modern.getSCMDescriptors(), not(contains(instanceOf(BasicSCMSource.DescriptorImpl.class))));
     }
+
     // Implementation of latest and greatest API
     public static final class FakeModernSCM extends SCMSource {
-        @Override protected void retrieve(SCMSourceCriteria c, @NonNull SCMHeadObserver o, SCMHeadEvent<?> e, @NonNull TaskListener l) {}
-        @Override public @NonNull SCM build(@NonNull SCMHead head, SCMRevision revision) { return null; }
-        @TestExtension("modernAndLegacyImpls") public static final class DescriptorImpl extends SCMSourceDescriptor {}
+
+        @Override
+        protected void retrieve(SCMSourceCriteria c, @NonNull SCMHeadObserver o, SCMHeadEvent<?> e, @NonNull TaskListener l) {}
+
+        @Override
+        public @NonNull SCM build(@NonNull SCMHead head, SCMRevision revision) { return null; }
+
+        @TestExtension("modernAndLegacyImpls")
+        public static final class DescriptorImpl extends SCMSourceDescriptor {}
 
         @Override
         protected SCMRevision retrieve(@NonNull String thingName, @NonNull TaskListener listener, Item context) throws IOException, InterruptedException {
             return super.retrieve(thingName, listener, context);
         }
     }
+
     // Implementation of second latest and second greatest API
     public static final class FakeAlsoModernSCM extends SCMSource {
-        @Override protected void retrieve(SCMSourceCriteria c, @NonNull SCMHeadObserver o, SCMHeadEvent<?> e, @NonNull TaskListener l) {}
-        @Override public @NonNull SCM build(@NonNull SCMHead head, SCMRevision revision) { return null; }
-        @TestExtension("modernAndLegacyImpls") public static final class DescriptorImpl extends SCMSourceDescriptor {}
+
+        @Override
+        protected void retrieve(SCMSourceCriteria c, @NonNull SCMHeadObserver o, SCMHeadEvent<?> e, @NonNull TaskListener l) {}
+
+        @Override
+        public @NonNull SCM build(@NonNull SCMHead head, SCMRevision revision) { return null; }
+
+        @TestExtension("modernAndLegacyImpls")
+        public static final class DescriptorImpl extends SCMSourceDescriptor {}
 
         @Override
         protected SCMRevision retrieve(@NonNull String thingName, @NonNull TaskListener listener) throws IOException, InterruptedException {
             return super.retrieve(thingName, listener);
         }
     }
+
     // No modern stuff
     public static class BasicSCMSource extends SCMSource {
-        @Override protected void retrieve(SCMSourceCriteria c, @NonNull SCMHeadObserver o, SCMHeadEvent<?> e, @NonNull TaskListener l) {}
-        @Override public @NonNull SCM build(@NonNull SCMHead head, SCMRevision revision) { return null; }
-        @TestExtension("modernAndLegacyImpls") public static final class DescriptorImpl extends SCMSourceDescriptor {}
+
+        @Override
+        protected void retrieve(SCMSourceCriteria c, @NonNull SCMHeadObserver o, SCMHeadEvent<?> e, @NonNull TaskListener l) {}
+
+        @Override
+        public @NonNull SCM build(@NonNull SCMHead head, SCMRevision revision) { return null; }
+
+        @TestExtension("modernAndLegacyImpls")
+        public static final class DescriptorImpl extends SCMSourceDescriptor {}
     }
 
     @Issue("JENKINS-66629")
-    @Test public void renameDeletesOldLibsWorkspace() throws Exception {
+    @Test
+    void renameDeletesOldLibsWorkspace() throws Exception {
         sampleRepo.init();
         sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something special'}");
         sampleRepo.git("add", "vars");
@@ -348,7 +417,8 @@ public class SCMSourceRetrieverTest {
     }
 
     @Issue("JENKINS-66629")
-    @Test public void deleteRemovesLibsWorkspace() throws Exception {
+    @Test
+    void deleteRemovesLibsWorkspace() throws Exception {
         sampleRepo.init();
         sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something special'}");
         sampleRepo.git("add", "vars");
@@ -366,7 +436,8 @@ public class SCMSourceRetrieverTest {
         assertFalse(ws.exists());
     }
 
-    @Test public void cloneMode() throws Exception {
+    @Test
+    void cloneMode() throws Exception {
         sampleRepo.init();
         sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something special'}");
         sampleRepo.write("README.md", "Summary");
@@ -376,7 +447,7 @@ public class SCMSourceRetrieverTest {
         GitSCMSource src = new GitSCMSource(sampleRepo.toString());
         CloneOption cloneOption = new CloneOption(true, true, null, null);
         cloneOption.setHonorRefspec(true);
-        src.setTraits(List.<SCMSourceTrait>of(new CloneOptionTrait(cloneOption), new RefSpecsSCMSourceTrait("+refs/heads/master:refs/remotes/origin/master")));
+        src.setTraits(List.of(new CloneOptionTrait(cloneOption), new RefSpecsSCMSourceTrait("+refs/heads/master:refs/remotes/origin/master")));
         SCMSourceRetriever scm = new SCMSourceRetriever(src);
         LibraryConfiguration lc = new LibraryConfiguration("echoing", scm);
         lc.setIncludeInChangesets(false);
@@ -396,7 +467,8 @@ public class SCMSourceRetrieverTest {
         assertThat(entries, arrayContainingInAnyOrder("vars"));
     }
 
-    @Test public void cloneModeLibraryPath() throws Exception {
+    @Test
+    void cloneModeLibraryPath() throws Exception {
         sampleRepo.init();
         sampleRepo.write("sub/path/vars/myecho.groovy", "def call() {echo 'something special'}");
         sampleRepo.git("add", "sub");
@@ -417,7 +489,8 @@ public class SCMSourceRetrieverTest {
         assertThat(entries, arrayContainingInAnyOrder("vars"));
     }
 
-    @Test public void cloneModeLibraryPathSecurity() throws Exception {
+    @Test
+    void cloneModeLibraryPathSecurity() throws Exception {
         sampleRepo.init();
         sampleRepo.write("sub/path/vars/myecho.groovy", "def call() {echo 'something special'}");
         sampleRepo.git("add", "sub");
@@ -434,7 +507,8 @@ public class SCMSourceRetrieverTest {
         r.assertLogContains("Library path may not contain '..'", b);
     }
 
-    @Test public void cloneModeExcludeSrcTest() throws Exception {
+    @Test
+    void cloneModeExcludeSrcTest() throws Exception {
         sampleRepo.init();
         sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something special'}");
         sampleRepo.write("src/test/X.groovy", "// irrelevant");
@@ -455,7 +529,8 @@ public class SCMSourceRetrieverTest {
         r.assertLogContains("Excluding src/test/ from checkout", b);
     }
 
-    @Test public void cloneModeIncludeSrcTest() throws Exception {
+    @Test
+    void cloneModeIncludeSrcTest() throws Exception {
         sampleRepo.init();
         sampleRepo.write("vars/myecho.groovy", "def call() {echo(/got ${new test.X().m()}/)}");
         sampleRepo.write("src/test/X.groovy", "package test; class X {def m() {'something special'}}");
@@ -475,5 +550,4 @@ public class SCMSourceRetrieverTest {
         r.assertLogContains("got something special", b);
         r.assertLogNotContains("Excluding src/test/ from checkout", b);
     }
-
 }

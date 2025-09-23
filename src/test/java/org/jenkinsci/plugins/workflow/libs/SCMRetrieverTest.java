@@ -30,8 +30,10 @@ import edu.umd.cs.findbugs.annotations.NonNull;
 import hudson.model.Result;
 import hudson.model.TaskListener;
 import jenkins.branch.BranchSource;
+import jenkins.model.Jenkins;
 import jenkins.plugins.git.GitSCMSource;
 import jenkins.plugins.git.GitSampleRepoRule;
+import jenkins.plugins.git.junit.jupiter.WithGitSampleRepo;
 import jenkins.plugins.git.traits.BranchDiscoveryTrait;
 import jenkins.scm.api.SCMHead;
 import jenkins.scm.api.SCMRevision;
@@ -41,27 +43,37 @@ import org.jenkinsci.plugins.workflow.job.WorkflowRun;
 import org.jenkinsci.plugins.workflow.multibranch.WorkflowMultiBranchProject;
 import org.jenkinsci.plugins.workflow.multibranch.WorkflowMultiBranchProjectTest;
 import org.jenkinsci.plugins.workflow.test.steps.SemaphoreStep;
-import org.junit.Before;
-import org.junit.ClassRule;
-import org.junit.Test;
-import org.junit.Rule;
-import org.jvnet.hudson.test.BuildWatcher;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.jvnet.hudson.test.Issue;
 import org.jvnet.hudson.test.JenkinsRule;
 import org.jvnet.hudson.test.Url;
+import org.jvnet.hudson.test.junit.jupiter.BuildWatcherExtension;
+import org.jvnet.hudson.test.junit.jupiter.WithJenkins;
 
-public class SCMRetrieverTest {
+@WithJenkins
+@WithGitSampleRepo
+class SCMRetrieverTest {
 
-    @ClassRule public static BuildWatcher buildWatcher = new BuildWatcher();
-    @Rule public JenkinsRule r = new JenkinsRule();
-    @Rule public GitSampleRepoRule sampleRepo = new GitSampleRepoRule();
+    @SuppressWarnings("unused")
+    @RegisterExtension
+    private static final BuildWatcherExtension BUILD_WATCHER = new BuildWatcherExtension();
+    private JenkinsRule r;
+    private GitSampleRepoRule sampleRepo;
 
-    @Before public void doNotWait() {
-        r.setQuietPeriod(0);
+    @BeforeEach
+    void beforeEach(JenkinsRule rule, GitSampleRepoRule repo) throws Exception {
+        r = rule;
+        sampleRepo = repo;
+
+        Jenkins.get().setQuietPeriod(0);
     }
 
     @Url("https://stackoverflow.com/a/49112612/12916")
-    @Test public void selfTestLibraries() throws Exception {
+    @Test
+    void selfTestLibraries() throws Exception {
         sampleRepo.init();
         sampleRepo.write("vars/greet.groovy", "def call(recipient) {echo(/hello to $recipient/)}");
         sampleRepo.write("src/pkg/Clazz.groovy", "package pkg; class Clazz {static String whereAmI() {'earth'}}");
@@ -103,7 +115,8 @@ public class SCMRetrieverTest {
     }
 
     @Issue("SECURITY-1951")
-    @Test public void untrustedUsersCanOverideLibraryWithOtherSource() throws Exception {
+    @Test
+    void untrustedUsersCanOverrideLibraryWithOtherSource() throws Exception {
         sampleRepo.init();
         sampleRepo.write("vars/greet.groovy", "def call(recipient) {echo(/hello to $recipient/)}");
         sampleRepo.write("src/pkg/Clazz.groovy", "package pkg; class Clazz {static String whereAmI() {'master'}}");
@@ -129,7 +142,8 @@ public class SCMRetrieverTest {
         r.assertLogContains("Library '" + libraryName + "' has been modified in an untrusted revision", run);
     }
 
-    @Test public void libraryCanBeRetrievedStaticallyEvenWhenPipelineScmUntrusted() throws Exception {
+    @Test
+    void libraryCanBeRetrievedStaticallyEvenWhenPipelineScmUntrusted() throws Exception {
         sampleRepo.init();
         sampleRepo.write("vars/greet.groovy", "def call(recipient) {echo(/hello from $recipient/)}");
         sampleRepo.write("src/pkg/Clazz.groovy", "package pkg; class Clazz {static String whereAmI() {'master'}}");
@@ -159,7 +173,8 @@ public class SCMRetrieverTest {
     }
 
     @Issue("SECURITY-1951")
-    @Test public void libraryCantBeRetrievedWithoutVersionUsingScmSourceRetriever() throws Exception {
+    @Test
+    void libraryCantBeRetrievedWithoutVersionUsingScmSourceRetriever() throws Exception {
         sampleRepo.init();
         sampleRepo.write("vars/greet.groovy", "def call(recipient) {echo(/hello to $recipient/)}");
         sampleRepo.write("src/pkg/Clazz.groovy", "package pkg; class Clazz {static String whereAmI() {'master'}}");
@@ -190,6 +205,7 @@ public class SCMRetrieverTest {
         public WarySource(String remote) {
             super(null, remote, "", "*", "", false);
         }
+
         @Override
         @NonNull
         public SCMRevision getTrustedRevision(@NonNull SCMRevision revision, @NonNull TaskListener listener) throws IOException, InterruptedException {
@@ -202,5 +218,4 @@ public class SCMRetrieverTest {
             }
         }
     }
-
 }

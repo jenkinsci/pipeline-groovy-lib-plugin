@@ -27,9 +27,11 @@ package org.jenkinsci.plugins.workflow.libs;
 import hudson.AbortException;
 import hudson.model.Result;
 import java.io.File;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.HashMap;
+
 import org.apache.commons.io.FileUtils;
 import org.jenkinsci.plugins.workflow.actions.ErrorAction;
 import org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition;
@@ -37,38 +39,55 @@ import org.jenkinsci.plugins.workflow.cps.CpsFlowExecution;
 import org.jenkinsci.plugins.workflow.job.WorkflowJob;
 import org.jenkinsci.plugins.workflow.job.WorkflowRun;
 import org.jenkinsci.plugins.workflow.support.storage.SimpleXStreamFlowNodeStorage;
-import static org.junit.Assert.*;
-import org.junit.Test;
-import org.junit.ClassRule;
-import org.junit.Rule;
-import org.jvnet.hudson.test.BuildWatcher;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.jvnet.hudson.test.Issue;
 import org.jvnet.hudson.test.JenkinsRule;
 import org.jvnet.hudson.test.TestExtension;
+import org.jvnet.hudson.test.junit.jupiter.BuildWatcherExtension;
+import org.jvnet.hudson.test.junit.jupiter.WithJenkins;
 
-public class LibraryDecoratorTest {
+@WithJenkins
+class LibraryDecoratorTest {
 
-    @ClassRule public static BuildWatcher buildWatcher = new BuildWatcher();
-    @Rule public JenkinsRule r = new JenkinsRule();
+    @SuppressWarnings("unused")
+    @RegisterExtension
+    private static final BuildWatcherExtension BUILD_WATCHER = new BuildWatcherExtension();
+    private JenkinsRule r;
 
-    @Test public void singleLibrary() throws Exception {
+    @BeforeEach
+    void beforeEach(JenkinsRule rule) {
+        r = rule;
+    }
+
+    @Test
+    void singleLibrary() throws Exception {
         WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "p");
-        FileUtils.write(new File(p.getRootDir(), "libs/foo/pkg/Lib.groovy"), "package pkg; class Lib {static String CONST = 'constant'}");
+        FileUtils.write(new File(p.getRootDir(), "libs/foo/pkg/Lib.groovy"), "package pkg; class Lib {static String CONST = 'constant'}", StandardCharsets.UTF_8);
         p.setDefinition(new CpsFlowDefinition("@Library('foo') import pkg.Lib; echo(/using ${Lib.CONST}/)", true));
         r.assertLogContains("using constant", r.buildAndAssertSuccess(p));
     }
 
-    @Test public void severalLibraries() throws Exception {
+    @Test
+    void severalLibraries() throws Exception {
         WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "p");
         // stub syntax; @TestExtension GlobalVariable would allow s/new one()()/one()/
         p.setDefinition(new CpsFlowDefinition("@Library(['x', 'y']) import one; import two; echo(/loaded ${new one()()} and ${new two()()}/)", true));
-        FileUtils.write(new File(p.getRootDir(), "libs/x/one.groovy"), "def call() {1}");
-        FileUtils.write(new File(p.getRootDir(), "libs/y/two.groovy"), "def call() {2}");
+        FileUtils.write(new File(p.getRootDir(), "libs/x/one.groovy"), "def call() {1}", StandardCharsets.UTF_8);
+        FileUtils.write(new File(p.getRootDir(), "libs/y/two.groovy"), "def call() {2}", StandardCharsets.UTF_8);
         r.assertLogContains("loaded 1 and 2", r.buildAndAssertSuccess(p));
     }
 
-    @TestExtension public static class TestAdder extends ClasspathAdder {
-        @Override public List<Addition> add(CpsFlowExecution execution, List<String> libraries, HashMap<String, Boolean> changelogs) throws Exception {
+    @TestExtension
+    public static class TestAdder extends ClasspathAdder {
+
+        @Override
+        public List<Addition> add(CpsFlowExecution execution, List<String> libraries, HashMap<String, Boolean> changelogs) throws Exception {
             List<Addition> additions = new ArrayList<>();
             for (String library : libraries) {
                 additions.add(new Addition(new File(((WorkflowRun) execution.getOwner().getExecutable()).getParent().getRootDir(), "libs/" + library).toURI().toURL(), false));
@@ -79,7 +98,8 @@ public class LibraryDecoratorTest {
     }
 
     @Issue("JENKINS-39450")
-    @Test public void malformedAnnotation() throws Exception {
+    @Test
+    void malformedAnnotation() throws Exception {
         WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "p");
         p.setDefinition(new CpsFlowDefinition("@Library(\"stuff@$BRANCH_NAME\") _", true));
         r.assertLogContains("‘stuff@$BRANCH_NAME’", r.assertBuildStatus(Result.FAILURE, p.scheduleBuild2(0)));
@@ -95,21 +115,27 @@ public class LibraryDecoratorTest {
         r.buildAndAssertSuccess(p); // legal, if pointless
     }
 
-    @Test public void adderError() throws Exception {
+    @Test
+    void adderError() throws Exception {
         WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "p");
         p.setDefinition(new CpsFlowDefinition("@Library('stuff') import /* irrelevant */ java.lang.Void", true));
         r.assertLogContains("failed to load [stuff]", r.assertBuildStatus(Result.FAILURE, p.scheduleBuild2(0)));
     }
-    @TestExtension("adderError") public static class ErroneousAdder extends ClasspathAdder {
-        @Override public List<Addition> add(CpsFlowExecution execution, List<String> libraries, HashMap<String, Boolean> changelogs) throws Exception {
+
+    @TestExtension("adderError")
+    public static class ErroneousAdder extends ClasspathAdder {
+
+        @Override
+        public List<Addition> add(CpsFlowExecution execution, List<String> libraries, HashMap<String, Boolean> changelogs) throws Exception {
             throw new AbortException("failed to load " + libraries);
         }
     }
 
     @Issue("JENKINS-57085")
-    @Test public void stackTraceFilenames() throws Exception {
+    @Test
+    void stackTraceFilenames() throws Exception {
         WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "p");
-        FileUtils.write(new File(p.getRootDir(), "libs/foo/pkg/Lib.groovy"), "package pkg; class Lib {static def fail() {throw new Exception('oops')}}");
+        FileUtils.write(new File(p.getRootDir(), "libs/foo/pkg/Lib.groovy"), "package pkg; class Lib {static def fail() {throw new Exception('oops')}}", StandardCharsets.UTF_8);
         p.setDefinition(new CpsFlowDefinition("@Library('foo') import pkg.Lib; Lib.fail()", true));
         WorkflowRun b = r.assertBuildStatus(Result.FAILURE, p.scheduleBuild2(0));
         r.assertLogContains("java.lang.Exception: oops", b);
@@ -123,5 +149,4 @@ public class LibraryDecoratorTest {
         // Comparing the actual StackTraceElement arrays is hopeless: https://github.com/x-stream/xstream/pull/145#discussion_r278613917
         assertEquals(xml, xml2);
     }
-
 }

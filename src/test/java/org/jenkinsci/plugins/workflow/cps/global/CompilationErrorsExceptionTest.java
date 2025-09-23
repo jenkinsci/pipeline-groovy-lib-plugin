@@ -5,6 +5,7 @@ import java.io.NotSerializableException;
 import java.util.Collections;
 import jenkins.plugins.git.GitSCMSource;
 import jenkins.plugins.git.GitSampleRepoRule;
+import jenkins.plugins.git.junit.jupiter.WithGitSampleRepo;
 import org.codehaus.groovy.control.MultipleCompilationErrorsException;
 import org.jenkinsci.plugins.workflow.cps.CpsCompilationErrorsException;
 import org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition;
@@ -13,20 +14,33 @@ import org.jenkinsci.plugins.workflow.job.WorkflowRun;
 import org.jenkinsci.plugins.workflow.libs.GlobalLibraries;
 import org.jenkinsci.plugins.workflow.libs.LibraryConfiguration;
 import org.jenkinsci.plugins.workflow.libs.SCMSourceRetriever;
-import org.junit.ClassRule;
-import org.junit.Rule;
-import org.junit.Test;
-import org.jvnet.hudson.test.BuildWatcher;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.jvnet.hudson.test.Issue;
 import org.jvnet.hudson.test.JenkinsRule;
+import org.jvnet.hudson.test.junit.jupiter.BuildWatcherExtension;
+import org.jvnet.hudson.test.junit.jupiter.WithJenkins;
 
-public class CompilationErrorsExceptionTest {
-    @ClassRule public static BuildWatcher buildWatcher = new BuildWatcher();
-    @Rule public JenkinsRule r = new JenkinsRule();
-    @Rule public GitSampleRepoRule sampleRepo = new GitSampleRepoRule();
+@WithJenkins
+@WithGitSampleRepo
+class CompilationErrorsExceptionTest {
+    @SuppressWarnings("unused")
+    @RegisterExtension
+    private static final BuildWatcherExtension BUILD_WATCHER = new BuildWatcherExtension();
+    private JenkinsRule r;
+    private GitSampleRepoRule sampleRepo;
+
+    @BeforeEach
+    void beforeEach(JenkinsRule rule, GitSampleRepoRule repo) {
+        r = rule;
+        sampleRepo = repo;
+    }
 
     @Issue("JENKINS-40109")
-    @Test public void errorInSrcStaticLibrary() throws Exception {
+    @Test
+    void errorInSrcStaticLibrary() throws Exception {
         sampleRepo.init();
         sampleRepo.write("src/foo/Test.groovy", "package foo; public class Test { bad syntax } ");
         sampleRepo.git("add", "src");
@@ -43,7 +57,8 @@ public class CompilationErrorsExceptionTest {
     }
 
     @Issue("JENKINS-40109")
-    @Test public void errorInSrcDynamicLibrary() throws Exception {
+    @Test
+    void errorInSrcDynamicLibrary() throws Exception {
         sampleRepo.init();
         sampleRepo.write("src/foo/Test.groovy", "package foo; public class Test { bad syntax } ");
         sampleRepo.git("add", "src");
@@ -66,7 +81,8 @@ public class CompilationErrorsExceptionTest {
     }
 
     @Issue("JENKINS-40109")
-    @Test public void errorInVars() throws Exception {
+    @Test
+    void errorInVars() throws Exception {
         sampleRepo.init();
         sampleRepo.write("vars/mymagic.groovy", "def call() { bad, syntax }");
         sampleRepo.git("add", "vars");
@@ -88,5 +104,4 @@ public class CompilationErrorsExceptionTest {
         r.assertLogContains(CpsCompilationErrorsException.class.getName(), b);
         r.assertLogContains("unexpected token: bad", b);
     }
-
 }
