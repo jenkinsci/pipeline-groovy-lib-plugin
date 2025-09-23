@@ -30,27 +30,36 @@ import java.io.File;
 import java.time.ZonedDateTime;
 import jenkins.plugins.git.GitSCMSource;
 import jenkins.plugins.git.GitSampleRepoRule;
+import jenkins.plugins.git.junit.jupiter.WithGitSampleRepo;
 import org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition;
 import org.jenkinsci.plugins.workflow.job.WorkflowJob;
 import org.jenkinsci.plugins.workflow.job.WorkflowRun;
-import org.junit.Rule;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
 import org.jvnet.hudson.test.JenkinsRule;
+import org.jvnet.hudson.test.junit.jupiter.WithJenkins;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.io.FileMatchers.anExistingDirectory;
 import static org.hamcrest.io.FileMatchers.anExistingFile;
 
-public class LibraryCachingCleanupTest {
+@WithJenkins
+@WithGitSampleRepo
+class LibraryCachingCleanupTest {
 
-    @Rule
-    public JenkinsRule r = new JenkinsRule();
-    @Rule
-    public GitSampleRepoRule sampleRepo = new GitSampleRepoRule();
+    private JenkinsRule r;
+    private GitSampleRepoRule sampleRepo;
+
+    @BeforeEach
+    void beforeEach(JenkinsRule rule, GitSampleRepoRule repo) {
+        r = rule;
+        sampleRepo = repo;
+    }
 
     @Test
-    public void smokes() throws Throwable {
+    void smokes() throws Throwable {
         sampleRepo.init();
         sampleRepo.write("vars/foo.groovy", "def call() { echo 'foo' }");
         sampleRepo.git("add", "vars");
@@ -82,7 +91,7 @@ public class LibraryCachingCleanupTest {
     }
 
     @Test
-    public void preSecurity2586() throws Throwable {
+    void preSecurity2586() throws Throwable {
         FilePath cache = LibraryCachingConfiguration.getGlobalLibrariesCacheDir().child("name").child("version");
         cache.mkdirs();
         cache.child(LibraryCachingConfiguration.LAST_READ_FILE).touch(System.currentTimeMillis());
@@ -90,5 +99,4 @@ public class LibraryCachingCleanupTest {
         assertThat(new File(cache.getRemote()), not(anExistingDirectory()));
         assertThat(new File(cache.getParent().getRemote()), not(anExistingDirectory()));
     }
-
 }
