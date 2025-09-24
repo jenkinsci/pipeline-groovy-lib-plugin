@@ -65,7 +65,7 @@
         <changelist>999999-SNAPSHOT</changelist>
         <!-- https://www.jenkins.io/doc/developer/plugin-development/choosing-jenkins-baseline/ -->
         <jenkins.baseline>2.504</jenkins.baseline>
-        <jenkins.version>${jenkins.baseline}.1</jenkins.version>
+        <jenkins.version>${jenkins.baseline}.3</jenkins.version>
         <gitHubRepo>jenkinsci/${project.artifactId}-plugin</gitHubRepo>
         <hpi.strictBundledArtifacts>true</hpi.strictBundledArtifacts>
         <hpi.bundledArtifacts>ivy</hpi.bundledArtifacts>
@@ -75,15 +75,16 @@
             <dependency>
                 <groupId>io.jenkins.tools.bom</groupId>
                 <artifactId>bom-${jenkins.baseline}.x</artifactId>
-                <version>5043.v855ff4819a_0f</version>
+                <version>5294.va_d2e144c80e1</version>
                 <scope>import</scope>
                 <type>pom</type>
             </dependency>
             <dependency>
                 <!-- TODO: https://github.com/jenkinsci/workflow-cps-plugin/pull/1086 -->
+                <!-- TODO: Remove once included in BOM -->
                 <groupId>org.jenkins-ci.plugins.workflow</groupId>
                 <artifactId>workflow-cps</artifactId>
-                <version>4194.v54b_8471101e3</version>
+                <version>4207.v0f687e9d6ce4</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

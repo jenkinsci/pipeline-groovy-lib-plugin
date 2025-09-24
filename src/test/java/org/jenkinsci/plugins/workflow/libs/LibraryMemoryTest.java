@@ -24,16 +24,15 @@
 
 package org.jenkinsci.plugins.workflow.libs;
 
+import groovy.grape.Grape;
 import groovy.lang.MetaClass;
 import hudson.PluginManager;
-import java.io.ObjectStreamClass;
 import java.lang.ref.SoftReference;
 import java.lang.ref.WeakReference;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
-import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import jenkins.plugins.git.GitSCMSource;
 import jenkins.plugins.git.GitSampleRepoRule;
@@ -60,7 +59,6 @@ public class LibraryMemoryTest {
     @Rule public GitSampleRepoRule sampleRepo = new GitSampleRepoRule();
     @Rule public LoggerRule logging = new LoggerRule().record(CpsFlowExecution.class, Level.FINER);
 
-    // Using a set to avoid duplicate elements, which just makes `assertGC` slower.
     private static final List<WeakReference<ClassLoader>> LOADERS = new ArrayList<>();
     public static void register(Object o) {
         System.err.println("registering " + o);
@@ -93,11 +91,6 @@ public class LibraryMemoryTest {
             Method clearInvocationCaches = metaClass.getClass().getDeclaredMethod("clearInvocationCaches");
             clearInvocationCaches.setAccessible(true);
             clearInvocationCaches.invoke(metaClass);
-
-            // Force ObjectStreamClass$Caches.localDesc -> ClassCache.processQueue, otherwise ClassCache.type sometimes references the script.
-            // TODO: Does this need to go into CpsFlowExecution.cleanUpHeap?
-            // Also, this is inconsistent (or maybe useless), sometimes it still shows up in "Apparent soft references..."
-            ObjectStreamClass.lookup(String.class);
         }
         for (WeakReference<ClassLoader> loaderRef : LOADERS) {
             MemoryAssert.assertGC(loaderRef, false);
@@ -106,26 +99,19 @@ public class LibraryMemoryTest {
 
     @Test public void loaderReleasedWithGrab() throws Exception {
         {
-            // http-builder loads xerces stuff that XStream has special handling for, and apparently if BulkFlowNodeStorage
-            // is first loaded by a Pipeline that uses @Grab, the grabbed stuff will be available when BulkFlowNodeStorage.XSTREAM2
-            // is instantiated and then strongly retained, so we need to avoid that.
-            // Specifically com.thoughtworks.xstream.converters.extended.DurationConverter and org.apache.xerces.jaxp.datatype.DatatypeFactoryImpl
-            // TODO: Do we need an @Initializer for BulkFlowNodeStorage.XSTREAM to avoid this?
+            // http-builder loads xerces stuff that XStream has special handling for, and if BulkFlowNodeStorage
+            // is first initialized by a Pipeline that uses @Grab, the grabbed classes will be available when
+            // BulkFlowNodeStorage.XSTREAM2 is instantiated, causing them to be strongly retained.
+            // Specifically com.thoughtworks.xstream.converters.extended.DurationConverter and org.apache.xerces.jaxp.datatype.DatatypeFactoryImpl cause problems.
+            // TODO: Should we add an @Initializer to BulkFlowNodeStorage.XSTREAM to avoid this?
+            // TODO: Why doesn't MemoryAssert.assertGC notice this reference path?
             BulkFlowNodeStorage.XSTREAM.getClass();
         }
-        sampleRepo.init();
-        sampleRepo.write("vars/util.groovy",
+        WorkflowJob p = r.createProject(WorkflowJob.class);
+        p.setDefinition(new CpsFlowDefinition(
                 "@Grab(group='org.codehaus.groovy.modules.http-builder', module='http-builder', version='0.7.1')\n" +
                 "import groovyx.net.http.RESTClient\n" +
-                "def call(body) {\n" +
-                "  return\n" +
-                "}\n" +
-                "");
-        sampleRepo.git("add", "vars");
-        sampleRepo.git("commit", "--message=init");
-        GlobalLibraries.get().setLibraries(Collections.singletonList(new LibraryConfiguration("leak3", new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true)))));
-        WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "p");
-        p.setDefinition(new CpsFlowDefinition("@Library('leak3@master') _; " + LibraryMemoryTest.class.getName() + ".register(this); util()", false));
+                LibraryMemoryTest.class.getName() + ".register(this)\n", false));
         r.buildAndAssertSuccess(p);
         assertFalse(LOADERS.isEmpty());
         {
@@ -135,32 +121,14 @@ public class LibraryMemoryTest {
             clearInvocationCaches.setAccessible(true);
             clearInvocationCaches.invoke(metaClass);
 
-            // Force ObjectStreamClass$Caches.localDesc -> ClassCache.processQueue, otherwise ClassCache.type references util.
-            // TODO: Does this need to go into CpsFlowExecution.cleanUpHeap?
-            // Also, this is inconsistent (or maybe useless), sometimes it still shows up in "Apparent soft references..."
-            ObjectStreamClass.lookup(String.class);
-
-            // TODO: GrapeIvy's $callSiteArray softly references `util`, why?
-            // It also makes assertGC slow, but it often still passes, even with `allowSoft`, why?
-            /*
-            Apparent soft references to org.jenkinsci.plugins.workflow.cps.CpsGroovyShell$CleanGroovyClassLoader@1ed31c97: {org.jenkinsci.plugins.workflow.cps.CpsGroovyShell$CleanGroovyClassLoader@1ed31c97=private static java.lang.ref.SoftReference groovy.grape.GrapeIvy.$callSiteArray->
-            java.lang.ref.SoftReference@707812c-referent->
-            org.codehaus.groovy.runtime.callsite.CallSiteArray@4c0bfefb-array->
-            [Lorg.codehaus.groovy.runtime.callsite.CallSite;@251238-[44]->
-            org.codehaus.groovy.runtime.callsite.ClassMetaClassGetPropertySite@19a8bc43-aClass->
-            class util@33186969-<changed>->
-            org.jenkinsci.plugins.workflow.cps.CpsGroovyShell$CleanGroovyClassLoader@1ed31c97};
-            */
-            // Also, the following makes no difference:
-            var grapeIvyC = Class.forName("groovy.grape.GrapeIvy");
-            var callSiteArrayF = grapeIvyC.getDeclaredField("$callSiteArray");
+            // TODO: GrapeIvy's $callSiteArray softly references the class that most recently used @Grab. I have not
+            // tried to track down exactly why. Should this be handled in CpsFlowExecution.cleanUpHeap? IDK if we could
+            // do anything besides deleting the cached call sites.
+            // Note that we use Grape.getInstance() here to get the GrapeIvy instance set up by GrapeHack.
+            var callSiteArrayF = Grape.getInstance().getClass().getDeclaredField("$callSiteArray");
             callSiteArrayF.setAccessible(true);
-            var softRef = ((SoftReference<?>) callSiteArrayF.get(null));
-            softRef.clear();
+            ((SoftReference<?>) callSiteArrayF.get(null)).clear();
         }
-        // TODO: Trying to debug why assertGC(_, false) is slow but still passes
-        var pid = ProcessHandle.current().pid();
-        new ProcessBuilder().command("jmap", "-dump:format=b,file=heap-" + pid + ".bin", String.valueOf(pid)).start().waitFor(10, TimeUnit.SECONDS);
         for (var loaderRef : LOADERS) {
             MemoryAssert.assertGC(loaderRef, false);
         }
