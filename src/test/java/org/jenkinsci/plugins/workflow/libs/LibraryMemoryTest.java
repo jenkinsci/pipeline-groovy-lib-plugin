@@ -85,8 +85,7 @@ public class LibraryMemoryTest {
         p.setDefinition(new CpsFlowDefinition("@Library('leak@master') _; " + LibraryMemoryTest.class.getName() + ".register(this); leak(); new p.C()", false));
         r.assertBuildStatusSuccess(p.scheduleBuild2(0));
         assertFalse(LOADERS.isEmpty());
-        {
-            // cf. CpsFlowExecutionMemoryTest
+        { // cf. CpsFlowExecutionMemoryTest
             MetaClass metaClass = ClassInfo.getClassInfo(LibraryMemoryTest.class).getMetaClass();
             Method clearInvocationCaches = metaClass.getClass().getDeclaredMethod("clearInvocationCaches");
             clearInvocationCaches.setAccessible(true);
