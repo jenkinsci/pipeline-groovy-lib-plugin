@@ -84,7 +84,7 @@
                 <!-- TODO: Remove once included in BOM -->
                 <groupId>org.jenkins-ci.plugins.workflow</groupId>
                 <artifactId>workflow-cps</artifactId>
-                <version>4207.v0f687e9d6ce4</version>
+                <version>4208.v79738b_75a_ce7</version>
             </dependency>
         </dependencies>
     </dependencyManagement>
