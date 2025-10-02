@@ -29,85 +29,90 @@ import hudson.FilePath;
 import java.io.File;
 import jenkins.plugins.git.GitSCMSource;
 import jenkins.plugins.git.GitSampleRepoRule;
+import jenkins.plugins.git.junit.jupiter.WithGitSampleRepo;
 import org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition;
 import org.jenkinsci.plugins.workflow.job.WorkflowJob;
 import org.jenkinsci.plugins.workflow.job.WorkflowRun;
-import org.junit.Before;
-import org.junit.Rule;
-import org.junit.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
 import org.jvnet.hudson.test.Issue;
 import org.jvnet.hudson.test.JenkinsRule;
 import org.jvnet.hudson.test.WithoutJenkins;
+import org.jvnet.hudson.test.junit.jupiter.WithJenkins;
 
 import static org.hamcrest.MatcherAssert.*;
 import static org.hamcrest.Matchers.*;
 import static org.hamcrest.io.FileMatchers.anExistingDirectory;
 import static org.hamcrest.io.FileMatchers.anExistingFile;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
-public class LibraryCachingConfigurationTest {
-    @Rule
-    public JenkinsRule r = new JenkinsRule();
-    @Rule
-    public GitSampleRepoRule sampleRepo = new GitSampleRepoRule();
+@WithJenkins
+@WithGitSampleRepo
+class LibraryCachingConfigurationTest {
+
+    private JenkinsRule r;
+    private GitSampleRepoRule sampleRepo;
 
     private LibraryCachingConfiguration nullVersionConfig;
     private LibraryCachingConfiguration oneVersionConfig;
     private LibraryCachingConfiguration multiVersionConfig;
     private LibraryCachingConfiguration substringVersionConfig;
 
-    private static int REFRESH_TIME_MINUTES = 23;
-    private static int NO_REFRESH_TIME_MINUTES = 0;
+    private static final int REFRESH_TIME_MINUTES = 23;
+    private static final int NO_REFRESH_TIME_MINUTES = 0;
 
-    private static String NULL_EXCLUDED_VERSION = null;
-    private static String NULL_INCLUDED_VERSION = null;
+    private static final String NULL_EXCLUDED_VERSION = null;
+    private static final String NULL_INCLUDED_VERSION = null;
 
-    private static String ONE_EXCLUDED_VERSION = "branch-1";
+    private static final String ONE_EXCLUDED_VERSION = "branch-1";
 
-    private static String ONE_INCLUDED_VERSION = "branch-1i";
-
-
-    private static String MULTIPLE_EXCLUDED_VERSIONS_1 = "main";
-
-    private static String MULTIPLE_INCLUDED_VERSIONS_1 = "master";
-
-    private static String MULTIPLE_EXCLUDED_VERSIONS_2 = "branch-2";
-
-    private static String MULTIPLE_INCLUDED_VERSIONS_2 = "branch-2i";
-
-    private static String MULTIPLE_EXCLUDED_VERSIONS_3 = "branch-3";
-    private static String MULTIPLE_INCLUDED_VERSIONS_3 = "branch-3i";
+    private static final String ONE_INCLUDED_VERSION = "branch-1i";
 
 
-    private static String SUBSTRING_EXCLUDED_VERSIONS_1 = "feature/test-substring-exclude";
+    private static final String MULTIPLE_EXCLUDED_VERSIONS_1 = "main";
 
-    private static String SUBSTRING_INCLUDED_VERSIONS_1 = "feature_include/test-substring";
+    private static final String MULTIPLE_INCLUDED_VERSIONS_1 = "master";
 
-    private static String SUBSTRING_EXCLUDED_VERSIONS_2 = "test-other-substring-exclude";
-    private static String SUBSTRING_INCLUDED_VERSIONS_2 = "test-other-substring-include";
+    private static final String MULTIPLE_EXCLUDED_VERSIONS_2 = "branch-2";
+
+    private static final String MULTIPLE_INCLUDED_VERSIONS_2 = "branch-2i";
+
+    private static final String MULTIPLE_EXCLUDED_VERSIONS_3 = "branch-3";
+    private static final String MULTIPLE_INCLUDED_VERSIONS_3 = "branch-3i";
 
 
-    private static String MULTIPLE_EXCLUDED_VERSIONS =
+    private static final String SUBSTRING_EXCLUDED_VERSIONS_1 = "feature/test-substring-exclude";
+
+    private static final String SUBSTRING_INCLUDED_VERSIONS_1 = "feature_include/test-substring";
+
+    private static final String SUBSTRING_EXCLUDED_VERSIONS_2 = "test-other-substring-exclude";
+    private static final String SUBSTRING_INCLUDED_VERSIONS_2 = "test-other-substring-include";
+
+
+    private static final String MULTIPLE_EXCLUDED_VERSIONS =
         MULTIPLE_EXCLUDED_VERSIONS_1 + " " +
         MULTIPLE_EXCLUDED_VERSIONS_2 + " " +
         MULTIPLE_EXCLUDED_VERSIONS_3;
 
-    private static String MULTIPLE_INCLUDED_VERSIONS =
+    private static final String MULTIPLE_INCLUDED_VERSIONS =
             MULTIPLE_INCLUDED_VERSIONS_1 + " " +
             MULTIPLE_INCLUDED_VERSIONS_2 + " " +
             MULTIPLE_INCLUDED_VERSIONS_3;
 
-    private static String SUBSTRING_EXCLUDED_VERSIONS =
+    private static final String SUBSTRING_EXCLUDED_VERSIONS =
         "feature/ other-substring";
 
-    private static String SUBSTRING_INCLUDED_VERSIONS =
+    private static final String SUBSTRING_INCLUDED_VERSIONS =
             "feature_include/ other-substring";
 
-    private static String NEVER_EXCLUDED_VERSION = "never-excluded-version";
+    private static final String NEVER_EXCLUDED_VERSION = "never-excluded-version";
 
-    @Before
-    public void createCachingConfiguration() {
+    @BeforeEach
+    void beforeEach(JenkinsRule rule, GitSampleRepoRule repo) {
+        r = rule;
+        sampleRepo = repo;
         nullVersionConfig = new LibraryCachingConfiguration(REFRESH_TIME_MINUTES, NULL_EXCLUDED_VERSION, NULL_INCLUDED_VERSION);
         oneVersionConfig = new LibraryCachingConfiguration(NO_REFRESH_TIME_MINUTES, ONE_EXCLUDED_VERSION, ONE_INCLUDED_VERSION);
         multiVersionConfig = new LibraryCachingConfiguration(REFRESH_TIME_MINUTES, MULTIPLE_EXCLUDED_VERSIONS, MULTIPLE_INCLUDED_VERSIONS);
@@ -117,34 +122,34 @@ public class LibraryCachingConfigurationTest {
     @Issue("JENKINS-66045") // NPE getting excluded versions
     @Test
     @WithoutJenkins
-    public void npeGetExcludedVersions() {
+    void npeGetExcludedVersions() {
         assertFalse(nullVersionConfig.isExcluded(NEVER_EXCLUDED_VERSION));
     }
 
     @Test
     @WithoutJenkins
-    public void getRefreshTimeMinutes() {
+    void getRefreshTimeMinutes() {
         assertThat(nullVersionConfig.getRefreshTimeMinutes(), is(REFRESH_TIME_MINUTES));
         assertThat(oneVersionConfig.getRefreshTimeMinutes(), is(NO_REFRESH_TIME_MINUTES));
     }
 
     @Test
     @WithoutJenkins
-    public void getRefreshTimeMilliseconds() {
+    void getRefreshTimeMilliseconds() {
         assertThat(nullVersionConfig.getRefreshTimeMilliseconds(), is(60 * 1000L * REFRESH_TIME_MINUTES));
         assertThat(oneVersionConfig.getRefreshTimeMilliseconds(), is(60 * 1000L * NO_REFRESH_TIME_MINUTES));
     }
 
     @Test
     @WithoutJenkins
-    public void isRefreshEnabled() {
+    void isRefreshEnabled() {
         assertTrue(nullVersionConfig.isRefreshEnabled());
         assertFalse(oneVersionConfig.isRefreshEnabled());
     }
 
     @Test
     @WithoutJenkins
-    public void getExcludedVersionsStr() {
+    void getExcludedVersionsStr() {
         assertThat(nullVersionConfig.getExcludedVersionsStr(), is(NULL_EXCLUDED_VERSION));
         assertThat(oneVersionConfig.getExcludedVersionsStr(), is(ONE_EXCLUDED_VERSION));
         assertThat(multiVersionConfig.getExcludedVersionsStr(), is(MULTIPLE_EXCLUDED_VERSIONS));
@@ -153,7 +158,7 @@ public class LibraryCachingConfigurationTest {
 
     @Test
     @WithoutJenkins
-    public void getIncludedVersionsStr() {
+    void getIncludedVersionsStr() {
         assertThat(nullVersionConfig.getIncludedVersionsStr(), is(NULL_INCLUDED_VERSION));
         assertThat(oneVersionConfig.getIncludedVersionsStr(), is(ONE_INCLUDED_VERSION));
         assertThat(multiVersionConfig.getIncludedVersionsStr(), is(MULTIPLE_INCLUDED_VERSIONS));
@@ -162,7 +167,7 @@ public class LibraryCachingConfigurationTest {
 
     @Test
     @WithoutJenkins
-    public void isExcluded() {
+    void isExcluded() {
         assertFalse(nullVersionConfig.isExcluded(NULL_EXCLUDED_VERSION));
         assertFalse(nullVersionConfig.isExcluded(""));
 
@@ -193,7 +198,7 @@ public class LibraryCachingConfigurationTest {
     @Issue("JENKINS-69135") //"Versions to include" feature for caching
     @Test
     @WithoutJenkins
-    public void isIncluded() {
+    void isIncluded() {
         assertFalse(nullVersionConfig.isIncluded(NULL_INCLUDED_VERSION));
         assertFalse(nullVersionConfig.isIncluded(""));
 
@@ -209,7 +214,7 @@ public class LibraryCachingConfigurationTest {
     }
 
     @Test
-    public void clearCache() throws Exception {
+    void clearCache() throws Exception {
         sampleRepo.init();
         sampleRepo.write("vars/foo.groovy", "def call() { echo 'foo' }");
         sampleRepo.git("add", "vars");
@@ -239,7 +244,7 @@ public class LibraryCachingConfigurationTest {
     //Exclusion takes precedence
     @Issue("JENKINS-69135") //"Versions to include" feature for caching
     @Test
-    public void clearCacheConflict() throws Exception {
+    void clearCacheConflict() throws Exception {
         sampleRepo.init();
         sampleRepo.write("vars/foo.groovy", "def call() { echo 'foo' }");
         sampleRepo.git("add", "vars");
@@ -266,7 +271,7 @@ public class LibraryCachingConfigurationTest {
 
     @Issue("JENKINS-69135") //"Versions to include" feature for caching
     @Test
-    public void clearCacheIncludedVersion() throws Exception {
+    void clearCacheIncludedVersion() throws Exception {
         sampleRepo.init();
         sampleRepo.write("vars/foo.groovy", "def call() { echo 'foo' }");
         sampleRepo.git("add", "vars");
@@ -302,5 +307,4 @@ public class LibraryCachingConfigurationTest {
         assertThat(new File(cache2.getRemote()), not(anExistingDirectory()));
         assertThat(new File(cache2.withSuffix("-name.txt").getRemote()), not(anExistingFile()));
     }
-
 }
