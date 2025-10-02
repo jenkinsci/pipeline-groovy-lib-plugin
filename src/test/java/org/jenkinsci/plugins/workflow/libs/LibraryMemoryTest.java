@@ -24,8 +24,10 @@
 
 package org.jenkinsci.plugins.workflow.libs;
 
+import groovy.grape.Grape;
 import groovy.lang.MetaClass;
 import hudson.PluginManager;
+import java.lang.ref.SoftReference;
 import java.lang.ref.WeakReference;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
@@ -39,9 +41,9 @@ import org.codehaus.groovy.reflection.ClassInfo;
 import org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition;
 import org.jenkinsci.plugins.workflow.cps.CpsFlowExecution;
 import org.jenkinsci.plugins.workflow.job.WorkflowJob;
+import org.jenkinsci.plugins.workflow.support.storage.BulkFlowNodeStorage;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-
 import org.junit.jupiter.api.extension.RegisterExtension;
 import org.jvnet.hudson.test.Issue;
 import org.jvnet.hudson.test.JenkinsRule;
@@ -70,6 +72,7 @@ class LibraryMemoryTest {
     void beforeEach(JenkinsRule rule, GitSampleRepoRule repo) {
         r = rule;
         sampleRepo = repo;
+        LOADERS.clear();
     }
 
     @SuppressWarnings("unused")
@@ -101,7 +104,45 @@ class LibraryMemoryTest {
             clearInvocationCaches.invoke(metaClass);
         }
         for (WeakReference<ClassLoader> loaderRef : LOADERS) {
-            MemoryAssert.assertGC(loaderRef, true);
+            MemoryAssert.assertGC(loaderRef, false);
+        }
+    }
+
+    @Test
+    void loaderReleasedWithGrab() throws Exception {
+        {
+            // http-builder loads xerces stuff that XStream has special handling for, and if BulkFlowNodeStorage
+            // is first initialized by a Pipeline that uses @Grab, the grabbed classes will be available when
+            // BulkFlowNodeStorage.XSTREAM2 is instantiated, causing them to be strongly retained.
+            // Specifically com.thoughtworks.xstream.converters.extended.DurationConverter and org.apache.xerces.jaxp.datatype.DatatypeFactoryImpl cause problems.
+            // TODO: Should we add an @Initializer to BulkFlowNodeStorage.XSTREAM to avoid this?
+            // TODO: Why doesn't MemoryAssert.assertGC notice this reference path?
+            BulkFlowNodeStorage.XSTREAM.getClass();
+        }
+        WorkflowJob p = r.createProject(WorkflowJob.class);
+        p.setDefinition(new CpsFlowDefinition(
+                "@Grab(group='org.codehaus.groovy.modules.http-builder', module='http-builder', version='0.7.1')\n" +
+                "import groovyx.net.http.RESTClient\n" +
+                LibraryMemoryTest.class.getName() + ".register(this)\n", false));
+        r.buildAndAssertSuccess(p);
+        assertFalse(LOADERS.isEmpty());
+        {
+            // cf. CpsFlowExecutionMemoryTest
+            MetaClass metaClass = ClassInfo.getClassInfo(LibraryMemoryTest.class).getMetaClass();
+            Method clearInvocationCaches = metaClass.getClass().getDeclaredMethod("clearInvocationCaches");
+            clearInvocationCaches.setAccessible(true);
+            clearInvocationCaches.invoke(metaClass);
+
+            // TODO: GrapeIvy's $callSiteArray softly references the class that most recently used @Grab. I have not
+            // tried to track down exactly why. Should this be handled in CpsFlowExecution.cleanUpHeap? IDK if we could
+            // do anything besides deleting the cached call sites.
+            // Note that we use Grape.getInstance() here to get the GrapeIvy instance set up by GrapeHack.
+            var callSiteArrayF = Grape.getInstance().getClass().getDeclaredField("$callSiteArray");
+            callSiteArrayF.setAccessible(true);
+            ((SoftReference<?>) callSiteArrayF.get(null)).clear();
+        }
+        for (var loaderRef : LOADERS) {
+            MemoryAssert.assertGC(loaderRef, false);
         }
     }
 }
