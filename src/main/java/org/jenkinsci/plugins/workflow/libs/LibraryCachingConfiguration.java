@@ -1,7 +1,10 @@
 package org.jenkinsci.plugins.workflow.libs;
 
+import com.google.common.annotations.VisibleForTesting;
+import edu.umd.cs.findbugs.annotations.CheckForNull;
 import hudson.Extension;
 import hudson.FilePath;
+import hudson.Util;
 import hudson.model.AbstractDescribableImpl;
 import hudson.model.Descriptor;
 import hudson.util.FormValidation;
@@ -17,23 +20,20 @@ import org.kohsuke.stapler.QueryParameter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.stream.Stream;
 
 import org.apache.commons.io.IOUtils;
-import org.apache.commons.lang.StringUtils;
 
 public final class LibraryCachingConfiguration extends AbstractDescribableImpl<LibraryCachingConfiguration> {
     
     private static final Logger LOGGER = Logger.getLogger(LibraryCachingConfiguration.class.getName());
     
-    private int refreshTimeMinutes;
-    private String excludedVersionsStr;
+    private final int refreshTimeMinutes;
+    private final String excludedVersionsStr;
     private String includedVersionsStr;
 
     private static final String VERSIONS_SEPARATOR = " ";
@@ -43,17 +43,13 @@ public final class LibraryCachingConfiguration extends AbstractDescribableImpl<L
     @DataBoundConstructor public LibraryCachingConfiguration(int refreshTimeMinutes, String excludedVersionsStr) {
         this.refreshTimeMinutes = refreshTimeMinutes;
         this.excludedVersionsStr = excludedVersionsStr;
-        this.includedVersionsStr = "";
     }
 
-    /*
-     * Visible for testing ...
-     */
+    @VisibleForTesting // TODO better inline
     @Restricted(NoExternalUse.class)
     LibraryCachingConfiguration(int refreshTimeMinutes, String excludedVersionsStr, String includedVersionsStr) {
-        this.refreshTimeMinutes = refreshTimeMinutes;
-        this.excludedVersionsStr = excludedVersionsStr;
-        this.includedVersionsStr = includedVersionsStr;
+        this(refreshTimeMinutes, excludedVersionsStr);
+        setIncludedVersionsStr(includedVersionsStr);
     }
 
     public int getRefreshTimeMinutes() {
@@ -71,62 +67,40 @@ public final class LibraryCachingConfiguration extends AbstractDescribableImpl<L
     public String getExcludedVersionsStr() {
         return excludedVersionsStr;
     }
+
+    @CheckForNull
     public String getIncludedVersionsStr() {
-        if(StringUtils.isBlank(includedVersionsStr)){
-            return null;
-        }
-            return includedVersionsStr;
+        return Util.fixEmptyAndTrim(includedVersionsStr);
     }
 
     @DataBoundSetter
     public void setIncludedVersionsStr(String includedVersionsStr) {
-        this.includedVersionsStr = includedVersionsStr;
+        this.includedVersionsStr = Util.fixEmptyAndTrim(includedVersionsStr);
     }
 
-    private List<String> getExcludedVersions() {
-        if (excludedVersionsStr == null) {
-            return Collections.emptyList();
+    private static Stream<String> split(@CheckForNull String list) {
+        if (list == null) {
+            return Stream.empty();
         }
-        return Arrays.asList(excludedVersionsStr.split(VERSIONS_SEPARATOR));
-    }
-
-    private List<String> getIncludedVersions() {
-        if (includedVersionsStr == null) {
-            return Collections.emptyList();
-        }
-        return Arrays.asList(includedVersionsStr.split(VERSIONS_SEPARATOR));
+        return Stream.of(list.split(VERSIONS_SEPARATOR)).filter(v -> !v.isBlank());
     }
 
     public Boolean isExcluded(String version) {
         // exit early if the version passed in is null or empty
-        if (StringUtils.isBlank(version)) {
+        if (Util.fixEmpty(version) == null) {
             return false;
         }
-        for (String it : getExcludedVersions()) {
-            // confirm that the excluded versions aren't null or empty
-            // and if the version contains the exclusion thus it can be
-            // anywhere in the string.
-            if (StringUtils.isNotBlank(it) && version.contains(it)){
-                return true;
-            }
-        }
-        return false;
+        // confirm if the version contains the exclusion thus it can be
+        // anywhere in the string.
+        return split(excludedVersionsStr).anyMatch(version::contains);
     }
 
     public Boolean isIncluded(String version) {
         // exit early if the version passed in is null or empty
-        if (StringUtils.isBlank(version)) {
+        if (Util.fixEmpty(version) == null) {
             return false;
         }
-        for (String it : getIncludedVersions()) {
-            // works on empty or null included versions
-            // and if the version contains the inclusion thus it can be
-            // anywhere in the string.
-            if (StringUtils.isNotBlank(it) && version.contains(it)){
-                return true;
-            }
-        }
-        return false;
+        return split(includedVersionsStr).anyMatch(version::contains);
     }
 
     @Override public String toString() {

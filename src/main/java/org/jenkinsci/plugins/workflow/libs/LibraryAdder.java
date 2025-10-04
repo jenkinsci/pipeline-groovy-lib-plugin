@@ -53,7 +53,6 @@ import edu.umd.cs.findbugs.annotations.CheckForNull;
 import edu.umd.cs.findbugs.annotations.NonNull;
 import java.util.regex.Pattern;
 import org.apache.commons.io.IOUtils;
-import org.apache.commons.lang.StringUtils;
 import org.jenkinsci.plugins.workflow.cps.CpsFlowExecution;
 import org.jenkinsci.plugins.workflow.cps.GlobalVariable;
 import org.jenkinsci.plugins.workflow.cps.GlobalVariableSet;
@@ -228,7 +227,7 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
         //If the included versions is blank/null, cache irrespective
         //else check if that version is included and then cache only that version
 
-        if((shouldCache && cachingConfiguration.isIncluded(version)) || (shouldCache && StringUtils.isBlank(cachingConfiguration.getIncludedVersionsStr()))) {
+        if((shouldCache && cachingConfiguration.isIncluded(version)) || (shouldCache && cachingConfiguration.getIncludedVersionsStr() == null)) {
             retrieveLock.readLock().lockInterruptibly();
             try {
                 CacheStatus cacheStatus = getCacheStatus(cachingConfiguration, versionCacheDir);
