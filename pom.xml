@@ -75,33 +75,9 @@
             <dependency>
                 <groupId>io.jenkins.tools.bom</groupId>
                 <artifactId>bom-${jenkins.baseline}.x</artifactId>
-                <version>5506.va_222b_131ec34</version>
+                <version>5543.vfd758c7c868d</version>
                 <scope>import</scope>
                 <type>pom</type>
-            </dependency>
-            <!-- TODO: Remove when git plugin 5.8.0 is in plugin BOM -->
-            <dependency>
-                <groupId>org.jenkins-ci.plugins.workflow</groupId>
-                <artifactId>workflow-step-api</artifactId>
-                <version>710.v3e456cc85233</version>
-            </dependency>
-            <!-- TODO: Remove when git plugin 5.8.0 is in plugin BOM -->
-            <dependency>
-                <groupId>org.jenkins-ci.plugins</groupId>
-                <artifactId>scm-api</artifactId>
-                <version>710.v7b_a_484d81f45</version>
-            </dependency>
-            <!-- TODO: Remove when git plugin 5.8.0 is in plugin BOM -->
-            <dependency>
-                <groupId>org.jenkins-ci.plugins</groupId>
-                <artifactId>git</artifactId>
-                <version>5.8.0</version>
-            </dependency>
-            <!-- TODO: Remove when git plugin 5.8.0 is in plugin BOM -->
-            <dependency>
-                <groupId>io.jenkins.plugins</groupId>
-                <artifactId>commons-lang3-api</artifactId>
-                <version>3.19.0-104.v12125f33a_255</version>
             </dependency>
         </dependencies>
     </dependencyManagement>
