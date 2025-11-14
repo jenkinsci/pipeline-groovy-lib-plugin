@@ -83,8 +83,7 @@
             <dependency>
                 <groupId>org.jenkins-ci.plugins</groupId>
                 <artifactId>structs</artifactId>
-                <!-- TODO https://github.com/jenkinsci/structs-plugin/pull/255 -->
-                <version>361.v4b_ecfe2d628e</version>
+                <version>362.va_b_695ef4fdf9</version>
             </dependency>
         </dependencies>
     </dependencyManagement>
