@@ -78,8 +78,8 @@ public class LibraryStepTest {
         s.setRetriever(new SCMSourceRetriever(scmSource));
         s.setChangelog(true);
         r.assertEqualDataBoundBeans(s, stepTester.configRoundTrip(s));
-        // TODO uninstantiate works but SnippetizerTester.assertRoundTrip fails due to differing SCMSource.id values
-        assertEquals("library identifier: 'foo@master', retriever: modernSCM(gitSource(traits: [gitBranchDiscovery()], credentialsId: '', remote: 'https://nowhere.net/'))", Snippetizer.object2Groovy(s));
+        // TODO uninstantiate works but SnippetizerTester.assertRoundTrip fails due to differing SCMSource.id values pending https://github.com/jenkinsci/scm-api-plugin/pull/357
+        assertEquals("library identifier: 'foo@master', retriever: modernSCM(gitSource(credentialsId: '', remote: 'https://nowhere.net/', traits: [gitBranchDiscovery()]))", Snippetizer.object2Groovy(s));
         s.setRetriever(new SCMRetriever(new GitSCM(Collections.singletonList(new UserRemoteConfig("https://nowhere.net/", null, null, null)),
             Collections.singletonList(new BranchSpec("${library.foo.version}")),
             null, null, Collections.<GitSCMExtension>emptyList())));
