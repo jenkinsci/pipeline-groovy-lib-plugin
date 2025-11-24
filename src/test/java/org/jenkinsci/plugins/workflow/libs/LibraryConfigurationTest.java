@@ -24,28 +24,40 @@
 
 package org.jenkinsci.plugins.workflow.libs;
 
-import java.util.Collections;
-
 import hudson.plugins.git.GitSCM;
 import org.hamcrest.Matchers;
-import org.junit.Test;
-import static org.junit.Assert.*;
-import org.junit.Rule;
+
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
 import org.jvnet.hudson.test.Issue;
 import org.jvnet.hudson.test.JenkinsRule;
+import org.jvnet.hudson.test.junit.jupiter.WithJenkins;
 
-public class LibraryConfigurationTest {
+@WithJenkins
+class LibraryConfigurationTest {
 
-    @Rule public JenkinsRule r = new JenkinsRule();
+    private JenkinsRule r;
+
+    @BeforeEach
+    void beforeEach(JenkinsRule rule) {
+        r = rule;
+    }
 
     @Issue("JENKINS-38550")
-    @Test public void visibleRetrievers() throws Exception {
+    @Test
+    void visibleRetrievers() {
         assertThat(r.jenkins.getDescriptorByType(LibraryConfiguration.DescriptorImpl.class).getRetrieverDescriptors(),
-            Matchers.<LibraryRetrieverDescriptor>containsInAnyOrder(r.jenkins.getDescriptorByType(SCMSourceRetriever.DescriptorImpl.class), r.jenkins.getDescriptorByType(SCMRetriever.DescriptorImpl.class)));
+            Matchers.containsInAnyOrder(r.jenkins.getDescriptorByType(SCMSourceRetriever.DescriptorImpl.class), r.jenkins.getDescriptorByType(SCMRetriever.DescriptorImpl.class)));
     }
 
     @Issue("JENKINS-59527")
-    @Test public void validDefaultVersionAndName() {
+    @Test
+    void validDefaultVersionAndName() {
         String libraryName = "valid-name";
         String defaultVersion = "master";
 
@@ -57,7 +69,8 @@ public class LibraryConfigurationTest {
     }
 
     @Issue("JENKINS-59527")
-    @Test public void spacesDefaultVersionAndName() {
+    @Test
+    void spacesDefaultVersionAndName() {
         String libraryName = "     valid-name   ";
         String defaultVersion = "   master    ";
 
@@ -69,7 +82,8 @@ public class LibraryConfigurationTest {
     }
 
     @Issue("JENKINS-59527")
-    @Test public void emptyStringDefaultVersionAndName() {
+    @Test
+    void emptyStringDefaultVersionAndName() {
         String libraryName = "";
         String defaultVersion = "";
 
@@ -81,7 +95,8 @@ public class LibraryConfigurationTest {
     }
 
     @Issue("JENKINS-59527")
-    @Test public void nullDefaultVersionAndName() {
+    @Test
+    void nullDefaultVersionAndName() {
         String libraryName = null;
         String defaultVersion = null;
 
@@ -91,7 +106,4 @@ public class LibraryConfigurationTest {
         assertNull(cfg.getName());
         assertNull(cfg.getDefaultVersion());
     }
-
-
-
 }
