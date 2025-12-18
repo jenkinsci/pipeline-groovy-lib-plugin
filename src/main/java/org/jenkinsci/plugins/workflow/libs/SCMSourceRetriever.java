@@ -39,7 +39,7 @@ import hudson.util.StreamTaskListener;
 import java.io.StringWriter;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import jenkins.scm.api.SCMRevision;
@@ -121,13 +121,13 @@ public class SCMSourceRetriever extends SCMBasedRetriever {
             return descriptors;
         }
 
+        // TODO can be deleted after https://github.com/jenkinsci/scm-api-plugin/pull/357
         @Override public UninstantiatedDescribable customUninstantiate(UninstantiatedDescribable ud) {
             Object scm = ud.getArguments().get("scm");
-            if (scm instanceof UninstantiatedDescribable) {
-                UninstantiatedDescribable scmUd = (UninstantiatedDescribable) scm;
-                Map<String, Object> scmArguments = new HashMap<>(scmUd.getArguments());
+            if (scm instanceof UninstantiatedDescribable scmUd) {
+                Map<String, Object> scmArguments = new LinkedHashMap<>(scmUd.getArguments());
                 scmArguments.remove("id");
-                Map<String, Object> retrieverArguments = new HashMap<>(ud.getArguments());
+                Map<String, Object> retrieverArguments = new LinkedHashMap<>(ud.getArguments());
                 retrieverArguments.put("scm", scmUd.withArguments(scmArguments));
                 return ud.withArguments(retrieverArguments);
             }
