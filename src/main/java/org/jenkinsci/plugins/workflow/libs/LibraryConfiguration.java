@@ -63,6 +63,9 @@ public class LibraryConfiguration extends AbstractDescribableImpl<LibraryConfigu
 
     @DataBoundConstructor public LibraryConfiguration(String name, LibraryRetriever retriever) {
         this.name = Util.fixEmptyAndTrim(name);
+        if(this.name == null) {
+            throw new IllegalArgumentException("You must enter a library name");
+        }
         this.retriever = retriever;
     }
 
@@ -70,6 +73,7 @@ public class LibraryConfiguration extends AbstractDescribableImpl<LibraryConfigu
      * Library name.
      * Should match {@link Library#value}, up to the first occurrence of {@code @}, if any.
      */
+    @NonNull
     public String getName() {
         return name;
     }
@@ -173,6 +177,9 @@ public class LibraryConfiguration extends AbstractDescribableImpl<LibraryConfigu
 
         @RequirePOST
         public FormValidation doCheckDefaultVersion(@AncestorInPath Item context, @QueryParameter String defaultVersion, @QueryParameter boolean implicit, @QueryParameter boolean allowVersionOverride, @QueryParameter String name) {
+            if (name.isEmpty()) {
+                return FormValidation.error("You must enter a name.");
+            }
             if (defaultVersion.isEmpty()) {
                 if (implicit) {
                     return FormValidation.error("If you load a library implicitly, you must specify a default version.");
