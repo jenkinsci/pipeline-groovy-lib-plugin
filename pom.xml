@@ -128,7 +128,15 @@
             <groupId>org.jenkins-ci.plugins</groupId>
             <artifactId>script-security</artifactId>
         </dependency>
-
+        <dependency>
+            <groupId>io.jenkins.plugins</groupId>
+            <artifactId>markdown-formatter</artifactId>
+            <version>95.v17a_965e696ee</version>
+        </dependency>
+        <dependency>
+            <groupId>org.jenkins-ci.plugins</groupId>
+            <artifactId>antisamy-markup-formatter</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.jenkins-ci.plugins</groupId>
             <artifactId>variant</artifactId>

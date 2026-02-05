@@ -210,7 +210,7 @@ public abstract class SCMBasedRetriever extends LibraryRetriever {
                 }
                 // Cannot add WorkspaceActionImpl to private CpsFlowExecution.flowStartNodeActions; do we care?
                 // Copy sources with relevant files from the checkout:
-                lease.path.child(libraryPath).copyRecursiveTo("src/**/*.groovy,vars/*.groovy,vars/*.txt,resources/", excludes, target);
+                lease.path.child(libraryPath).copyRecursiveTo("src/**/*.groovy,vars/*.groovy,vars/*.txt,vars/*.md,vars/*.html,resources/", excludes, target);
             }
         }
     }
