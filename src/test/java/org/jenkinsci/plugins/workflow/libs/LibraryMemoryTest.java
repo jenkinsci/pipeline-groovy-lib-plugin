@@ -36,30 +36,46 @@ import java.util.List;
 import java.util.logging.Level;
 import jenkins.plugins.git.GitSCMSource;
 import jenkins.plugins.git.GitSampleRepoRule;
+import jenkins.plugins.git.junit.jupiter.WithGitSampleRepo;
 import org.codehaus.groovy.reflection.ClassInfo;
 import org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition;
 import org.jenkinsci.plugins.workflow.cps.CpsFlowExecution;
 import org.jenkinsci.plugins.workflow.job.WorkflowJob;
 import org.jenkinsci.plugins.workflow.support.storage.BulkFlowNodeStorage;
-import org.junit.Before;
-import static org.junit.Assert.assertFalse;
-import org.junit.ClassRule;
-import org.junit.Rule;
-import org.junit.Test;
-import org.jvnet.hudson.test.BuildWatcher;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.jvnet.hudson.test.Issue;
 import org.jvnet.hudson.test.JenkinsRule;
-import org.jvnet.hudson.test.LoggerRule;
+import org.jvnet.hudson.test.LogRecorder;
 import org.jvnet.hudson.test.MemoryAssert;
+import org.jvnet.hudson.test.junit.jupiter.BuildWatcherExtension;
+import org.jvnet.hudson.test.junit.jupiter.WithJenkins;
 
-public class LibraryMemoryTest {
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
-    @ClassRule public static BuildWatcher buildWatcher = new BuildWatcher();
-    @Rule public JenkinsRule r = new JenkinsRule();
-    @Rule public GitSampleRepoRule sampleRepo = new GitSampleRepoRule();
-    @Rule public LoggerRule logging = new LoggerRule().record(CpsFlowExecution.class, Level.FINER);
+@WithJenkins
+@WithGitSampleRepo
+class LibraryMemoryTest {
+
+    @SuppressWarnings("unused")
+    @RegisterExtension
+    private static final BuildWatcherExtension BUILD_WATCHER = new BuildWatcherExtension();
+    private JenkinsRule r;
+    private GitSampleRepoRule sampleRepo;
+    @SuppressWarnings("unused")
+    private final LogRecorder logging = new LogRecorder().record(CpsFlowExecution.class, Level.FINER);
 
     private static final List<WeakReference<ClassLoader>> LOADERS = new ArrayList<>();
+
+    @BeforeEach
+    void beforeEach(JenkinsRule rule, GitSampleRepoRule repo) {
+        r = rule;
+        sampleRepo = repo;
+        LOADERS.clear();
+    }
+
+    @SuppressWarnings("unused")
     public static void register(Object o) {
         System.err.println("registering " + o);
         for (ClassLoader loader = o.getClass().getClassLoader(); !(loader instanceof PluginManager.UberClassLoader); loader = loader.getParent()) {
@@ -68,13 +84,9 @@ public class LibraryMemoryTest {
         }
     }
 
-    @Before
-    public void cleanUp() {
-        LOADERS.clear();
-    }
-
     @Issue("JENKINS-50223")
-    @Test public void loaderReleased() throws Exception {
+    @Test
+    void loaderReleased() throws Exception {
         sampleRepo.init();
         sampleRepo.write("src/p/C.groovy", "package p; class C {}");
         sampleRepo.write("vars/leak.groovy", "def call() {def c = node {new p.C()}; [this, c].each {" + LibraryMemoryTest.class.getName() + ".register(it)}}");
@@ -96,7 +108,8 @@ public class LibraryMemoryTest {
         }
     }
 
-    @Test public void loaderReleasedWithGrab() throws Exception {
+    @Test
+    void loaderReleasedWithGrab() throws Exception {
         {
             // http-builder loads xerces stuff that XStream has special handling for, and if BulkFlowNodeStorage
             // is first initialized by a Pipeline that uses @Grab, the grabbed classes will be available when
@@ -132,5 +145,4 @@ public class LibraryMemoryTest {
             MemoryAssert.assertGC(loaderRef, false);
         }
     }
-
 }

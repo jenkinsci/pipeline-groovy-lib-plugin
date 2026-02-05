@@ -36,41 +36,65 @@ import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.Collections;
+import java.util.List;
+
 import jenkins.plugins.git.GitSCMSource;
 import jenkins.plugins.git.GitSampleRepoRule;
 import org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition;
 import org.jenkinsci.plugins.workflow.job.WorkflowJob;
 import org.jenkinsci.plugins.workflow.job.WorkflowRun;
-import static org.junit.Assume.*;
-import org.junit.Test;
-import org.junit.ClassRule;
-import org.junit.Rule;
-import org.jvnet.hudson.test.BuildWatcher;
+import static org.junit.jupiter.api.Assumptions.*;
+
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.jvnet.hudson.test.Issue;
 import org.jvnet.hudson.test.JenkinsRule;
+import org.jvnet.hudson.test.junit.jupiter.BuildWatcherExtension;
+import org.jvnet.hudson.test.junit.jupiter.WithJenkins;
 
-public class ResourceStepTest {
+@WithJenkins
+class ResourceStepTest {
 
-    @ClassRule public static BuildWatcher buildWatcher = new BuildWatcher();
-    @Rule public JenkinsRule r = new JenkinsRule();
-    @Rule public GitSampleRepoRule sampleRepo = new GitSampleRepoRule();
-    @Rule public GitSampleRepoRule sampleRepo2 = new GitSampleRepoRule();
+    @SuppressWarnings("unused")
+    @RegisterExtension
+    private static final BuildWatcherExtension BUILD_WATCHER = new BuildWatcherExtension();
+    private JenkinsRule r;
+    private final GitSampleRepoRule sampleRepo1 = new GitSampleRepoRule();
+    private final GitSampleRepoRule sampleRepo2 = new GitSampleRepoRule();
 
-    @Test public void smokes() throws Exception {
+    @BeforeEach
+    void beforeEach(JenkinsRule rule) throws Throwable {
+        r = rule;
+        sampleRepo1.before();
+        sampleRepo2.before();
+    }
+
+    @AfterEach
+    void afterEach() {
+        sampleRepo1.after();
+        sampleRepo2.after();
+    }
+
+    @Test
+    void smokes() throws Exception {
         initFixedContentLibrary();
         
         GlobalLibraries.get().setLibraries(Collections.singletonList(
-            new LibraryConfiguration("stuff", new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true)))));
+            new LibraryConfiguration("stuff", new SCMSourceRetriever(new GitSCMSource(null, sampleRepo1.toString(), "", "*", "", true)))));
         WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "p");
         p.setDefinition(new CpsFlowDefinition("@Library('stuff@master') import pkg.Stuff; echo(/got ${Stuff.contents(this)}/)", true));
         r.assertLogContains("got fixed contents", r.buildAndAssertSuccess(p));
     }
 
-    @Test public void caching() throws Exception {
+    @Test
+    void caching() throws Exception {
         clearCache("stuff");
         initFixedContentLibrary();
         
-        LibraryConfiguration libraryConfig =  new LibraryConfiguration("stuff", new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true)));
+        LibraryConfiguration libraryConfig =  new LibraryConfiguration("stuff", new SCMSourceRetriever(new GitSCMSource(null, sampleRepo1.toString(), "", "*", "", true)));
         libraryConfig.setCachingConfiguration(new LibraryCachingConfiguration(0, ""));
         GlobalLibraries.get().setLibraries(Collections.singletonList(libraryConfig));
         WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "p");
@@ -87,11 +111,12 @@ public class ResourceStepTest {
         r.assertLogNotContains("git", secondBuild); // git is not called
     }
 
-    @Test public void cachingExcludedLibrary() throws Exception {
+    @Test
+    void cachingExcludedLibrary() throws Exception {
         clearCache("stuff");
         initFixedContentLibrary();
         
-        LibraryConfiguration libraryConfig =  new LibraryConfiguration("stuff", new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true)));
+        LibraryConfiguration libraryConfig =  new LibraryConfiguration("stuff", new SCMSourceRetriever(new GitSCMSource(null, sampleRepo1.toString(), "", "*", "", true)));
         libraryConfig.setCachingConfiguration(new LibraryCachingConfiguration(0, "test_unused other"));
         GlobalLibraries.get().setLibraries(Collections.singletonList(libraryConfig));
         WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "p");
@@ -109,11 +134,12 @@ public class ResourceStepTest {
         r.assertLogContains("git", secondBuild); // git is called
     }
 
-    @Test public void cachingRefresh() throws Exception {
+    @Test
+    void cachingRefresh() throws Exception {
         clearCache("stuff");
         initFixedContentLibrary();
         
-        LibraryConfiguration libraryConfig =  new LibraryConfiguration("stuff", new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true)));
+        LibraryConfiguration libraryConfig =  new LibraryConfiguration("stuff", new SCMSourceRetriever(new GitSCMSource(null, sampleRepo1.toString(), "", "*", "", true)));
         libraryConfig.setCachingConfiguration(new LibraryCachingConfiguration(60, "test_unused other"));
         GlobalLibraries.get().setLibraries(Collections.singletonList(libraryConfig));
         WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "p");
@@ -138,24 +164,26 @@ public class ResourceStepTest {
         r.assertLogContains("git", thirdBuild); // git is called
     }
 
-    @Test public void missingResource() throws Exception {
+    @Test
+    void missingResource() throws Exception {
         WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "p");
         p.setDefinition(new CpsFlowDefinition("libraryResource 'whatever'", true));
         r.assertLogContains(Messages.ResourceStep_no_such_library_resource_could_be_found_("whatever"), r.assertBuildStatus(Result.FAILURE, p.scheduleBuild2(0)));
     }
 
-    @Test public void duplicatedResources() throws Exception {
-        sampleRepo.init();
-        sampleRepo.write("src/pkg/Stuff.groovy", "package pkg; class Stuff {static def contents(script) {script.libraryResource 'pkg/file'}}");
-        sampleRepo.write("resources/pkg/file", "initial contents");
-        sampleRepo.git("add", "src", "resources");
-        sampleRepo.git("commit", "--message=init");
-        sampleRepo.git("tag", "v1");
-        sampleRepo.write("resources/pkg/file", "subsequent contents");
-        sampleRepo.git("commit", "--all", "--message=edited");
-        LibraryConfiguration stuff1 = new LibraryConfiguration("stuff1", new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true)));
+    @Test
+    void duplicatedResources() throws Exception {
+        sampleRepo1.init();
+        sampleRepo1.write("src/pkg/Stuff.groovy", "package pkg; class Stuff {static def contents(script) {script.libraryResource 'pkg/file'}}");
+        sampleRepo1.write("resources/pkg/file", "initial contents");
+        sampleRepo1.git("add", "src", "resources");
+        sampleRepo1.git("commit", "--message=init");
+        sampleRepo1.git("tag", "v1");
+        sampleRepo1.write("resources/pkg/file", "subsequent contents");
+        sampleRepo1.git("commit", "--all", "--message=edited");
+        LibraryConfiguration stuff1 = new LibraryConfiguration("stuff1", new SCMSourceRetriever(new GitSCMSource(null, sampleRepo1.toString(), "", "*", "", true)));
         stuff1.setDefaultVersion("v1");
-        LibraryConfiguration stuff2 = new LibraryConfiguration("stuff2", new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true)));
+        LibraryConfiguration stuff2 = new LibraryConfiguration("stuff2", new SCMSourceRetriever(new GitSCMSource(null, sampleRepo1.toString(), "", "*", "", true)));
         stuff2.setDefaultVersion("master");
         GlobalLibraries.get().setLibraries(Arrays.asList(stuff1, stuff2));
         WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "p");
@@ -164,22 +192,23 @@ public class ResourceStepTest {
     }
 
     @Issue("JENKINS-52313")
-    @Test public void specifyResourceEncoding() throws Exception {
-        assumeFalse("TODO mojibake on windows-11-2.164.1", Functions.isWindows());
-        sampleRepo.init();
-        sampleRepo.write("src/pkg/Stuff.groovy", "package pkg; class Stuff {" +
+    @Test
+    void specifyResourceEncoding() throws Exception {
+        assumeFalse(Functions.isWindows(), "TODO mojibake on windows-11-2.164.1");
+        sampleRepo1.init();
+        sampleRepo1.write("src/pkg/Stuff.groovy", "package pkg; class Stuff {" +
                 "static def utf8(script) {script.libraryResource(resource: 'pkg/utf8', encoding: 'ISO-8859-15')}\n" +
                 "static def binary(script) {script.libraryResource(resource: 'pkg/binary', encoding: 'Base64')}}");
-        Path resourcesDir = Paths.get(sampleRepo.getRoot().getPath(), "resources", "pkg");
+        Path resourcesDir = Paths.get(sampleRepo1.getRoot().getPath(), "resources", "pkg");
         Files.createDirectories(resourcesDir);
         // '¤' encoded using ISO-8859-1 should turn into '€' when decoding using ISO-8859-15.
-        Files.write(resourcesDir.resolve("utf8"), Arrays.asList("¤"), StandardCharsets.ISO_8859_1);
+        Files.write(resourcesDir.resolve("utf8"), List.of("¤"), StandardCharsets.ISO_8859_1);
         byte[] binaryData = {0x48, 0x45, 0x4c, 0x4c, 0x4f, (byte) 0x80, (byte) 0xec, (byte) 0xf4, 0x00, 0x0d, 0x1b};
         Files.write(resourcesDir.resolve("binary"), binaryData);
-        sampleRepo.git("add", "src", "resources");
-        sampleRepo.git("commit", "--message=init");
+        sampleRepo1.git("add", "src", "resources");
+        sampleRepo1.git("commit", "--message=init");
         GlobalLibraries.get().setLibraries(Collections.singletonList(
-            new LibraryConfiguration("stuff", new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true)))));
+            new LibraryConfiguration("stuff", new SCMSourceRetriever(new GitSCMSource(null, sampleRepo1.toString(), "", "*", "", true)))));
         WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "p");
         p.setDefinition(new CpsFlowDefinition("@Library('stuff@master') import pkg.Stuff; echo(Stuff.utf8(this)); echo(Stuff.binary(this))", true));
         Run run = r.buildAndAssertSuccess(p);
@@ -188,18 +217,19 @@ public class ResourceStepTest {
     }
 
     @Issue("SECURITY-2479")
-    @Test public void symlinksInLibraryResourcesAreNotAllowedToEscapeWorkspaceContext() throws Exception {
+    @Test
+    void symlinksInLibraryResourcesAreNotAllowedToEscapeWorkspaceContext() throws Exception {
         assumeFalse(Functions.isWindows()); // On Windows, the symlink is treated as a regular file, so there is no vulnerability, but the behavior is different.
-        sampleRepo.init();
-        sampleRepo.write("src/Stuff.groovy", "class Stuff {static def contents(script) {script.libraryResource 'master.key'}}");
-        Path resourcesDir = Paths.get(sampleRepo.getRoot().getPath(), "resources");
+        sampleRepo1.init();
+        sampleRepo1.write("src/Stuff.groovy", "class Stuff {static def contents(script) {script.libraryResource 'master.key'}}");
+        Path resourcesDir = Paths.get(sampleRepo1.getRoot().getPath(), "resources");
         Files.createDirectories(resourcesDir);
         Path symlinkPath = Paths.get(resourcesDir.toString(), "master.key");
         Files.createSymbolicLink(symlinkPath, Paths.get("../../../../../../../secrets/master.key"));
 
-        sampleRepo.git("add", "src", "resources");
-        sampleRepo.git("commit", "--message=init");
-        LibraryConfiguration libraryConfiguration = new LibraryConfiguration("symlink-stuff", new SCMSourceRetriever(new GitSCMSource(sampleRepo.toString())));
+        sampleRepo1.git("add", "src", "resources");
+        sampleRepo1.git("commit", "--message=init");
+        LibraryConfiguration libraryConfiguration = new LibraryConfiguration("symlink-stuff", new SCMSourceRetriever(new GitSCMSource(sampleRepo1.toString())));
         GlobalLibraries.get().setLibraries(Collections.singletonList(libraryConfiguration));
 
         WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "p");
@@ -208,15 +238,16 @@ public class ResourceStepTest {
     }
 
     @Issue("SECURITY-2476")
-    @Test public void libraryResourceNotAllowedToEscapeWorkspaceContext() throws Exception {
-        sampleRepo.init();
-        sampleRepo.write("src/Stuff.groovy", "class Stuff {static def contents(script) {script.libraryResource '../../../../../../../secrets/master.key'}}");
-        Path resourcesDir = Paths.get(sampleRepo.getRoot().getPath(), "resources");
+    @Test
+    void libraryResourceNotAllowedToEscapeWorkspaceContext() throws Exception {
+        sampleRepo1.init();
+        sampleRepo1.write("src/Stuff.groovy", "class Stuff {static def contents(script) {script.libraryResource '../../../../../../../secrets/master.key'}}");
+        Path resourcesDir = Paths.get(sampleRepo1.getRoot().getPath(), "resources");
         Files.createDirectories(resourcesDir);
 
-        sampleRepo.git("add", "src", "resources");
-        sampleRepo.git("commit", "--message=init");
-        LibraryConfiguration libraryConfiguration = new LibraryConfiguration("libres-stuff", new SCMSourceRetriever(new GitSCMSource(sampleRepo.toString())));
+        sampleRepo1.git("add", "src", "resources");
+        sampleRepo1.git("commit", "--message=init");
+        LibraryConfiguration libraryConfiguration = new LibraryConfiguration("libres-stuff", new SCMSourceRetriever(new GitSCMSource(sampleRepo1.toString())));
         GlobalLibraries.get().setLibraries(Collections.singletonList(libraryConfiguration));
 
         WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "p");
@@ -225,12 +256,13 @@ public class ResourceStepTest {
         r.assertLogContains("../../../../../../../secrets/master.key references a file that is not contained within the library: libres-stuff", r.buildAndAssertStatus(Result.FAILURE, p));
     }
 
-    @Test public void findResourcesAttemptsToLoadFromAllIncludedLibraries() throws Exception {
-        sampleRepo.init();
-        sampleRepo.write("src/Stuff.groovy", "");
-        sampleRepo.write("resources/foo.txt", "Hello from foo!");
-        sampleRepo.git("add", "src", "resources");
-        sampleRepo.git("commit", "--message=init");
+    @Test
+    void findResourcesAttemptsToLoadFromAllIncludedLibraries() throws Exception {
+        sampleRepo1.init();
+        sampleRepo1.write("src/Stuff.groovy", "");
+        sampleRepo1.write("resources/foo.txt", "Hello from foo!");
+        sampleRepo1.git("add", "src", "resources");
+        sampleRepo1.git("commit", "--message=init");
 
         sampleRepo2.init();
         sampleRepo2.write("src/Thing.groovy", "");
@@ -239,7 +271,7 @@ public class ResourceStepTest {
         sampleRepo2.git("commit", "--message=init");
 
         LibraryConfiguration libraryConfiguration = new LibraryConfiguration("stuff",
-                new SCMSourceRetriever(new GitSCMSource(sampleRepo.toString())));
+                new SCMSourceRetriever(new GitSCMSource(sampleRepo1.toString())));
         LibraryConfiguration libraryConfiguration2 = new LibraryConfiguration("thing",
                 new SCMSourceRetriever(new GitSCMSource(sampleRepo2.toString())));
         GlobalLibraries.get().setLibraries(Arrays.asList(libraryConfiguration, libraryConfiguration2));
@@ -253,23 +285,23 @@ public class ResourceStepTest {
         r.assertLogContains("Hello from foo!", run);
     }
 
-    public void initFixedContentLibrary() throws Exception {
-        sampleRepo.init();
-        sampleRepo.write("src/pkg/Stuff.groovy", "package pkg; class Stuff {static def contents(script) {script.libraryResource 'pkg/file'}}");
-        sampleRepo.write("resources/pkg/file", "fixed contents");
-        sampleRepo.git("add", "src", "resources");
-        sampleRepo.git("commit", "--message=init");
-        sampleRepo.git("branch", "other");
+    private void initFixedContentLibrary() throws Exception {
+        sampleRepo1.init();
+        sampleRepo1.write("src/pkg/Stuff.groovy", "package pkg; class Stuff {static def contents(script) {script.libraryResource 'pkg/file'}}");
+        sampleRepo1.write("resources/pkg/file", "fixed contents");
+        sampleRepo1.git("add", "src", "resources");
+        sampleRepo1.git("commit", "--message=init");
+        sampleRepo1.git("branch", "other");
     }
 
-    public void clearCache(String name) throws Exception {
+    private void clearCache(String name) throws Exception {
         FilePath cacheDir = new FilePath(LibraryCachingConfiguration.getGlobalLibrariesCacheDir(), name);
         if (cacheDir.exists()) {
             cacheDir.deleteRecursive();
         }
     }
 
-    public void modifyCacheTimestamp(String name, String version, long timestamp) throws Exception {
+    private void modifyCacheTimestamp(String name, String version, long timestamp) throws Exception {
         String cacheDirName = LibraryRecord.directoryNameFor(name, version, String.valueOf(true), GlobalLibraries.ForJob.class.getName());
         FilePath cacheDir = new FilePath(LibraryCachingConfiguration.getGlobalLibrariesCacheDir(), cacheDirName);
         if (cacheDir.exists()) {

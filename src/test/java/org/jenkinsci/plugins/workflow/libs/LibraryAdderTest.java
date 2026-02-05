@@ -49,62 +49,82 @@ import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.nullValue;
 import org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition;
 import org.jenkinsci.plugins.workflow.cps.GlobalVariable;
-import org.jenkinsci.plugins.workflow.cps.global.GrapeTest;
 import org.jenkinsci.plugins.workflow.cps.global.UserDefinedGlobalVariable;
 import org.jenkinsci.plugins.workflow.cps.replay.ReplayAction;
 import org.jenkinsci.plugins.workflow.job.WorkflowJob;
 import org.jenkinsci.plugins.workflow.job.WorkflowRun;
-import org.jenkinsci.plugins.workflow.libs.ClasspathAdder.Addition;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNotNull;
-import org.junit.ClassRule;
-import org.junit.Rule;
-import org.junit.Test;
-import org.jvnet.hudson.test.BuildWatcher;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.jvnet.hudson.test.Issue;
 import org.jvnet.hudson.test.JenkinsRule;
 import org.jvnet.hudson.test.TestExtension;
 import org.jvnet.hudson.test.WithoutJenkins;
+import org.jvnet.hudson.test.junit.jupiter.BuildWatcherExtension;
+import org.jvnet.hudson.test.junit.jupiter.WithJenkins;
 import org.jvnet.hudson.test.recipes.LocalData;
 
-public class LibraryAdderTest {
+@WithJenkins
+class LibraryAdderTest {
 
-    @ClassRule public static BuildWatcher buildWatcher = new BuildWatcher();
-    @Rule public JenkinsRule r = new JenkinsRule();
-    @Rule public GitSampleRepoRule sampleRepo = new GitSampleRepoRule();
-    @Rule public GitSampleRepoRule sampleRepo2 = new GitSampleRepoRule();
+    @SuppressWarnings("unused")
+    @RegisterExtension
+    private static final BuildWatcherExtension BUILD_WATCHER = new BuildWatcherExtension();
+    private JenkinsRule r;
+    private final GitSampleRepoRule sampleRepo1 = new GitSampleRepoRule();
+    private final GitSampleRepoRule sampleRepo2 = new GitSampleRepoRule();
 
-    @Test public void smokes() throws Exception {
-        sampleRepo.init();
+    @BeforeEach
+    void beforeEach(JenkinsRule rule) throws Throwable {
+        r = rule;
+        sampleRepo1.before();
+        sampleRepo2.before();
+    }
+
+    @AfterEach
+    void afterEach() {
+        sampleRepo1.after();
+        sampleRepo2.after();
+    }
+
+    @Test
+    void smokes() throws Exception {
+        sampleRepo1.init();
         String lib = "package pkg; class Lib {static String CONST = 'constant'}";
-        sampleRepo.write("src/pkg/Lib.groovy", lib);
-        sampleRepo.git("add", "src");
-        sampleRepo.git("commit", "--message=init");
-        GlobalLibraries.get().setLibraries(Collections.singletonList(new LibraryConfiguration("stuff", new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true)))));
+        sampleRepo1.write("src/pkg/Lib.groovy", lib);
+        sampleRepo1.git("add", "src");
+        sampleRepo1.git("commit", "--message=init");
+        GlobalLibraries.get().setLibraries(Collections.singletonList(new LibraryConfiguration("stuff", new SCMSourceRetriever(new GitSCMSource(null, sampleRepo1.toString(), "", "*", "", true)))));
         WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "p");
         String script = "@Library('stuff@master') import static pkg.Lib.*; echo(/using ${CONST}/)";
         p.setDefinition(new CpsFlowDefinition(script, true));
         r.assertLogContains("using constant", r.buildAndAssertSuccess(p));
-        sampleRepo.git("tag", "1.0");
-        sampleRepo.write("src/pkg/Lib.groovy", lib.replace("constant", "modified"));
-        sampleRepo.git("commit", "--all", "--message=modified");
+        sampleRepo1.git("tag", "1.0");
+        sampleRepo1.write("src/pkg/Lib.groovy", lib.replace("constant", "modified"));
+        sampleRepo1.git("commit", "--all", "--message=modified");
         r.assertLogContains("using modified", r.buildAndAssertSuccess(p));
         p.setDefinition(new CpsFlowDefinition(script.replace("master", "1.0"), true));
         r.assertLogContains("using constant", r.buildAndAssertSuccess(p));
     }
 
-    @Test public void usingInterpolation() throws Exception {
-        sampleRepo.init();
-        sampleRepo.write("src/pkg/Lib.groovy", "package pkg; class Lib {static String CONST = 'initial'}");
-        sampleRepo.git("add", "src");
-        sampleRepo.git("commit", "--message=init");
-        sampleRepo.git("tag", "initial");
-        sampleRepo.write("src/pkg/Lib.groovy", "package pkg; class Lib {static String CONST = 'modified'}");
-        sampleRepo.git("commit", "--all", "--message=modified");
+    @Test
+    void usingInterpolation() throws Exception {
+        sampleRepo1.init();
+        sampleRepo1.write("src/pkg/Lib.groovy", "package pkg; class Lib {static String CONST = 'initial'}");
+        sampleRepo1.git("add", "src");
+        sampleRepo1.git("commit", "--message=init");
+        sampleRepo1.git("tag", "initial");
+        sampleRepo1.write("src/pkg/Lib.groovy", "package pkg; class Lib {static String CONST = 'modified'}");
+        sampleRepo1.git("commit", "--all", "--message=modified");
         LibraryConfiguration stuff = new LibraryConfiguration("stuff",
             new SCMRetriever(
-                    new GitSCM(Collections.singletonList(new UserRemoteConfig(sampleRepo.fileUrl(), null, null, null)),
+                    new GitSCM(Collections.singletonList(new UserRemoteConfig(sampleRepo1.fileUrl(), null, null, null)),
                             Collections.singletonList(new BranchSpec("${library.stuff.version}")),
                             null, null, Collections.emptyList())));
         stuff.setDefaultVersion("master");
@@ -122,12 +142,13 @@ public class LibraryAdderTest {
     }
 
     @Issue("JENKINS-41497")
-    @Test public void dontIncludeChangesetsOverriden() throws Exception {
-        sampleRepo.init();
-        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something special'}");
-        sampleRepo.git("add", "vars");
-        sampleRepo.git("commit", "--message=init");
-        LibraryConfiguration lc = new LibraryConfiguration("dont_include_changes", new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true)));
+    @Test
+    void dontIncludeChangesetsOverridden() throws Exception {
+        sampleRepo1.init();
+        sampleRepo1.write("vars/myecho.groovy", "def call() {echo 'something special'}");
+        sampleRepo1.git("add", "vars");
+        sampleRepo1.git("commit", "--message=init");
+        LibraryConfiguration lc = new LibraryConfiguration("dont_include_changes", new SCMSourceRetriever(new GitSCMSource(null, sampleRepo1.toString(), "", "*", "", true)));
         lc.setIncludeInChangesets(false);
         GlobalLibraries.get().setLibraries(Collections.singletonList(lc));
         WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "p");
@@ -137,9 +158,9 @@ public class LibraryAdderTest {
             WorkflowRun a = r.buildAndAssertSuccess(p);
             r.assertLogContains("something special", a);
         }
-        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something even more special'}");
-        sampleRepo.git("add", "vars");
-        sampleRepo.git("commit", "--message=library_commit");
+        sampleRepo1.write("vars/myecho.groovy", "def call() {echo 'something even more special'}");
+        sampleRepo1.git("add", "vars");
+        sampleRepo1.git("commit", "--message=library_commit");
         try (WorkspaceList.Lease lease = r.jenkins.toComputer().getWorkspaceList().acquire(base)) {
             WorkflowRun b = r.buildAndAssertSuccess(p);
             List<ChangeLogSet<? extends ChangeLogSet.Entry>> changeSets = b.getChangeSets();
@@ -155,12 +176,13 @@ public class LibraryAdderTest {
     }
 
     @Issue("JENKINS-41497")
-    @Test public void includeChangesetsOverridden() throws Exception {
-        sampleRepo.init();
-        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something special'}");
-        sampleRepo.git("add", "vars");
-        sampleRepo.git("commit", "--message=init");
-        LibraryConfiguration lc = new LibraryConfiguration("include_changes", new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true)));
+    @Test
+    void includeChangesetsOverridden() throws Exception {
+        sampleRepo1.init();
+        sampleRepo1.write("vars/myecho.groovy", "def call() {echo 'something special'}");
+        sampleRepo1.git("add", "vars");
+        sampleRepo1.git("commit", "--message=init");
+        LibraryConfiguration lc = new LibraryConfiguration("include_changes", new SCMSourceRetriever(new GitSCMSource(null, sampleRepo1.toString(), "", "*", "", true)));
         lc.setIncludeInChangesets(true);
         GlobalLibraries.get().setLibraries(Collections.singletonList(lc));
         WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "p");
@@ -169,9 +191,9 @@ public class LibraryAdderTest {
         try (WorkspaceList.Lease lease = r.jenkins.toComputer().getWorkspaceList().acquire(base)) {
             WorkflowRun a = r.buildAndAssertSuccess(p);
         }
-        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something even more special'}");
-        sampleRepo.git("add", "vars");
-        sampleRepo.git("commit", "--message=library_commit");
+        sampleRepo1.write("vars/myecho.groovy", "def call() {echo 'something even more special'}");
+        sampleRepo1.git("add", "vars");
+        sampleRepo1.git("commit", "--message=library_commit");
         try (WorkspaceList.Lease lease = r.jenkins.toComputer().getWorkspaceList().acquire(base)) {
             WorkflowRun b = r.buildAndAssertSuccess(p);
             List<ChangeLogSet<? extends ChangeLogSet.Entry>> changeSets = b.getChangeSets();
@@ -179,15 +201,16 @@ public class LibraryAdderTest {
         }
     }
 
-    @Test public void globalVariable() throws Exception {
-        sampleRepo.init();
-        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something special'}");
-        sampleRepo.write("vars/myecho.txt", "Says something very special!");
-        sampleRepo.git("add", "vars");
-        sampleRepo.git("commit", "--message=init");
+    @Test
+    void globalVariable() throws Exception {
+        sampleRepo1.init();
+        sampleRepo1.write("vars/myecho.groovy", "def call() {echo 'something special'}");
+        sampleRepo1.write("vars/myecho.txt", "Says something very special!");
+        sampleRepo1.git("add", "vars");
+        sampleRepo1.git("commit", "--message=init");
         GlobalLibraries.get().setLibraries(Collections.singletonList(
             new LibraryConfiguration("echo-utils",
-                new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true)))));
+                new SCMSourceRetriever(new GitSCMSource(null, sampleRepo1.toString(), "", "*", "", true)))));
         WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "p");
         p.setDefinition(new CpsFlowDefinition("@Library('echo-utils@master') import myecho; myecho()", true));
         WorkflowRun b = r.buildAndAssertSuccess(p);
@@ -197,22 +220,30 @@ public class LibraryAdderTest {
         assertEquals("Says something very special!", ((UserDefinedGlobalVariable) var).getHelpHtml());
     }
 
-    @Test public void dynamicLibraries() throws Exception {
-        sampleRepo.init();
-        sampleRepo.write("src/pkg/Lib.groovy", "package pkg; class Lib {static String CONST = 'constant'}");
-        sampleRepo.git("add", "src");
-        sampleRepo.git("commit", "--message=init");
+    @Test
+    void dynamicLibraries() throws Exception {
+        sampleRepo1.init();
+        sampleRepo1.write("src/pkg/Lib.groovy", "package pkg; class Lib {static String CONST = 'constant'}");
+        sampleRepo1.git("add", "src");
+        sampleRepo1.git("commit", "--message=init");
         WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "p");
-        DynamicResolver.remote = sampleRepo.toString();
+        DynamicResolver.remote = sampleRepo1.toString();
         p.setDefinition(new CpsFlowDefinition("@Library('dynamic') import pkg.Lib; echo(/using ${Lib.CONST}/)", true));
         r.assertLogContains("using constant", r.buildAndAssertSuccess(p));
     }
-    @TestExtension("dynamicLibraries") public static class DynamicResolver extends LibraryResolver {
-        @Override public boolean isTrusted() {
+
+    @TestExtension("dynamicLibraries")
+    public static class DynamicResolver extends LibraryResolver {
+
+        static String remote;
+
+        @Override
+        public boolean isTrusted() {
             return false;
         }
-        static String remote;
-        @Override public Collection<LibraryConfiguration> forJob(Job<?,?> job, Map<String,String> libraryVersions) {
+
+        @Override
+        public Collection<LibraryConfiguration> forJob(Job<?,?> job, Map<String,String> libraryVersions) {
             if (libraryVersions.containsKey("dynamic")) {
                 LibraryConfiguration cfg = new LibraryConfiguration("dynamic", new SCMSourceRetriever(new GitSCMSource(null, remote, "", "*", "", true)));
                 cfg.setDefaultVersion("master");
@@ -223,16 +254,17 @@ public class LibraryAdderTest {
         }
     }
 
-    @Test public void undefinedLibraries() throws Exception {
+    @Test
+    void undefinedLibraries() throws Exception {
         WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "p");
         p.setDefinition(new CpsFlowDefinition("@Library('nonexistent') _", true));
         r.assertLogContains(Messages.LibraryDecorator_could_not_find_any_definition_of_librari(Collections.singletonList("nonexistent")), r.assertBuildStatus(Result.FAILURE, p.scheduleBuild2(0)));
     }
 
-    /** @see GrapeTest */
-    @Test public void grape() throws Exception {
-        sampleRepo.init();
-        sampleRepo.write("src/semver/Version.groovy",
+    @Test
+    void grape() throws Exception {
+        sampleRepo1.init();
+        sampleRepo1.write("src/semver/Version.groovy",
             "package semver\n" +
             "@Grab('com.vdurmont:semver4j:2.0.1') import com.vdurmont.semver4j.Semver\n" + // https://github.com/vdurmont/semver4j#using-gradle
             "public class Version implements Serializable {\n" +
@@ -243,27 +275,29 @@ public class LibraryAdderTest {
             "    new Semver(v).isGreaterThan(version)\n" +
             "  }\n" +
             "}");
-        sampleRepo.git("add", "src");
-        sampleRepo.git("commit", "--message=init");
-        GlobalLibraries.get().setLibraries(Collections.singletonList(new LibraryConfiguration("semver", new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true)))));
+        sampleRepo1.git("add", "src");
+        sampleRepo1.git("commit", "--message=init");
+        GlobalLibraries.get().setLibraries(Collections.singletonList(new LibraryConfiguration("semver", new SCMSourceRetriever(new GitSCMSource(null, sampleRepo1.toString(), "", "*", "", true)))));
         WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "p");
         p.setDefinition(new CpsFlowDefinition(
-            "@Library('semver@master') import semver.Version\n" +
-            "echo(/1.2.0 > 1.0.0? ${new Version('1.2.0').isGreaterThan('1.0.0')}/)\n" +
-            "echo(/1.0.0 > 1.2.0? ${new Version('1.0.0').isGreaterThan('1.2.0')}/)", true));
+                """
+                        @Library('semver@master') import semver.Version
+                        echo(/1.2.0 > 1.0.0? ${new Version('1.2.0').isGreaterThan('1.0.0')}/)
+                        echo(/1.0.0 > 1.2.0? ${new Version('1.0.0').isGreaterThan('1.2.0')}/)""", true));
         WorkflowRun b = r.buildAndAssertSuccess(p);
         r.assertLogContains("1.2.0 > 1.0.0? true", b);
         r.assertLogContains("1.0.0 > 1.2.0? false", b);
     }
 
-    @Test public void noReplayTrustedLibraries() throws Exception {
-        sampleRepo.init();
+    @Test
+    void noReplayTrustedLibraries() throws Exception {
+        sampleRepo1.init();
         String originalMessage = "must not be edited";
         String originalScript = "def call() {echo '" + originalMessage + "'}";
-        sampleRepo.write("vars/trusted.groovy", originalScript);
-        sampleRepo.git("add", "vars");
-        sampleRepo.git("commit", "--message=init");
-        GlobalLibraries.get().setLibraries(Collections.singletonList(new LibraryConfiguration("trusted", new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true)))));
+        sampleRepo1.write("vars/trusted.groovy", originalScript);
+        sampleRepo1.git("add", "vars");
+        sampleRepo1.git("commit", "--message=init");
+        GlobalLibraries.get().setLibraries(Collections.singletonList(new LibraryConfiguration("trusted", new SCMSourceRetriever(new GitSCMSource(null, sampleRepo1.toString(), "", "*", "", true)))));
         WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "p");
         p.setDefinition(new CpsFlowDefinition("@Library('trusted@master') import trusted; trusted()", true));
         WorkflowRun b1 = r.buildAndAssertSuccess(p);
@@ -276,14 +310,15 @@ public class LibraryAdderTest {
     }
 
     @Issue({"JENKINS-38021", "JENKINS-31484"})
-    @Test public void gettersAndSetters() throws Exception {
-        sampleRepo.init();
-        sampleRepo.write("vars/config.groovy", "class config implements Serializable {private String foo; public String getFoo() {return(/loaded ${this.foo}/)}; public void setFoo(String value) {this.foo = value.toUpperCase()}}");
-        sampleRepo.git("add", "vars");
-        sampleRepo.git("commit", "--message=init");
+    @Test
+    void gettersAndSetters() throws Exception {
+        sampleRepo1.init();
+        sampleRepo1.write("vars/config.groovy", "class config implements Serializable {private String foo; public String getFoo() {return(/loaded ${this.foo}/)}; public void setFoo(String value) {this.foo = value.toUpperCase()}}");
+        sampleRepo1.git("add", "vars");
+        sampleRepo1.git("commit", "--message=init");
         GlobalLibraries.get().setLibraries(Collections.singletonList(
             new LibraryConfiguration("config",
-                new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true)))));
+                new SCMSourceRetriever(new GitSCMSource(null, sampleRepo1.toString(), "", "*", "", true)))));
         WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "p");
         p.setDefinition(new CpsFlowDefinition("@Library('config@master') _; timeout(1) {config.foo = 'bar'; echo(/set to $config.foo/)}", false));
         r.assertLogContains("set to loaded BAR", r.buildAndAssertSuccess(p));
@@ -294,32 +329,36 @@ public class LibraryAdderTest {
     }
 
     @Issue("JENKINS-56682")
-    @Test public void scriptFieldsWhereInitializerUsesLibrary() throws Exception {
-        sampleRepo.init();
-        sampleRepo.write("src/pkg/Foo.groovy", "package pkg; class Foo { }");
-        sampleRepo.git("add", "src");
-        sampleRepo.git("commit", "--message=init");
+    @Test
+    void scriptFieldsWhereInitializerUsesLibrary() throws Exception {
+        sampleRepo1.init();
+        sampleRepo1.write("src/pkg/Foo.groovy", "package pkg; class Foo { }");
+        sampleRepo1.git("add", "src");
+        sampleRepo1.git("commit", "--message=init");
         GlobalLibraries.get().setLibraries(Collections.singletonList(
             new LibraryConfiguration("lib",
-                new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true)))));
+                new SCMSourceRetriever(new GitSCMSource(null, sampleRepo1.toString(), "", "*", "", true)))));
         WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "p");
         p.setDefinition(new CpsFlowDefinition(
-                "@Library('lib@master') import pkg.Foo\n" +
-                "import groovy.transform.Field\n" +
-                "@Field f = new Foo()\n" +
-                "@Field static g = new Foo()\n", true));
+                """
+                        @Library('lib@master') import pkg.Foo
+                        import groovy.transform.Field
+                        @Field f = new Foo()
+                        @Field static g = new Foo()
+                        """, true));
         r.buildAndAssertSuccess(p);
     }
 
-    @Test public void srcTestNotOnClassPath() throws Exception {
-        sampleRepo.init();
-        sampleRepo.write("src/test/Foo.groovy", "package test; class Foo { }");
-        sampleRepo.write("src/test/foo/Bar.groovy", "package test.foo; class Bar { }");
-        sampleRepo.git("add", "src");
-        sampleRepo.git("commit", "--message=init");
+    @Test
+    void srcTestNotOnClassPath() throws Exception {
+        sampleRepo1.init();
+        sampleRepo1.write("src/test/Foo.groovy", "package test; class Foo { }");
+        sampleRepo1.write("src/test/foo/Bar.groovy", "package test.foo; class Bar { }");
+        sampleRepo1.git("add", "src");
+        sampleRepo1.git("commit", "--message=init");
         GlobalLibraries.get().setLibraries(Collections.singletonList(
             new LibraryConfiguration("lib",
-                new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true)))));
+                new SCMSourceRetriever(new GitSCMSource(null, sampleRepo1.toString(), "", "*", "", true)))));
         WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "p");
         p.setDefinition(new CpsFlowDefinition("@Library('lib@master') import test.Foo", true));
         WorkflowRun b = r.assertBuildStatus(Result.FAILURE, p.scheduleBuild2(0));
@@ -328,14 +367,15 @@ public class LibraryAdderTest {
     }
 
     @Issue("SECURITY-2422")
-    @Test public void libraryNamesAreNotUsedAsBuildDirectoryPaths() throws Exception {
-        sampleRepo.init();
-        sampleRepo.write("vars/globalLibVar.groovy", "def call() { echo('global library') }");
-        sampleRepo.git("add", "vars");
-        sampleRepo.git("commit", "--message=init");
+    @Test
+    void libraryNamesAreNotUsedAsBuildDirectoryPaths() throws Exception {
+        sampleRepo1.init();
+        sampleRepo1.write("vars/globalLibVar.groovy", "def call() { echo('global library') }");
+        sampleRepo1.git("add", "vars");
+        sampleRepo1.git("commit", "--message=init");
         sampleRepo2.init();
         LibraryConfiguration globalLib = new LibraryConfiguration("global",
-                new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true)));
+                new SCMSourceRetriever(new GitSCMSource(null, sampleRepo1.toString(), "", "*", "", true)));
         globalLib.setDefaultVersion("master");
         globalLib.setImplicit(true);
         GlobalLibraries.get().setLibraries(Collections.singletonList(globalLib));
@@ -359,14 +399,15 @@ public class LibraryAdderTest {
     }
 
     @Issue("SECURITY-2586")
-    @Test public void libraryNamesAreNotUsedAsCacheDirectories() throws Exception {
-        sampleRepo.init();
-        sampleRepo.write("vars/globalLibVar.groovy", "def call() { echo('global library') }");
-        sampleRepo.git("add", "vars");
-        sampleRepo.git("commit", "--message=init");
+    @Test
+    void libraryNamesAreNotUsedAsCacheDirectories() throws Exception {
+        sampleRepo1.init();
+        sampleRepo1.write("vars/globalLibVar.groovy", "def call() { echo('global library') }");
+        sampleRepo1.git("add", "vars");
+        sampleRepo1.git("commit", "--message=init");
         sampleRepo2.init();
         LibraryConfiguration globalLib = new LibraryConfiguration("library",
-                new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true)));
+                new SCMSourceRetriever(new GitSCMSource(null, sampleRepo1.toString(), "", "*", "", true)));
         globalLib.setDefaultVersion("master");
         globalLib.setImplicit(true);
         globalLib.setCachingConfiguration(new LibraryCachingConfiguration(60, ""));
@@ -399,16 +440,16 @@ public class LibraryAdderTest {
 
     @LocalData
     @Test
-    public void correctLibraryDirectoryUsedWhenResumingOldBuild() throws Exception {
+    void correctLibraryDirectoryUsedWhenResumingOldBuild() throws Exception {
         // LocalData was captured after saving the build in the following snippet:
         /*
-        sampleRepo.init();
-        sampleRepo.write("vars/foo.groovy", "def call() { echo('called Foo') }");
-        sampleRepo.git("add", "vars");
-        sampleRepo.git("commit", "--message=init");
+        sampleRepo1.init();
+        sampleRepo1.write("vars/foo.groovy", "def call() { echo('called Foo') }");
+        sampleRepo1.git("add", "vars");
+        sampleRepo1.git("commit", "--message=init");
         GlobalLibraries.get().setLibraries(Collections.singletonList(
                 new LibraryConfiguration("lib",
-                        new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true)))));
+                        new SCMSourceRetriever(new GitSCMSource(null, sampleRepo1.toString(), "", "*", "", true)))));
         WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "p");
         p.setDefinition(new CpsFlowDefinition(
                 "@Library('lib@master') _\n" +
@@ -426,20 +467,20 @@ public class LibraryAdderTest {
 
     @Issue("JENKINS-66898")
     @Test
-    public void parallelBuildsDontInterfereWithExpiredCache() throws Throwable {
+    void parallelBuildsDontInterfereWithExpiredCache() throws Throwable {
         // Add a few files to the library so the deletion is not too fast
         // Before fixing JENKINS-66898 this test was failing almost always
         // with a build failure
-        sampleRepo.init();
-        sampleRepo.write("vars/foo.groovy", "def call() { echo 'foo' }");
-        sampleRepo.write("vars/bar.groovy", "def call() { echo 'bar' }");
-        sampleRepo.write("vars/foo2.groovy", "def call() { echo 'foo2' }");
-        sampleRepo.write("vars/foo3.groovy", "def call() { echo 'foo3' }");
-        sampleRepo.write("vars/foo4.groovy", "def call() { echo 'foo4' }");
-        sampleRepo.git("add", "vars");
-        sampleRepo.git("commit", "--message=init");
+        sampleRepo1.init();
+        sampleRepo1.write("vars/foo.groovy", "def call() { echo 'foo' }");
+        sampleRepo1.write("vars/bar.groovy", "def call() { echo 'bar' }");
+        sampleRepo1.write("vars/foo2.groovy", "def call() { echo 'foo2' }");
+        sampleRepo1.write("vars/foo3.groovy", "def call() { echo 'foo3' }");
+        sampleRepo1.write("vars/foo4.groovy", "def call() { echo 'foo4' }");
+        sampleRepo1.git("add", "vars");
+        sampleRepo1.git("commit", "--message=init");
         LibraryConfiguration config = new LibraryConfiguration("library",
-                new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true)));
+                new SCMSourceRetriever(new GitSCMSource(null, sampleRepo1.toString(), "", "*", "", true)));
         config.setDefaultVersion("master");
         config.setImplicit(true);
         config.setCachingConfiguration(new LibraryCachingConfiguration(30, null));
@@ -467,24 +508,26 @@ public class LibraryAdderTest {
 
     @Issue("JENKINS-68544")
     @WithoutJenkins
-    @Test public void className() {
+    @Test
+    void className() {
         assertThat(LibraryAdder.LoadedLibraries.className("/path/to/lib/src/some/pkg/Type.groovy", "/path/to/lib/src"), is("some.pkg.Type"));
         assertThat(LibraryAdder.LoadedLibraries.className("C:\\path\\to\\lib\\src\\some\\pkg\\Type.groovy", "C:\\path\\to\\lib\\src"), is("some.pkg.Type"));
         assertThat(LibraryAdder.LoadedLibraries.className("C:\\path\\to\\Extra\\lib\\src\\some\\pkg\\Type.groovy", "C:\\path\\to\\Extra\\lib\\src"), is("some.pkg.Type"));
     }
 
     @Issue("JENKINS-73769")
-    @Test public void libraryPathsAreUsedInBuildDirectoryPathGeneration() throws Exception {
-        sampleRepo.init();
-        sampleRepo.write("vars/globalLibVar.groovy", "def call() { echo('global library root') }");
-        sampleRepo.write("libs/lib1/vars/globalLibVar.groovy", "def call() { echo('global library 1') }");
-        sampleRepo.write("libs/lib2/vars/globalLibVar.groovy", "def call() { echo('global library 2') }");
-        sampleRepo.write("libs/lib3/vars/.gitignore", "# empty library");
-        sampleRepo.git("add", "libs");
-        sampleRepo.git("add", "vars");
-        sampleRepo.git("commit", "--message=init");
+    @Test
+    void libraryPathsAreUsedInBuildDirectoryPathGeneration() throws Exception {
+        sampleRepo1.init();
+        sampleRepo1.write("vars/globalLibVar.groovy", "def call() { echo('global library root') }");
+        sampleRepo1.write("libs/lib1/vars/globalLibVar.groovy", "def call() { echo('global library 1') }");
+        sampleRepo1.write("libs/lib2/vars/globalLibVar.groovy", "def call() { echo('global library 2') }");
+        sampleRepo1.write("libs/lib3/vars/.gitignore", "# empty library");
+        sampleRepo1.git("add", "libs");
+        sampleRepo1.git("add", "vars");
+        sampleRepo1.git("commit", "--message=init");
         sampleRepo2.init();
-        SCMBasedRetriever retriever = new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true));
+        SCMBasedRetriever retriever = new SCMSourceRetriever(new GitSCMSource(null, sampleRepo1.toString(), "", "*", "", true));
         LibraryConfiguration globalLib = new LibraryConfiguration("global",
                 retriever);
         globalLib.setDefaultVersion("master");
