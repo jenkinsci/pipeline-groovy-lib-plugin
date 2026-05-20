@@ -289,6 +289,7 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
 
                 lastReadFile.touch(System.currentTimeMillis());
                 versionCacheDir.withSuffix("-name.txt").write(name, "UTF-8");
+                SCMBasedRetriever.rejectSpecialFiles(versionCacheDir);
                 versionCacheDir.copyRecursiveTo(libDir);
             } finally {
               retrieveLock.readLock().unlock();
@@ -296,6 +297,7 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
         } else {
             retriever.retrieve(name, version, changelog, libDir, run, listener);
         }
+        SCMBasedRetriever.rejectSpecialFiles(libDir);
         // Write the user-provided name to a file as a debugging aid.
         libDir.withSuffix("-name.txt").write(name, "UTF-8");
 

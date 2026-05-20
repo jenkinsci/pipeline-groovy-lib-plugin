@@ -46,6 +46,8 @@ import hudson.util.FormValidation;
 import java.io.File;
 import java.io.IOException;
 import java.io.InterruptedIOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -54,6 +56,7 @@ import java.util.concurrent.Callable;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 import jenkins.model.Jenkins;
 import org.jenkinsci.plugins.workflow.steps.scm.GenericSCMStep;
 import org.jenkinsci.plugins.workflow.steps.scm.SCMStep;
@@ -208,9 +211,29 @@ public abstract class SCMBasedRetriever extends LibraryRetriever {
                     listener.getLogger().println("Excluding src/test/ from checkout of " + scm.getKey() + " so that library test code cannot be accessed by Pipelines.");
                     listener.getLogger().println("To remove this log message, move the test code outside of src/. To restore the previous behavior that allowed access to files in src/test/, pass -D" + SCMSourceRetriever.class.getName() + ".INCLUDE_SRC_TEST_IN_LIBRARIES=true to the java command used to start Jenkins.");
                 }
+                // Fail fast: reject symlinks early rather than after copying to libDir
+                rejectSpecialFiles(lease.path.child(libraryPath));
                 // Cannot add WorkspaceActionImpl to private CpsFlowExecution.flowStartNodeActions; do we care?
                 // Copy sources with relevant files from the checkout:
                 lease.path.child(libraryPath).copyRecursiveTo("src/**/*.groovy,vars/*.groovy,vars/*.txt,resources/", excludes, target);
+            }
+        }
+    }
+
+    // symlinks in a library allow reading arbitrary controller files via the global variable reference
+    static void rejectSpecialFiles(FilePath target) throws IOException {
+        Path root = new File(target.getRemote()).toPath();
+        if (!Files.exists(root)) {
+            return;
+        }
+        try (Stream<Path> walk = Files.walk(root)) {
+            for (Path p : (Iterable<Path>) walk::iterator) {
+                if (Files.isSymbolicLink(p)) {
+                    throw new AbortException("Rejecting library: symlink found: " + root.relativize(p));
+                }
+                if (!Files.isRegularFile(p) && !Files.isDirectory(p)) {
+                    throw new AbortException("Rejecting library: non-regular file found: " + root.relativize(p));
+                }
             }
         }
     }

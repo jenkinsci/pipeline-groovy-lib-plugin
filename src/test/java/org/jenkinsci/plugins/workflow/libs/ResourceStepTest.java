@@ -204,7 +204,7 @@ public class ResourceStepTest {
 
         WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "p");
         p.setDefinition(new CpsFlowDefinition("@Library('symlink-stuff@master') import Stuff; echo(Stuff.contents(this))", true));
-        r.assertLogContains("master.key references a file that is not contained within the library: symlink-stuff", r.buildAndAssertStatus(Result.FAILURE, p));
+        r.assertLogContains("Rejecting library: symlink found", r.buildAndAssertStatus(Result.FAILURE, p));
     }
 
     @Issue("SECURITY-2476")

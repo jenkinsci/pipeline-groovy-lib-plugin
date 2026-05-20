@@ -27,6 +27,7 @@ package org.jenkinsci.plugins.workflow.libs;
 import edu.umd.cs.findbugs.annotations.NonNull;
 import hudson.AbortException;
 import hudson.FilePath;
+import hudson.Functions;
 import hudson.model.Item;
 import hudson.model.Result;
 import hudson.model.TaskListener;
@@ -59,6 +60,7 @@ import jenkins.plugins.git.traits.RefSpecsSCMSourceTrait;
 import jenkins.scm.api.trait.SCMSourceTrait;
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.containsInAnyOrder;
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.instanceOf;
 import static org.hamcrest.Matchers.not;
 import static org.junit.Assert.*;
@@ -80,6 +82,7 @@ import static org.hamcrest.Matchers.matchesPattern;
 import static org.jenkinsci.plugins.workflow.libs.SCMBasedRetriever.PROHIBITED_DOUBLE_DOT;
 import org.jvnet.hudson.test.FlagRule;
 import org.jvnet.hudson.test.LoggerRule;
+import static org.junit.Assume.assumeFalse;
 
 public class SCMSourceRetrieverTest {
 
@@ -474,6 +477,69 @@ public class SCMSourceRetrieverTest {
         assertFalse(r.jenkins.getWorkspaceFor(p).withSuffix("@libs").isDirectory());
         r.assertLogContains("got something special", b);
         r.assertLogNotContains("Excluding src/test/ from checkout", b);
+    }
+
+    // FIFOs cannot be committed to git, so we test rejectSpecialFiles directly against the working directory
+    @Test
+    public void fifoInLibRejected() throws Exception {
+        assumeFalse("FIFOs are not supported on windows", Functions.isWindows());
+        sampleRepo.init();
+        sampleRepo.write("vars/hello.groovy", "def call() {}");
+        Runtime.getRuntime().exec(new String[]{"mkfifo", new File(sampleRepo.getRoot(), "vars/pipe.txt").toString()}).waitFor();
+        assertThat(assertThrows(AbortException.class,
+            () -> SCMBasedRetriever.rejectSpecialFiles(new FilePath(sampleRepo.getRoot())))
+            .getMessage(), containsString("non-regular file found"));
+    }
+
+    @Test
+    public void symlinkInVarsRejected() throws Exception {
+        assumeFalse("symlinks require special privileges on windows", Functions.isWindows());
+        sampleRepo.init();
+        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something special'}");
+        sampleRepo.git("add", "vars");
+        sampleRepo.git("commit", "--message=init");
+        sampleRepo.git("checkout", "master");
+        java.nio.file.Files.createSymbolicLink(
+            new File(sampleRepo.getRoot(), "vars/leak.txt").toPath(),
+            new File("/etc/passwd").toPath());
+        sampleRepo.git("add", "vars/leak.txt");
+        sampleRepo.git("commit", "--message=add-symlink");
+        for (boolean clone : new boolean[] {false, true}) {
+            SCMSourceRetriever scm = new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true));
+            scm.setClone(clone);
+            GlobalLibraries.get().setLibraries(Collections.singletonList(
+                new LibraryConfiguration("symlink_lib", scm)));
+            WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "p" + clone);
+            p.setDefinition(new CpsFlowDefinition("@Library('symlink_lib@master') _", true));
+            WorkflowRun b = r.assertBuildStatus(Result.FAILURE, p.scheduleBuild2(0));
+            r.assertLogContains("Rejecting library: symlink found", b);
+        }
+    }
+
+    @Test
+    public void symlinkedDirectoryInLibRejected() throws Exception {
+        assumeFalse("symlinks require special privileges on windows", Functions.isWindows());
+        sampleRepo.init();
+        sampleRepo.write("src/org/foo/Lib.groovy", "class Lib {}");
+        sampleRepo.git("add", "src");
+        sampleRepo.git("commit", "--message=init");
+        sampleRepo.git("checkout", "master");
+        // Replace vars/ with a symlink to an arbitrary directory
+        java.nio.file.Files.createSymbolicLink(
+            new File(sampleRepo.getRoot(), "vars").toPath(),
+            new File("/etc").toPath());
+        sampleRepo.git("add", "vars");
+        sampleRepo.git("commit", "--message=add-symlinked-dir");
+        for (boolean clone : new boolean[] {false, true}) {
+            SCMSourceRetriever scm = new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true));
+            scm.setClone(clone);
+            GlobalLibraries.get().setLibraries(Collections.singletonList(
+                new LibraryConfiguration("symdir_lib", scm)));
+            WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "pd" + clone);
+            p.setDefinition(new CpsFlowDefinition("@Library('symdir_lib@master') _", true));
+            WorkflowRun b = r.assertBuildStatus(Result.FAILURE, p.scheduleBuild2(0));
+            r.assertLogContains("Rejecting library: symlink found", b);
+        }
     }
 
 }
