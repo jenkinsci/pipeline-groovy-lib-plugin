@@ -111,6 +111,37 @@ public class LibraryStepTest {
         assertEquals("[LibraryRecord{name=otherstuff, version=master, variables=[x], trusted=false, changelog=false, cachingConfiguration=null, directoryName=" + directoryName + "}]", action.getLibraries().toString());
     }
 
+    @Test public void changelog() throws Exception {
+        sampleRepo.init();
+        sampleRepo.write("vars/x.groovy", "def call() {echo 'ran library'}");
+        sampleRepo.git("add", "vars");
+        sampleRepo.git("commit", "--message=init");
+        LibraryConfiguration libraryConfiguration = new LibraryConfiguration("stuff", new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true)));
+        GlobalLibraries.get().setLibraries(Collections.singletonList(libraryConfiguration));
+        WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "p");
+        p.setDefinition(new CpsFlowDefinition("library 'stuff@master'; x()", true));
+        WorkflowRun b = r.buildAndAssertSuccess(p);
+        assertTrue(b.getAction(LibrariesAction.class).getLibraries().get(0).changelog);
+        b = r.buildAndAssertSuccess(p);
+        assertTrue(b.getAction(LibrariesAction.class).getLibraries().get(0).changelog);
+        p.setDefinition(new CpsFlowDefinition("library changelog: true, identifier: 'stuff@master'; x()", true));
+        b = r.buildAndAssertSuccess(p);
+        assertTrue(b.getAction(LibrariesAction.class).getLibraries().get(0).changelog);
+        p.setDefinition(new CpsFlowDefinition("library changelog: false, identifier: 'stuff@master'; x()", true));
+        b = r.buildAndAssertSuccess(p);
+        assertFalse(b.getAction(LibrariesAction.class).getLibraries().get(0).changelog);
+        libraryConfiguration.setIncludeInChangesets(false);
+        p.setDefinition(new CpsFlowDefinition("library 'stuff@master'; x()", true));
+        b = r.buildAndAssertSuccess(p);
+        assertFalse(b.getAction(LibrariesAction.class).getLibraries().get(0).changelog);
+        p.setDefinition(new CpsFlowDefinition("library changelog: true, identifier: 'stuff@master'; x()", true));
+        b = r.buildAndAssertSuccess(p);
+        assertTrue(b.getAction(LibrariesAction.class).getLibraries().get(0).changelog);
+        p.setDefinition(new CpsFlowDefinition("library changelog: false, identifier: 'stuff@master'; x()", true));
+        b = r.buildAndAssertSuccess(p);
+        assertFalse(b.getAction(LibrariesAction.class).getLibraries().get(0).changelog);
+    }
+
     @Test public void classes() throws Exception {
         sampleRepo.init();
         sampleRepo.write("src/some/pkg/Lib.groovy", "package some.pkg; class Lib {static class Inner {static String stuff() {Constants.CONST}}}");
