@@ -207,6 +207,31 @@ public class ResourceStepTest {
         r.assertLogContains("Rejecting library: symlink found", r.buildAndAssertStatus(Result.FAILURE, p));
     }
 
+    @Issue("SECURITY-3727")
+    @Test public void symlinkedLibraryResourcesDirectoryIsNotAllowedToEscapeWorkspaceContext() throws Exception {
+        assumeFalse("Git symlink behavior is platform dependent on Windows", Functions.isWindows());
+        Path secretsDir = r.jenkins.getRootDir().toPath().resolve("secrets");
+        Files.createDirectories(secretsDir);
+        Files.write(secretsDir.resolve("poc.txt"), Arrays.asList("controller-secret-from-jenkins-home"), StandardCharsets.UTF_8);
+
+        sampleRepo.init();
+        sampleRepo.write("src/Stuff.groovy", "class Stuff {static def contents(script) {script.libraryResource 'poc.txt'}}");
+        Files.createSymbolicLink(Paths.get(sampleRepo.getRoot().getPath(), "resources"), secretsDir);
+
+        sampleRepo.git("add", "src", "resources");
+        sampleRepo.git("commit", "--message=init");
+        for (boolean clone : new boolean[] {false, true}) {
+            SCMSourceRetriever scm = new SCMSourceRetriever(new GitSCMSource(sampleRepo.toString()));
+            scm.setClone(clone);
+            GlobalLibraries.get().setLibraries(Collections.singletonList(
+                new LibraryConfiguration("symlink-root-stuff", scm)));
+            WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "p" + clone);
+            p.setDefinition(new CpsFlowDefinition("@Library('symlink-root-stuff@master') import Stuff; echo(Stuff.contents(this))", true));
+            WorkflowRun b = r.buildAndAssertStatus(Result.FAILURE, p);
+            r.assertLogContains("Rejecting library: symlink found", b);
+        }
+    }
+
     @Issue("SECURITY-2476")
     @Test public void libraryResourceNotAllowedToEscapeWorkspaceContext() throws Exception {
         sampleRepo.init();
