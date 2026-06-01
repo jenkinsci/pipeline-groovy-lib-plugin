@@ -28,7 +28,7 @@
     <parent>
         <groupId>org.jenkins-ci.plugins</groupId>
         <artifactId>plugin</artifactId>
-        <version>6.2122.v70b_7b_f659d72</version>
+        <version>6.2189.v695a_c41f5249</version>
         <relativePath/>
     </parent>
     <groupId>io.jenkins.plugins</groupId>
@@ -64,38 +64,30 @@
     <properties>
         <changelist>999999-SNAPSHOT</changelist>
         <!-- https://www.jenkins.io/doc/developer/plugin-development/choosing-jenkins-baseline/ -->
-        <jenkins.baseline>2.504</jenkins.baseline>
-        <jenkins.version>${jenkins.baseline}.3</jenkins.version>
+        <jenkins.baseline>2.555</jenkins.baseline>
+        <jenkins.version>${jenkins.baseline}.1</jenkins.version>
         <gitHubRepo>jenkinsci/${project.artifactId}-plugin</gitHubRepo>
         <hpi.strictBundledArtifacts>true</hpi.strictBundledArtifacts>
         <hpi.bundledArtifacts>ivy</hpi.bundledArtifacts>
+        <banObsoleteDependencyOverrides.skip>false</banObsoleteDependencyOverrides.skip>
     </properties>
     <dependencyManagement>
         <dependencies>
             <dependency>
                 <groupId>io.jenkins.tools.bom</groupId>
                 <artifactId>bom-${jenkins.baseline}.x</artifactId>
-                <version>5543.vfd758c7c868d</version>
+                <version>6237.v4da_61a_4a_19e5</version>
                 <scope>import</scope>
                 <type>pom</type>
-            </dependency>
-            <!-- TODO until in BOM -->
-            <dependency>
-                <groupId>org.jenkins-ci.plugins</groupId>
-                <artifactId>structs</artifactId>
-                <version>362.va_b_695ef4fdf9</version>
             </dependency>
         </dependencies>
     </dependencyManagement>
     <dependencies>
-        <!-- libraries -->
         <dependency>
             <groupId>org.apache.ivy</groupId>
             <artifactId>ivy</artifactId>
             <version>2.5.3</version>
         </dependency>
-
-        <!-- required plugins -->
         <dependency>
             <groupId>org.jenkins-ci.plugins.workflow</groupId>
             <artifactId>workflow-api</artifactId>
@@ -128,7 +120,6 @@
             <groupId>org.jenkins-ci.plugins</groupId>
             <artifactId>script-security</artifactId>
         </dependency>
-
         <dependency>
             <groupId>org.jenkins-ci.plugins</groupId>
             <artifactId>variant</artifactId>
@@ -142,15 +133,6 @@
             <groupId>org.jenkins-ci.plugins</groupId>
             <artifactId>branch-api</artifactId>
             <optional>true</optional>
-        </dependency>
-
-        <!-- test only plugins -->
-        <dependency>
-            <!-- GlobalUntrustedLibrariesTest#configRoundtrip -->
-            <groupId>io.jenkins.plugins</groupId>
-            <artifactId>manage-permission</artifactId>
-            <version>1.0.1</version>
-            <scope>test</scope>
         </dependency>
         <dependency>
             <groupId>org.jenkins-ci.plugins.workflow</groupId>
