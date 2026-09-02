@@ -47,6 +47,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InterruptedIOException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.Collections;
 import java.util.HashMap;
@@ -211,8 +212,8 @@ public abstract class SCMBasedRetriever extends LibraryRetriever {
                     listener.getLogger().println("Excluding src/test/ from checkout of " + scm.getKey() + " so that library test code cannot be accessed by Pipelines.");
                     listener.getLogger().println("To remove this log message, move the test code outside of src/. To restore the previous behavior that allowed access to files in src/test/, pass -D" + SCMSourceRetriever.class.getName() + ".INCLUDE_SRC_TEST_IN_LIBRARIES=true to the java command used to start Jenkins.");
                 }
-                // Fail fast: reject symlinks early rather than after copying to libDir
-                rejectSpecialFiles(lease.path.child(libraryPath));
+                // Reject symlinks before copying because copyRecursiveTo follows symlinked directories
+                rejectSpecialFilesInLibraryContent(lease.path.child(libraryPath));
                 // Cannot add WorkspaceActionImpl to private CpsFlowExecution.flowStartNodeActions; do we care?
                 // Copy sources with relevant files from the checkout:
                 lease.path.child(libraryPath).copyRecursiveTo("src/**/*.groovy,vars/*.groovy,vars/*.txt,resources/", excludes, target);
@@ -220,10 +221,21 @@ public abstract class SCMBasedRetriever extends LibraryRetriever {
         }
     }
 
+    // Directories that are copied out of a library and exposed to Pipelines
+    static final List<String> LIBRARY_CONTENT_DIRS = List.of("src", "vars", "resources");
+
+    // Scan only the exposed content so symlinks in SCM metadata like git and hg are not rejected
+    static void rejectSpecialFilesInLibraryContent(FilePath checkout) throws IOException {
+        for (String content : LIBRARY_CONTENT_DIRS) {
+            rejectSpecialFiles(checkout.child(content));
+        }
+    }
+
     // symlinks in a library allow reading arbitrary controller files via the global variable reference
     static void rejectSpecialFiles(FilePath target) throws IOException {
         Path root = new File(target.getRemote()).toPath();
-        if (!Files.exists(root)) {
+        // Use NOFOLLOW_LINKS so a symlinked root is not skipped when its target does not resolve
+        if (!Files.exists(root, LinkOption.NOFOLLOW_LINKS)) {
             return;
         }
         try (Stream<Path> walk = Files.walk(root)) {

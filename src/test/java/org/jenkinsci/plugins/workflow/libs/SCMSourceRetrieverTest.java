@@ -542,4 +542,51 @@ public class SCMSourceRetrieverTest {
         }
     }
 
+    // A symlink in SCM metadata is never copied out so it must not reject the library
+    @Test
+    public void symlinkInScmMetadataAllowed() throws Exception {
+        assumeFalse("symlinks require special privileges on windows", Functions.isWindows());
+        sampleRepo.init();
+        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something special'}");
+        sampleRepo.git("add", "vars");
+        sampleRepo.git("commit", "--message=init");
+        // A symlink under .git as installed by GIT_TEMPLATE_DIR
+        File hooksDir = new File(sampleRepo.getRoot(), ".git/hooks");
+        hooksDir.mkdirs();
+        java.nio.file.Files.createSymbolicLink(
+            new File(hooksDir, "pre-commit").toPath(),
+            new File("/etc/passwd").toPath());
+        for (boolean clone : new boolean[] {false, true}) {
+            SCMSourceRetriever scm = new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true));
+            scm.setClone(clone);
+            GlobalLibraries.get().setLibraries(Collections.singletonList(
+                new LibraryConfiguration("meta_lib", scm)));
+            WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "pm" + clone);
+            p.setDefinition(new CpsFlowDefinition("@Library('meta_lib@master') import myecho; myecho()", true));
+            WorkflowRun b = r.assertBuildStatus(Result.SUCCESS, p.scheduleBuild2(0));
+            r.assertLogContains("something special", b);
+            r.assertLogNotContains("Rejecting library", b);
+        }
+    }
+
+    // Symlinks inside src vars resources are rejected while symlinks elsewhere are ignored
+    @Test
+    public void rejectSpecialFilesInLibraryContentScopedToContentDirs() throws Exception {
+        assumeFalse("symlinks require special privileges on windows", Functions.isWindows());
+        FilePath checkout = new FilePath(sampleRepo.getRoot());
+        checkout.child("vars/hello.groovy").write("def call() {}", "UTF-8");
+        // A symlink outside the content directories is ignored
+        java.nio.file.Files.createSymbolicLink(
+            new File(sampleRepo.getRoot(), ".git-checklink").toPath(),
+            new File("/etc/passwd").toPath());
+        SCMBasedRetriever.rejectSpecialFilesInLibraryContent(checkout); // does not throw
+        // A symlink inside a content directory is rejected
+        java.nio.file.Files.createSymbolicLink(
+            new File(sampleRepo.getRoot(), "vars/leak.txt").toPath(),
+            new File("/etc/passwd").toPath());
+        assertThat(assertThrows(AbortException.class,
+            () -> SCMBasedRetriever.rejectSpecialFilesInLibraryContent(checkout))
+            .getMessage(), containsString("symlink found"));
+    }
+
 }
