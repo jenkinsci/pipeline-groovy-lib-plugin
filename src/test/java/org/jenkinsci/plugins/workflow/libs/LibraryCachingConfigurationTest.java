@@ -27,8 +27,16 @@ package org.jenkinsci.plugins.workflow.libs;
 import hudson.ExtensionList;
 import hudson.FilePath;
 import java.io.File;
+import java.io.IOException;
+import java.net.URISyntaxException;
 import jenkins.plugins.git.GitSCMSource;
 import jenkins.plugins.git.GitSampleRepoRule;
+import org.hamcrest.MatcherAssert;
+import org.htmlunit.FailingHttpStatusCodeException;
+import org.htmlunit.HttpMethod;
+import org.htmlunit.WebRequest;
+import org.htmlunit.html.HtmlPage;
+import org.htmlunit.util.NameValuePair;
 import org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition;
 import org.jenkinsci.plugins.workflow.job.WorkflowJob;
 import org.jenkinsci.plugins.workflow.job.WorkflowRun;
@@ -37,6 +45,7 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.jvnet.hudson.test.Issue;
 import org.jvnet.hudson.test.JenkinsRule;
+import org.jvnet.hudson.test.JenkinsRule.WebClient;
 import org.jvnet.hudson.test.WithoutJenkins;
 
 import static org.hamcrest.MatcherAssert.*;
@@ -44,6 +53,7 @@ import static org.hamcrest.Matchers.*;
 import static org.hamcrest.io.FileMatchers.anExistingDirectory;
 import static org.hamcrest.io.FileMatchers.anExistingFile;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 
 public class LibraryCachingConfigurationTest {
@@ -301,6 +311,29 @@ public class LibraryCachingConfigurationTest {
         ExtensionList.lookupSingleton(LibraryCachingConfiguration.DescriptorImpl.class).doClearCache("library", false);
         assertThat(new File(cache2.getRemote()), not(anExistingDirectory()));
         assertThat(new File(cache2.withSuffix("-name.txt").getRemote()), not(anExistingFile()));
+    }
+
+    @Issue("SECURITY-3815")
+    @Test
+    public void clearCacheRequiresPost() throws Exception {
+        try (WebClient wc = r.createWebClient()) {
+            FailingHttpStatusCodeException e = assertThrows(FailingHttpStatusCodeException.class, () -> wc.getPage(createClearCacheRequest(wc, HttpMethod.GET, "anything", true)));
+            assertThat(e.getStatusCode(), is(405)); // method not allowed
+
+            HtmlPage p = wc.getPage(createClearCacheRequest(wc, HttpMethod.POST, "anything", true));
+            assertThat(p.asNormalizedText(), is("The cache dir was deleted successfully."));
+        }
+    }
+
+    private WebRequest createClearCacheRequest(WebClient wc, HttpMethod method, String name, boolean forceDelete) throws IOException, URISyntaxException {
+        String clearCacheURL = ExtensionList.lookupSingleton(LibraryCachingConfiguration.DescriptorImpl.class).getDescriptorUrl() + "/clearCache";
+        WebRequest request = new WebRequest(r.getURL().toURI().resolve(clearCacheURL).toURL(), method);
+        request.getParameters().add(new NameValuePair("name", name));
+        request.getParameters().add(new NameValuePair("forceDelete", Boolean.toString(forceDelete)));
+        if (method == HttpMethod.POST) {
+            wc.addCrumb(request);
+        }
+       return request;
     }
 
 }
