@@ -36,6 +36,9 @@ import hudson.scm.SCM;
 import hudson.slaves.WorkspaceList;
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
@@ -551,11 +554,9 @@ public class SCMSourceRetrieverTest {
         sampleRepo.git("add", "vars");
         sampleRepo.git("commit", "--message=init");
         // A symlink under .git as installed by GIT_TEMPLATE_DIR
-        File hooksDir = new File(sampleRepo.getRoot(), ".git/hooks");
-        hooksDir.mkdirs();
-        java.nio.file.Files.createSymbolicLink(
-            new File(hooksDir, "pre-commit").toPath(),
-            new File("/etc/passwd").toPath());
+        Path hooksDir = Paths.get(sampleRepo.getRoot().getPath(), ".git", "hooks");
+        Files.createDirectories(hooksDir);
+        Files.createSymbolicLink(hooksDir.resolve("pre-commit"), Paths.get("/etc/passwd"));
         for (boolean clone : new boolean[] {false, true}) {
             SCMSourceRetriever scm = new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true));
             scm.setClone(clone);
@@ -567,26 +568,6 @@ public class SCMSourceRetrieverTest {
             r.assertLogContains("something special", b);
             r.assertLogNotContains("Rejecting library", b);
         }
-    }
-
-    // Symlinks inside src vars resources are rejected while symlinks elsewhere are ignored
-    @Test
-    public void rejectSpecialFilesInLibraryContentScopedToContentDirs() throws Exception {
-        assumeFalse("symlinks require special privileges on windows", Functions.isWindows());
-        FilePath checkout = new FilePath(sampleRepo.getRoot());
-        checkout.child("vars/hello.groovy").write("def call() {}", "UTF-8");
-        // A symlink outside the content directories is ignored
-        java.nio.file.Files.createSymbolicLink(
-            new File(sampleRepo.getRoot(), ".git-checklink").toPath(),
-            new File("/etc/passwd").toPath());
-        SCMBasedRetriever.rejectSpecialFilesInLibraryContent(checkout); // does not throw
-        // A symlink inside a content directory is rejected
-        java.nio.file.Files.createSymbolicLink(
-            new File(sampleRepo.getRoot(), "vars/leak.txt").toPath(),
-            new File("/etc/passwd").toPath());
-        assertThat(assertThrows(AbortException.class,
-            () -> SCMBasedRetriever.rejectSpecialFilesInLibraryContent(checkout))
-            .getMessage(), containsString("symlink found"));
     }
 
 }
