@@ -127,7 +127,7 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
                     listener.getLogger().println("Only using first definition of library " + name);
                     continue;
                 }
-                String version = cfg.defaultedVersion(libraryVersions.remove(name));
+                String version = cfg.defaultedVersion(libraryVersions.remove(name), build, listener);
                 Boolean changelog = cfg.defaultedChangelogs(libraryChangelogs.remove(name));
                 String source = kind.getClass().getName();
                 if (cfg instanceof LibraryResolver.ResolvedLibraryConfiguration) {
