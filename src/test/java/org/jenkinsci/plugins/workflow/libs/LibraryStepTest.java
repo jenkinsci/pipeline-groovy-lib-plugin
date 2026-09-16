@@ -56,6 +56,7 @@ import org.junit.Rule;
 import org.jvnet.hudson.test.BuildWatcher;
 import org.jvnet.hudson.test.Issue;
 import org.jvnet.hudson.test.JenkinsRule;
+import org.jvnet.hudson.test.recipes.LocalData;
 
 @Issue("JENKINS-39450")
 public class LibraryStepTest {
@@ -337,5 +338,33 @@ public class LibraryStepTest {
         WorkflowRun b = r.buildAndAssertSuccess(p);
         r.assertLogContains("/lib/java", b);
         r.assertLogContains("/pipeline/java", b);
+    }
+
+    @LocalData
+    @Test public void nullNamedLibrary() throws Exception {
+        sampleRepo.init();
+        sampleRepo.write("vars/x.groovy", "def call() {echo 'ran library'}");
+        sampleRepo.git("add", "vars");
+        sampleRepo.git("commit", "--message=init");
+        GlobalLibraries.get().setLibraries(Collections.singletonList(new LibraryConfiguration("stuff", new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true)))));
+
+        /*
+        LibraryConfiguration cfg = new LibraryConfiguration(null, new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true)));
+        cfg.setDefaultVersion("master");
+        cfg.setImplicit(true);
+
+        Folder f = r.jenkins.createProject(Folder.class, "f");
+        f.addProperty(new FolderLibraries(Collections.singletonList(cfg)));
+        f.save();
+         */
+
+        // local data have a folder 'f' with a library with no name (a null name)
+        Folder f = r.jenkins.getItemByFullName("f", Folder.class);
+        assertNotNull(f);
+        WorkflowJob p = f.createProject(WorkflowJob.class, "p");
+        p.setDefinition(new CpsFlowDefinition("library 'stuff@master'; x()", true));
+        WorkflowRun b = r.buildAndAssertSuccess(p);
+        r.assertLogContains("Found a library without name", r.buildAndAssertSuccess(p));
+        r.assertLogContains("ran library", b);
     }
 }

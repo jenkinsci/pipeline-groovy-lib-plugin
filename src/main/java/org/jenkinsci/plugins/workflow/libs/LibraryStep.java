@@ -177,6 +177,9 @@ public class LibraryStep extends Step {
             TaskListener listener = getContext().get(TaskListener.class);
             String[] parsed = LibraryAdder.parse(step.identifier);
             String name = parsed[0], version = parsed[1];
+            if (name == null) {
+                throw new AbortException("No library name provided");
+            }
             boolean trusted = false;
             Boolean changelog = step.getChangelog();
             LibraryCachingConfiguration cachingConfiguration = null;
@@ -186,7 +189,7 @@ public class LibraryStep extends Step {
             if (retriever == null) {
                 for (LibraryResolver resolver : ExtensionList.lookup(LibraryResolver.class)) {
                     for (LibraryConfiguration cfg : resolver.forJob(run.getParent(), Collections.singletonMap(name, version))) {
-                        if (cfg.getName().equals(name)) {
+                        if (name.equals(cfg.getName())) {
                             retriever = cfg.getRetriever();
                             trusted = resolver.isTrusted();
                             version = cfg.defaultedVersion(version);
