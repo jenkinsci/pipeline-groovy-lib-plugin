@@ -29,7 +29,9 @@ import hudson.model.Result;
 import hudson.model.Run;
 import hudson.model.TaskListener;
 import java.io.File;
-import java.util.Arrays;
+import java.nio.charset.StandardCharsets;
+import java.util.List;
+
 import jenkins.model.Jenkins;
 import org.apache.commons.io.FileUtils;
 import org.jenkinsci.plugins.scriptsecurity.scripts.ScriptApproval;
@@ -40,30 +42,35 @@ import org.jenkinsci.plugins.workflow.libs.GlobalLibraries;
 import org.jenkinsci.plugins.workflow.libs.LibraryConfiguration;
 import org.jenkinsci.plugins.workflow.libs.LibraryRetriever;
 import org.jenkinsci.plugins.workflow.test.steps.SemaphoreStep;
-import org.junit.Test;
-import org.junit.ClassRule;
-import org.junit.Ignore;
-import org.junit.Rule;
-import org.jvnet.hudson.test.BuildWatcher;
+import org.junit.jupiter.api.Disabled;
+import org.junit.jupiter.api.Test;
+
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.jvnet.hudson.test.Issue;
-import org.jvnet.hudson.test.JenkinsSessionRule;
+import org.jvnet.hudson.test.junit.jupiter.BuildWatcherExtension;
+import org.jvnet.hudson.test.junit.jupiter.JenkinsSessionExtension;
 
 @Issue("JENKINS-26192")
-public class GrapeTest {
+class GrapeTest {
 
-    @ClassRule public static BuildWatcher buildWatcher = new BuildWatcher();
-    @Rule public JenkinsSessionRule story = new JenkinsSessionRule();
+    @SuppressWarnings("unused")
+    @RegisterExtension
+    private static final BuildWatcherExtension BUILD_WATCHER = new BuildWatcherExtension();
+    @RegisterExtension
+    private final JenkinsSessionExtension story = new JenkinsSessionExtension();
 
-    @Test public void useBinary() throws Throwable {
+    @Test
+    void useBinary() throws Throwable {
         story.then(j -> {
                 FileUtils.write(new File(libroot(), "src/pkg/Lists.groovy"),
-                    "package pkg\n" +
-                    "@Grab('commons-primitives:commons-primitives:1.0')\n" +
-                    "import org.apache.commons.collections.primitives.ArrayIntList\n" +
-                    "static def arrayInt(script) {\n" +
-                    "  script.semaphore 'wait'\n" +
-                    "  new ArrayIntList()\n" +
-                    "}");
+                        """
+                                package pkg
+                                @Grab('commons-primitives:commons-primitives:1.0')
+                                import org.apache.commons.collections.primitives.ArrayIntList
+                                static def arrayInt(script) {
+                                  script.semaphore 'wait'
+                                  new ArrayIntList()
+                                }""", StandardCharsets.UTF_8);
                 WorkflowJob p = j.jenkins.createProject(WorkflowJob.class, "p");
                 p.setDefinition(new CpsFlowDefinition("echo(/got ${pkg.Lists.arrayInt(this)}/)", true));
                 WorkflowRun b = p.scheduleBuild2(0).waitForStart();
@@ -78,16 +85,18 @@ public class GrapeTest {
         });
     }
 
-    @Test public void var() throws Throwable {
+    @Test
+    void var() throws Throwable {
         story.then(j -> {
                 FileUtils.write(new File(libroot(), "vars/one.groovy"),
-                    "@Grab('commons-primitives:commons-primitives:1.0')\n" +
-                    "import org.apache.commons.collections.primitives.ArrayIntList\n" +
-                    "def call() {\n" +
-                    "  def list = new ArrayIntList()\n" +
-                    "  list.incrModCount()\n" +
-                    "  list.modCount\n" +
-                    "}");
+                        """
+                                @Grab('commons-primitives:commons-primitives:1.0')
+                                import org.apache.commons.collections.primitives.ArrayIntList
+                                def call() {
+                                  def list = new ArrayIntList()
+                                  list.incrModCount()
+                                  list.modCount
+                                }""", StandardCharsets.UTF_8);
                 WorkflowJob p = j.jenkins.createProject(WorkflowJob.class, "p");
                 p.setDefinition(new CpsFlowDefinition("echo(/${one()} + ${one()} = ${one() + one()}/)", true));
                 j.assertLogContains("1 + 1 = 2", j.buildAndAssertSuccess(p));
@@ -96,25 +105,29 @@ public class GrapeTest {
 
     // TODO test transitive dependencies; need to find something in Central which has a dependency not in this plugin’s test classpath and which could be used easily from a script
 
-    @Test public void nonexistentLibrary() throws Throwable {
+    @Test
+    void nonexistentLibrary() throws Throwable {
         story.then(j -> {
                 FileUtils.write(new File(libroot(), "src/pkg/X.groovy"),
-                    "package pkg\n" +
-                    "@Grab('net.nowhere:nonexistent:99.9')\n" +
-                    "static def run() {}");
+                        """
+                                package pkg
+                                @Grab('net.nowhere:nonexistent:99.9')
+                                static def run() {}""", StandardCharsets.UTF_8);
                 WorkflowJob p = j.jenkins.createProject(WorkflowJob.class, "p");
                 p.setDefinition(new CpsFlowDefinition("pkg.X.run()", true));
                 j.assertLogContains("net.nowhere", j.assertBuildStatus(Result.FAILURE, p.scheduleBuild2(0)));
         });
     }
 
-    @Test public void nonexistentImport() throws Throwable {
+    @Test
+    void nonexistentImport() throws Throwable {
         story.then(j -> {
                 FileUtils.write(new File(libroot(), "src/pkg/X.groovy"),
-                    "package pkg\n" +
-                    "@Grab('commons-primitives:commons-primitives:1.0')\n" +
-                    "import net.nowhere.Nonexistent\n" +
-                    "static def run() {new Nonexistent()}");
+                        """
+                                package pkg
+                                @Grab('commons-primitives:commons-primitives:1.0')
+                                import net.nowhere.Nonexistent
+                                static def run() {new Nonexistent()}""", StandardCharsets.UTF_8);
                 WorkflowJob p = j.jenkins.createProject(WorkflowJob.class, "p");
                 p.setDefinition(new CpsFlowDefinition("pkg.X.run()", true));
                 j.assertLogContains("net.nowhere.Nonexistent", j.assertBuildStatus(Result.FAILURE, p.scheduleBuild2(0)));
@@ -123,8 +136,9 @@ public class GrapeTest {
 
     // TODO test alternate Maven repositories
 
-    @Ignore("TODO MissingMethodException: No signature of method: static com.google.common.base.CharMatcher.whitespace() is applicable for argument types: () values: []")
-    @Test public void overrideCoreLibraries() throws Throwable {
+    @Disabled("TODO MissingMethodException: No signature of method: static com.google.common.base.CharMatcher.whitespace() is applicable for argument types: () values: []")
+    @Test
+    void overrideCoreLibraries() throws Throwable {
         story.then(j -> {
                 FileUtils.write(new File(libroot(), "src/pkg/Strings.groovy"),
                     "package pkg\n" +
@@ -132,23 +146,25 @@ public class GrapeTest {
                     "import com.google.common.base.CharMatcher\n" +
                     "static def hasWhitespace(text) {\n" +
                     "  CharMatcher.whitespace().matchesAnyOf(text)\n" +
-                    "}");
+                    "}", StandardCharsets.UTF_8);
                 WorkflowJob p = j.jenkins.createProject(WorkflowJob.class, "p");
                 p.setDefinition(new CpsFlowDefinition("echo(/checking ${pkg.Strings.hasWhitespace('hello world')}/)", true));
                 j.assertLogContains("checking true", j.buildAndAssertSuccess(p));
         });
     }
 
-    @Ignore("TODO fails on CI and inside a Docker container, though for different reasons: `download failed` vs. `/var/maven/.groovy/grapes/resolved-caller-all-caller-working61.xml (No such file or directory)`; and a test-scoped dep on docker-workflow:1.7 does not help")
-    @Test public void useSource() throws Throwable {
+    @Disabled("TODO fails on CI and inside a Docker container, though for different reasons: `download failed` vs. `/var/maven/.groovy/grapes/resolved-caller-all-caller-working61.xml (No such file or directory)`; and a test-scoped dep on docker-workflow:1.7 does not help")
+    @Test
+    void useSource() throws Throwable {
         story.then(j -> {
                 FileUtils.write(new File(libroot(), "src/pkg/Dokker.groovy"),
-                    "package pkg\n" +
-                    "@Grapes([@Grab('org.jenkins-ci.plugins:docker-workflow:1.7'), @Grab('org.jenkins-ci.plugins:docker-commons:1.3.1')])\n" +
-                    "import org.jenkinsci.plugins.docker.workflow.Docker\n" +
-                    "static def stuff(script, body) {\n" +
-                    "  new Docker(script).node {body()}\n" +
-                    "}");
+                        """
+                                package pkg
+                                @Grapes([@Grab('org.jenkins-ci.plugins:docker-workflow:1.7'), @Grab('org.jenkins-ci.plugins:docker-commons:1.3.1')])
+                                import org.jenkinsci.plugins.docker.workflow.Docker
+                                static def stuff(script, body) {
+                                  new Docker(script).node {body()}
+                                }""", StandardCharsets.UTF_8);
                 WorkflowJob p = j.jenkins.createProject(WorkflowJob.class, "p");
                 p.setDefinition(new CpsFlowDefinition("pkg.Dokker.stuff(this) {semaphore 'wait'; writeFile file: 'x', text: 'CPS-transformed'; echo(/ran ${readFile 'x'}/)}", true));
                 WorkflowRun b = p.scheduleBuild2(0).waitForStart();
@@ -163,50 +179,58 @@ public class GrapeTest {
         });
     }
 
-    private File libroot() throws Exception {
+    private File libroot() {
         File lib = new File(Jenkins.get().getRootDir(), "somelib");
         LibraryConfiguration cfg = new LibraryConfiguration("somelib", new LocalRetriever(lib));
         cfg.setImplicit(true);
         cfg.setDefaultVersion("fixed");
-        GlobalLibraries.get().setLibraries(Arrays.asList(cfg));
+        GlobalLibraries.get().setLibraries(List.of(cfg));
         return lib;
     }
 
     private static final class LocalRetriever extends LibraryRetriever {
         private final File lib;
+
         LocalRetriever(File lib) {
             this.lib = lib;
         }
-        @Override public void retrieve(String name, String version, boolean changelog, FilePath target, Run<?, ?> run, TaskListener listener) throws Exception {
+
+        @Override
+        public void retrieve(String name, String version, boolean changelog, FilePath target, Run<?, ?> run, TaskListener listener) throws Exception {
             new FilePath(lib).copyRecursiveTo(target);
         }
-        @Override public void retrieve(String name, String version, FilePath target, Run<?, ?> run, TaskListener listener) throws Exception {
+
+        @Override
+        public void retrieve(String name, String version, FilePath target, Run<?, ?> run, TaskListener listener) throws Exception {
             retrieve(name, version, false, target, run, listener);
         }
     }
 
-    @Test public void outsideLibrary() throws Throwable {
+    @Test
+    void outsideLibrary() throws Throwable {
         story.then(j -> {
                 WorkflowJob p = j.jenkins.createProject(WorkflowJob.class, "p");
                 p.setDefinition(new CpsFlowDefinition(
-                    "@Grab('commons-primitives:commons-primitives:1.0')\n" +
-                    "import org.apache.commons.collections.primitives.ArrayIntList\n" +
-                    "echo(/got ${new ArrayIntList()}/)", false));
+                        """
+                                @Grab('commons-primitives:commons-primitives:1.0')
+                                import org.apache.commons.collections.primitives.ArrayIntList
+                                echo(/got ${new ArrayIntList()}/)""", false));
                 j.assertLogContains("got []", j.buildAndAssertSuccess(p));
         });
     }
 
-    @Test public void outsideLibrarySandbox() throws Throwable {
+    @Test
+    void outsideLibrarySandbox() throws Throwable {
         story.then(j -> {
                 WorkflowJob p = j.jenkins.createProject(WorkflowJob.class, "p");
                 p.setDefinition(new CpsFlowDefinition(
-                    "@Grab('commons-primitives:commons-primitives:1.0')\n" +
-                    "import org.apache.commons.collections.primitives.ArrayIntList\n" +
-                    "new ArrayIntList()", true));
+                        """
+                                @Grab('commons-primitives:commons-primitives:1.0')
+                                import org.apache.commons.collections.primitives.ArrayIntList
+                                new ArrayIntList()""", true));
                 // Even assuming signature approvals, we do not want to allow Grape to be used from sandboxed scripts.
                 ScriptApproval.get().approveSignature("new org.apache.commons.collections.primitives.ArrayIntList");
                 j.assertLogContains("Annotation Grab cannot be used in the sandbox", j.assertBuildStatus(Result.FAILURE, p.scheduleBuild2(0)));
         });
     }
-
 }

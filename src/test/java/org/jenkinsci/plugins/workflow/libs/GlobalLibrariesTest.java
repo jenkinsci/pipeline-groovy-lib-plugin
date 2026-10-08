@@ -26,8 +26,8 @@ package org.jenkinsci.plugins.workflow.libs;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsString;
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 import hudson.security.Permission;
 import java.net.URL;
@@ -37,37 +37,53 @@ import java.util.List;
 import jenkins.model.Jenkins;
 import jenkins.plugins.git.GitSCMSource;
 import jenkins.plugins.git.GitSampleRepoRule;
+import jenkins.plugins.git.junit.jupiter.WithGitSampleRepo;
 import org.htmlunit.HttpMethod;
 import org.htmlunit.WebRequest;
 import org.htmlunit.html.HtmlPage;
 import org.htmlunit.util.NameValuePair;
 import org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition;
 import org.jenkinsci.plugins.workflow.job.WorkflowJob;
-import org.junit.ClassRule;
-import org.junit.Rule;
-import org.junit.Test;
-import org.jvnet.hudson.test.BuildWatcher;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.jvnet.hudson.test.Issue;
 import org.jvnet.hudson.test.JenkinsRule;
 import org.jvnet.hudson.test.MockAuthorizationStrategy;
+import org.jvnet.hudson.test.junit.jupiter.BuildWatcherExtension;
+import org.jvnet.hudson.test.junit.jupiter.WithJenkins;
 
-public class GlobalLibrariesTest {
+@WithJenkins
+@WithGitSampleRepo
+class GlobalLibrariesTest {
 
-    @Rule public JenkinsRule r = new JenkinsRule();
-    @Rule public GitSampleRepoRule sampleRepo = new GitSampleRepoRule();
-    @ClassRule public static BuildWatcher buildWatcher = new BuildWatcher();
+    private JenkinsRule r;
+    private GitSampleRepoRule sampleRepo;
+    @SuppressWarnings("unused")
+    @RegisterExtension
+    private static final BuildWatcherExtension BUILD_WATCHER = new BuildWatcherExtension();
 
-    @Test public void configRoundtrip() throws Exception {
+    @BeforeEach
+    void beforeEach(JenkinsRule rule, GitSampleRepoRule repo) {
+        r = rule;
+        sampleRepo = repo;
+    }
+
+    @Test
+    void configRoundtrip() throws Exception {
         r.configRoundtrip();
         configRoundtrip(r, GlobalLibraries.get(), Jenkins.ADMINISTER);
     }
 
     @Issue("SECURITY-1422")
-    @Test public void checkDefaultVersionRestricted() throws Exception {
+    @Test
+    void checkDefaultVersionRestricted() throws Exception {
         checkDefaultVersionRestricted(r, sampleRepo, GlobalLibraries.get());
     }
 
-    @Test public void allowedGrape() throws Exception {
+    @Test
+    void allowedGrape() throws Exception {
         GlobalLibraries.get().setLibraries(List.of(LibraryTestUtils.defineLibraryUsingGrab("grape", sampleRepo)));
         WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "p");
         p.setDefinition(new CpsFlowDefinition("@Library('grape@master') import pkg.Wrapper; echo(/should be able to run ${pkg.Wrapper.list()}/)", true));
@@ -85,7 +101,7 @@ public class GlobalLibrariesTest {
             .grant(Jenkins.ADMINISTER).everywhere().to("admin");
         r.jenkins.setAuthorizationStrategy(s);
         LibraryConfiguration foo = new LibraryConfiguration("foo", new SCMSourceRetriever(new GitSCMSource(sampleRepo.toString())));
-        gl.setLibraries(Arrays.asList(foo));
+        gl.setLibraries(List.of(foo));
         JenkinsRule.WebClient wc = r.createWebClient();
         wc.setThrowExceptionOnFailingStatusCode(false);
         WebRequest req = new WebRequest(new URL(wc.getContextPath() + "/descriptorByName/" +
@@ -113,7 +129,7 @@ public class GlobalLibrariesTest {
         bar.setDefaultVersion("master");
         bar.setImplicit(true);
         bar.setAllowVersionOverride(false);
-        gl.setLibraries(Arrays.asList(bar));
+        gl.setLibraries(List.of(bar));
         r.jenkins.setSecurityRealm(r.createDummySecurityRealm());
         r.jenkins.setAuthorizationStrategy(new MockAuthorizationStrategy().
                 grant(alicePrivileges).everywhere().to("alice")
@@ -122,9 +138,9 @@ public class GlobalLibrariesTest {
         assertThat(configurePage.getWebResponse().getContentAsString(), containsString("https://phony.jenkins.io/bar.git"));
         r.submit(configurePage.getFormByName("config")); // JenkinsRule.configRoundtrip expanded to include login
         List<LibraryConfiguration> libs = gl.getLibraries();
-        r.assertEqualDataBoundBeans(Arrays.asList(bar), libs);
+        r.assertEqualDataBoundBeans(List.of(bar), libs);
         libs = gl.getLibraries();
-        r.assertEqualDataBoundBeans(Arrays.asList(bar), libs);
+        r.assertEqualDataBoundBeans(List.of(bar), libs);
         boolean noBar = true;
         for (LibraryConfiguration lib : libs) {
             if ("bar".equals(lib.getName())) {
@@ -132,6 +148,6 @@ public class GlobalLibrariesTest {
                 r.assertEqualDataBoundBeans(lib.getCachingConfiguration(), cachingConfiguration);
             }
         }
-        assertFalse("Missing a library called bar (should not happen)", noBar);
+        assertFalse(noBar, "Missing a library called bar (should not happen)");
     }
 }
