@@ -81,7 +81,7 @@ public abstract class SCMBasedRetriever extends LibraryRetriever {
     @SuppressFBWarnings(value = "MS_SHOULD_BE_FINAL", justification = "Non-final for write access via the Script Console")
     public static boolean INCLUDE_SRC_TEST_IN_LIBRARIES = Boolean.getBoolean(SCMSourceRetriever.class.getName() + ".INCLUDE_SRC_TEST_IN_LIBRARIES");
 
-    static final String ROOT_PROP = SCMSourceRetriever.class.getName() + ".root";
+    static final String ROOT_PROP = SCMBasedRetriever.class.getName() + ".root";
 
     /**
      * Matches ".." in positions where it would be treated as the parent directory.
