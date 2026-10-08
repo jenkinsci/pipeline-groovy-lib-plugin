@@ -70,7 +70,6 @@ import static org.hamcrest.Matchers.instanceOf;
 import static org.hamcrest.Matchers.not;
 import static org.junit.jupiter.api.Assertions.*;
 
-import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -91,8 +90,10 @@ import static org.hamcrest.Matchers.matchesPattern;
 import static org.jenkinsci.plugins.workflow.libs.SCMBasedRetriever.PROHIBITED_DOUBLE_DOT;
 import static org.junit.jupiter.api.Assumptions.assumeFalse;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
+import org.junit.jupiter.api.AutoClose;
 
 import org.jvnet.hudson.test.junit.jupiter.BuildWatcherExtension;
+import org.jvnet.hudson.test.junit.jupiter.FlagExtension;
 import org.jvnet.hudson.test.junit.jupiter.WithJenkins;
 
 @WithJenkins
@@ -106,21 +107,15 @@ class SCMSourceRetrieverTest {
     private GitSampleRepoRule sampleRepo;
     @TempDir
     public Path tempFolder;
-
-    private boolean includeSrcTest;
+    @RegisterExtension
+    private final FlagExtension<Boolean> includeSrcTest = new FlagExtension<>(() -> SCMBasedRetriever.INCLUDE_SRC_TEST_IN_LIBRARIES, x -> SCMBasedRetriever.INCLUDE_SRC_TEST_IN_LIBRARIES = x);
+    @AutoClose
     private final LogRecorder logging = new LogRecorder().record(SCMBasedRetriever.class, Level.FINE);
 
     @BeforeEach
     void beforeEach(JenkinsRule rule, GitSampleRepoRule repo) {
         r = rule;
         sampleRepo = repo;
-
-        includeSrcTest = SCMBasedRetriever.INCLUDE_SRC_TEST_IN_LIBRARIES;
-    }
-
-    @AfterEach
-    void afterEach() {
-        SCMBasedRetriever.INCLUDE_SRC_TEST_IN_LIBRARIES = includeSrcTest;
     }
 
     @Issue("JENKINS-40408")
