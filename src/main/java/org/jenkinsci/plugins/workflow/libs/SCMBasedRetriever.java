@@ -60,6 +60,7 @@ import java.util.logging.Logger;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import jenkins.model.Jenkins;
+import jenkins.util.SystemProperties;
 import org.jenkinsci.plugins.workflow.steps.scm.GenericSCMStep;
 import org.jenkinsci.plugins.workflow.steps.scm.SCMStep;
 import org.kohsuke.accmod.Restricted;
@@ -199,7 +200,10 @@ public abstract class SCMBasedRetriever extends LibraryRetriever {
             }
         } else { // !clone
             FilePath dir;
-            if (run.getParent() instanceof TopLevelItem) {
+            var root = SystemProperties.getString(SCMSourceRetriever.class.getName() + ".root");
+            if (root != null) {
+                dir = node.createPath(root).child(target.getName());
+            } else if (run.getParent() instanceof TopLevelItem) {
                 FilePath baseWorkspace = node.getWorkspaceFor((TopLevelItem) run.getParent());
                 if (baseWorkspace == null) {
                     throw new IOException(node.getDisplayName() + " may be offline");
