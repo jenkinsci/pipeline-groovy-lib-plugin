@@ -81,6 +81,11 @@
                 <scope>import</scope>
                 <type>pom</type>
             </dependency>
+            <dependency>
+                <groupId>org.jenkins-ci.plugins.workflow</groupId>
+                <artifactId>workflow-multibranch</artifactId>
+                <version>842.vb_8a_4cded74df</version>
+            </dependency>
         </dependencies>
     </dependencyManagement>
     <dependencies>
