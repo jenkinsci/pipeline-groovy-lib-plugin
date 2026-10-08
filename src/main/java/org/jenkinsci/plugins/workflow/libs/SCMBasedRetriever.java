@@ -77,8 +77,11 @@ public abstract class SCMBasedRetriever extends LibraryRetriever {
 
     private static final Logger LOGGER = Logger.getLogger(SCMBasedRetriever.class.getName());
 
+    // TODO inline field
     @SuppressFBWarnings(value = "MS_SHOULD_BE_FINAL", justification = "Non-final for write access via the Script Console")
     public static boolean INCLUDE_SRC_TEST_IN_LIBRARIES = Boolean.getBoolean(SCMSourceRetriever.class.getName() + ".INCLUDE_SRC_TEST_IN_LIBRARIES");
+
+    static final String ROOT_PROP = SCMSourceRetriever.class.getName() + ".root";
 
     /**
      * Matches ".." in positions where it would be treated as the parent directory.
@@ -200,7 +203,7 @@ public abstract class SCMBasedRetriever extends LibraryRetriever {
             }
         } else { // !clone
             FilePath dir;
-            var root = SystemProperties.getString(SCMSourceRetriever.class.getName() + ".root");
+            var root = SystemProperties.getString(ROOT_PROP);
             if (root != null) {
                 var rootF = node.createPath(root);
                 if (rootF == null) {

@@ -109,6 +109,8 @@ class SCMSourceRetrieverTest {
     public Path tempFolder;
     @RegisterExtension
     private final FlagExtension<Boolean> includeSrcTest = new FlagExtension<>(() -> SCMBasedRetriever.INCLUDE_SRC_TEST_IN_LIBRARIES, x -> SCMBasedRetriever.INCLUDE_SRC_TEST_IN_LIBRARIES = x);
+    @RegisterExtension
+    private final FlagExtension<String> rootProp = FlagExtension.systemProperty(SCMBasedRetriever.ROOT_PROP);
     @AutoClose
     private final LogRecorder logging = new LogRecorder().record(SCMBasedRetriever.class, Level.FINE);
 
@@ -745,6 +747,27 @@ class SCMSourceRetrieverTest {
         assertFalse(r.jenkins.getWorkspaceFor(p).withSuffix("@libs").isDirectory());
         r.assertLogContains("got something special", b);
         r.assertLogNotContains("Excluding src/test/ from checkout", b);
+    }
+
+    @Test
+    void nonWorkspaceRoot() throws Exception {
+        var libs = tempFolder.resolve("libs");
+        System.setProperty(SCMBasedRetriever.ROOT_PROP, libs.toString());
+        sampleRepo.init();
+        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something special'}");
+        sampleRepo.git("add", ".");
+        sampleRepo.git("commit", "--message=init");
+        var lc = new LibraryConfiguration("echoing", new SCMSourceRetriever(new GitSCMSource(sampleRepo.toString())));
+        lc.setDefaultVersion("master");
+        lc.setImplicit(true);
+        GlobalUntrustedLibraries.get().setLibraries(List.of(lc));
+        var p1 = r.jenkins.createProject(WorkflowJob.class, "p1");
+        p1.setDefinition(new CpsFlowDefinition("myecho()", true));
+        var p2 = r.jenkins.createProject(WorkflowJob.class, "p2");
+        p2.setDefinition(new CpsFlowDefinition("myecho()", true));
+        r.buildAndAssertSuccess(p1);
+        r.buildAndAssertSuccess(p2);
+        assertTrue(Files.isDirectory(libs.resolve(new LibraryRecord("echoing", "master", false, true, null, GlobalUntrustedLibraries.ForJob.class.getName(), null).getDirectoryName())));
     }
 
     // FIFOs cannot be committed to git, so we test rejectSpecialFiles directly against the working directory
