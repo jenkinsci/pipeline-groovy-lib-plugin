@@ -46,6 +46,10 @@ import hudson.util.FormValidation;
 import java.io.File;
 import java.io.IOException;
 import java.io.InterruptedIOException;
+import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
+import java.nio.file.Path;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -54,11 +58,13 @@ import java.util.concurrent.Callable;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 import jenkins.model.Jenkins;
 import org.jenkinsci.plugins.workflow.steps.scm.GenericSCMStep;
 import org.jenkinsci.plugins.workflow.steps.scm.SCMStep;
 import org.kohsuke.accmod.Restricted;
 import org.kohsuke.accmod.restrictions.DoNotUse;
+import org.kohsuke.accmod.restrictions.NoExternalUse;
 import org.kohsuke.stapler.DataBoundSetter;
 import org.kohsuke.stapler.QueryParameter;
 import org.kohsuke.stapler.verb.POST;
@@ -78,7 +84,12 @@ public abstract class SCMBasedRetriever extends LibraryRetriever {
      *
      * <p>Used to prevent {@link #libraryPath} from being used for directory traversal.
      */
-    static final Pattern PROHIBITED_DOUBLE_DOT = Pattern.compile("(^|.*[\\\\/])\\.\\.($|[\\\\/].*)");
+    static final Pattern PROHIBITED_DOUBLE_DOT = Pattern.compile("(^|.*[\\\\/])\\.\\.($|[\\\\/].*)", Pattern.DOTALL);
+
+    /**
+     * The directories within a library that are special
+     */
+    private static final Collection<String> LIBRARY_DIRECTORIES = List.of("src", "vars", "resources");
 
     private boolean clone;
 
@@ -113,8 +124,13 @@ public abstract class SCMBasedRetriever extends LibraryRetriever {
     }
 
     protected final void doRetrieve(String name, boolean changelog, @NonNull SCM scm, FilePath target, Run<?, ?> run, TaskListener listener) throws Exception {
-        if (libraryPath != null && PROHIBITED_DOUBLE_DOT.matcher(libraryPath).matches()) {
-            throw new AbortException("Library path may not contain '..'");
+        if (libraryPath != null) {
+            if (PROHIBITED_DOUBLE_DOT.matcher(libraryPath).matches()) {
+                throw new AbortException("Library path may not contain '..'");
+            }
+            if (!isRelativePath(libraryPath)) {
+                throw new AbortException("Library path must be a relative path");
+            }
         }
         if (clone && changelog) {
             listener.getLogger().println("WARNING: ignoring request to compute changelog in clone mode");
@@ -132,6 +148,8 @@ public abstract class SCMBasedRetriever extends LibraryRetriever {
                     WorkspaceList.tempDir(target).deleteRecursive();
                     return null;
                 });
+                // ensure the clone has no symlinks
+                rejectSpecialFiles(target, null);
             } else {
                 FilePath root = target.child("root");
                 retrySCMOperation(listener, () -> {
@@ -139,11 +157,13 @@ public abstract class SCMBasedRetriever extends LibraryRetriever {
                     WorkspaceList.tempDir(root).deleteRecursive();
                     return null;
                 });
+                // ensure the clone has no symlinks
+                rejectSpecialFiles(root, libraryPath);
                 FilePath subdir = root.child(libraryPath);
                 if (!subdir.isDirectory()) {
                     throw new AbortException("Did not find " + libraryPath + " in checkout");
                 }
-                for (String content : List.of("src", "vars", "resources")) {
+                for (String content : LIBRARY_DIRECTORIES) {
                     FilePath contentDir = subdir.child(content);
                     if (contentDir.isDirectory()) {
                         LOGGER.fine(() -> "Moving " + content + " to top level in " + target);
@@ -200,6 +220,8 @@ public abstract class SCMBasedRetriever extends LibraryRetriever {
                     delegate.checkout(run, lease.path, listener, node.createLauncher(listener));
                     return null;
                 });
+                // Fail fast: reject symlinks early rather than after copying to libDir
+                rejectSpecialFiles(lease.path, libraryPath);
                 if (libraryPath == null) {
                     libraryPath = ".";
                 }
@@ -211,6 +233,101 @@ public abstract class SCMBasedRetriever extends LibraryRetriever {
                 // Cannot add WorkspaceActionImpl to private CpsFlowExecution.flowStartNodeActions; do we care?
                 // Copy sources with relevant files from the checkout:
                 lease.path.child(libraryPath).copyRecursiveTo("src/**/*.groovy,vars/*.groovy,vars/*.txt,resources/", excludes, target);
+            }
+        }
+    }
+
+    @Restricted(NoExternalUse.class)
+    static boolean isRelativePath(@NonNull String libraryPath) {
+        try {
+            if (Path.of(libraryPath).isAbsolute()) {
+                return false;
+            }
+        } catch (InvalidPathException e) {
+            // as path is not valid for security reasons we would want to block it.
+            return false;
+        }
+        // on windows we have a few more checks to do
+        if (Functions.isWindows()
+                && (libraryPath.startsWith("\\")
+                        || // this is the root of the current drive something we also need to block.
+                        // UNC paths and the \\?\ (long path prefix) are already rejected by isAbsolute
+                        libraryPath.startsWith("/")
+                        || // windows can equally use \ or / in paths
+                        libraryPath.indexOf(":") != -1 // drive relative paths like `D:foo`
+                )) {
+            return false;
+        }
+        return true;
+    }
+
+    /**
+     * Checks that no component of {@ code libraryPath} is a symbolic link, and that no file anywhere under {@code libraryPath/{src,vars,resources}} is not a regular file or directory.
+     * @param checkoutRoot the root of the library clone/checkout
+     * @param libraryPath a <em>relative<em> path found under checkoutRoot that contains the library resources
+     * @throws IOException incase there was an I/O Error performing path checks
+     * @throws AbortException if any offending file was found
+     */
+    static void rejectSpecialFiles(final FilePath checkoutRoot, final @CheckForNull String libraryPath) throws IOException {
+        // we need to allow symlinks in checkoutRoot as they may be part of SCM metadata (e.g. mercurial)
+        // or elsewhere outside of the library.
+        // the libraryPath itself must never be a symlink, nor can the src, vars or resources folders be,
+        // nor are they contain any symlinks
+
+        // not using FilePath.containsSymlink to walk back as this is a boolean and we require more diagnostics if this fails.
+        Path root = new File(checkoutRoot.getRemote()).toPath();
+
+        // check there are no links in the library path segement
+        // this is a relative path so will not walk all the way to root directory!
+        Path toCheck = libraryPath == null ? null : Path.of(libraryPath);
+        while (toCheck != null) {
+            // resolve the file so we can check it
+            Path p  = root.resolve(toCheck);
+            if (Files.isSymbolicLink(p)) {
+                throw new AbortException("Rejecting library: symlink found: " + root.relativize(p));
+            }
+            if (!Files.isDirectory(p)) {
+                throw new AbortException("Rejecting library: expected directory: " + root.relativize(p));
+            }
+            toCheck = toCheck.getParent();
+        }
+
+        // now check the files in the library
+        for (String s : LIBRARY_DIRECTORIES) {
+            Path child = libraryPath == null ? Path.of(s) : Path.of(libraryPath).resolve(s);
+            // check all files below this directory
+            rejectSpecialFiles(root.resolve(child), root);
+        }
+    }
+
+    // symlinks in a library allow reading arbitrary controller files via the global variable reference
+    static void rejectSpecialFiles(FilePath target) throws IOException {
+        Path p = new File(target.getRemote()).toPath();
+        rejectSpecialFiles(p,p);
+    }
+
+    /**
+     * Ensure that {@code toCheck} does not contain any special files, and is itself a directory.
+     * @param toCheck the Path to check for special files
+     * @param checkoutRoot base path to report errors against (so the actual path reported will be against the repository)
+     * @throws IOException for any I/O error
+     * @throws AbortException if we encounter any special files
+     */
+    static void rejectSpecialFiles(Path toCheck, Path checkoutRoot) throws IOException {
+        if (Files.isSymbolicLink(toCheck)) {
+            throw new AbortException("Rejecting library: symlink found: " + checkoutRoot.relativize(toCheck));
+        }
+        if (!Files.exists(toCheck)) {
+            return;
+        }
+        try (Stream<Path> walk = Files.walk(toCheck)) {
+            for (Path p : (Iterable<Path>) walk::iterator) {
+                if (Files.isSymbolicLink(p)) {
+                    throw new AbortException("Rejecting library: symlink found: " + checkoutRoot.relativize(p));
+                }
+                if (!Files.isRegularFile(p) && !Files.isDirectory(p)) {
+                    throw new AbortException("Rejecting library: non-regular file found: " + checkoutRoot.relativize(p));
+                }
             }
         }
     }
@@ -260,6 +377,9 @@ public abstract class SCMBasedRetriever extends LibraryRetriever {
                 return FormValidation.ok();
             } else if (PROHIBITED_DOUBLE_DOT.matcher(libraryPath).matches()) {
                 return FormValidation.error(Messages.SCMSourceRetriever_library_path_no_double_dot());
+            }
+            if (!isRelativePath(libraryPath)) {
+                return FormValidation.error(Messages.SCMSourceRetriever_library_path_must_be_relative());
             }
             return FormValidation.ok();
         }

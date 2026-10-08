@@ -27,6 +27,7 @@ package org.jenkinsci.plugins.workflow.libs;
 import edu.umd.cs.findbugs.annotations.NonNull;
 import hudson.AbortException;
 import hudson.FilePath;
+import hudson.Functions;
 import hudson.model.Item;
 import hudson.model.Result;
 import hudson.model.TaskListener;
@@ -35,6 +36,10 @@ import hudson.scm.SCM;
 import hudson.slaves.WorkspaceList;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.charset.Charset;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
@@ -60,6 +65,7 @@ import jenkins.plugins.git.traits.RefSpecsSCMSourceTrait;
 
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.containsInAnyOrder;
+import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.instanceOf;
 import static org.hamcrest.Matchers.not;
 import static org.junit.jupiter.api.Assertions.*;
@@ -69,6 +75,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import org.junit.jupiter.api.extension.RegisterExtension;
+import org.junit.jupiter.api.io.TempDir;
 import org.jvnet.hudson.test.Issue;
 import org.jvnet.hudson.test.JenkinsRule;
 import org.jvnet.hudson.test.LogRecorder;
@@ -82,6 +89,8 @@ import static org.hamcrest.Matchers.arrayWithSize;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.matchesPattern;
 import static org.jenkinsci.plugins.workflow.libs.SCMBasedRetriever.PROHIBITED_DOUBLE_DOT;
+import static org.junit.jupiter.api.Assumptions.assumeFalse;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 import org.jvnet.hudson.test.junit.jupiter.BuildWatcherExtension;
 import org.jvnet.hudson.test.junit.jupiter.WithJenkins;
@@ -95,6 +104,8 @@ class SCMSourceRetrieverTest {
     private static final BuildWatcherExtension BUILD_WATCHER = new BuildWatcherExtension();
     private JenkinsRule r;
     private GitSampleRepoRule sampleRepo;
+    @TempDir
+    public Path tempFolder;
 
     private boolean includeSrcTest;
     private final LogRecorder logging = new LogRecorder().record(SCMBasedRetriever.class, Level.FINE);
@@ -245,6 +256,158 @@ class SCMSourceRetrieverTest {
         assertThat(".\\..", matchesPattern(PROHIBITED_DOUBLE_DOT));
         assertThat("..\\foo", matchesPattern(PROHIBITED_DOUBLE_DOT));
         assertThat("foo\\..\\bar", matchesPattern(PROHIBITED_DOUBLE_DOT));
+        assertThat("x\u2028/../../../../../foo/", matchesPattern(PROHIBITED_DOUBLE_DOT));
+    }
+
+    @Issue("SECURITY-3796")
+    @Test
+    void libraryAbsolutePathsAreRejected() throws Exception {
+        sampleRepo.init();
+        sampleRepo.write("sub/path/vars/myecho.groovy", "def call() {echo 'something special'}");
+        sampleRepo.git("add", "sub");
+        sampleRepo.git("commit", "--message=init");
+        SCMSourceRetriever scm = new SCMSourceRetriever(new GitSCMSource(sampleRepo.toString()));
+        LibraryConfiguration lc = new LibraryConfiguration("root_sub_path", scm);
+        lc.setIncludeInChangesets(false);
+        scm.setLibraryPath("/user/jenkins/foo/");
+        GlobalLibraries.get().setLibraries(Collections.singletonList(lc));
+        WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "p");
+        p.setDefinition(new CpsFlowDefinition("@Library('root_sub_path@master') import myecho; myecho()", true));
+        WorkflowRun b = r.assertBuildStatus(Result.FAILURE, p.scheduleBuild2(0));
+        r.assertLogContains("Library path must be a relative path", b);
+    }
+
+    @Issue("SECURITY-3796")
+    @Test
+    void symlinksInLibraryPath() throws Exception {
+        symlinksInLibraryPath(false);
+    }
+
+    @Issue("SECURITY-3796")
+    @Test
+    void symlinksInLibraryPathWithClone() throws Exception {
+        symlinksInLibraryPath(true);
+    }
+
+    private void symlinksInLibraryPath(boolean clone) throws Exception {
+        assumeSymlinkSupport();
+        assumeGitSymlinkSupport();
+
+        // setup a folder that an attacker can link to
+        Path tempRoot = tempFolder;
+        Path victim = Files.createDirectory(tempRoot.resolve("victim"));
+        Path resources = Files.createDirectory(victim.resolve("resources"));
+        Path src = Files.createDirectory(victim.resolve("src"));
+
+        Files.writeString(resources.resolve("oops.txt"), "OOPS!");
+        Files.writeString(src.resolve("whatever.groovy"), "// blank file");
+
+        sampleRepo.init();
+        Path sub = sampleRepo.getRoot().toPath().resolve("sub");
+        Files.createDirectory(sub);
+        Files.createSymbolicLink(sub.resolve("path"), tempRoot);
+        sampleRepo.git("add", "sub");
+        sampleRepo.git("commit", "--message=symlink");
+        SCMSourceRetriever scm = new SCMSourceRetriever(new GitSCMSource(sampleRepo.toString()));
+        LibraryConfiguration lc = new LibraryConfiguration("symlink_sub_path", scm);
+        lc.setIncludeInChangesets(false);
+        scm.setLibraryPath("sub/path/victim/");
+        scm.setClone(clone);
+
+        GlobalLibraries.get().setLibraries(Collections.singletonList(lc));
+        WorkflowJob wf = r.jenkins.createProject(WorkflowJob.class, "p");
+        wf.setDefinition(new CpsFlowDefinition("""
+                @Library('symlink_sub_path@master')
+                def oops = libraryResource('oops.txt')
+                echo oops
+                """));
+        WorkflowRun b = r.assertBuildStatus(Result.FAILURE, wf.scheduleBuild2(0));
+        r.assertLogContains("Rejecting library: symlink found: sub" + File.separatorChar + "path", b);
+    }
+
+    @Issue("SECURITY-3796??")
+    @Test
+    void symlinksInVars() throws Exception {
+        symlinksInVars(false);
+    }
+
+    @Issue("SECURITY-3796??")
+    @Test
+    void symlinksInVarsWithClone() throws Exception {
+        symlinksInVars(true);
+    }
+
+    private void symlinksInVars(boolean clone) throws Exception {
+        assumeSymlinkSupport();
+        assumeGitSymlinkSupport();
+
+        // setup a folder that an attacker can link to
+        Path tempRoot = tempFolder;
+        Path victimDir = Files.createDirectory(tempRoot.resolve("victim"));
+        Path victim = Files.writeString(victimDir.resolve("oops.txt"), "OOPS!");
+
+        sampleRepo.init();
+        sampleRepo.write("src/whatever.groovy", "// blank file");
+
+        Path resources = Files.createDirectory(sampleRepo.getRoot().toPath().resolve("resources"));
+        Files.createSymbolicLink(resources.resolve("link"), victim);
+        sampleRepo.git("add", "src", "resources");
+        sampleRepo.git("commit", "--message=symlink-attack");
+
+        SCMSourceRetriever scm = new SCMSourceRetriever(new GitSCMSource(sampleRepo.toString()));
+        LibraryConfiguration lc = new LibraryConfiguration("symlink_sub_path", scm);
+        lc.setIncludeInChangesets(false);
+        scm.setLibraryPath("");
+        scm.setClone(clone);
+
+        GlobalLibraries.get().setLibraries(Collections.singletonList(lc));
+        WorkflowJob wf = r.jenkins.createProject(WorkflowJob.class, "p");
+        wf.setDefinition(new CpsFlowDefinition("""
+                @Library('symlink_sub_path@master')
+                def oops = libraryResource('oops.txt')
+                echo oops
+                """));
+        WorkflowRun b = r.assertBuildStatus(Result.FAILURE, wf.scheduleBuild2(0));
+        r.assertLogContains("Rejecting library: symlink found: resources" + File.separatorChar + "link", b);
+    }
+
+
+    /**
+     * Check that symlinks can be created, if not abort with an AssumptionError
+     */
+    private void assumeSymlinkSupport() {
+        try {
+            Path p = Files.createDirectory(tempFolder.resolve("symlink-test"));
+            Files.createSymbolicLink(p.resolve("link"), p.resolve("target"));
+        } catch (IOException e) {
+            assumeTrue(false, "Symlinks are not supported: " + e);
+        }
+    }
+
+    /**
+     * Check that Git supports symlinks (Unix like platforms do, Windows platforms need to be opted in).
+     */
+    private void assumeGitSymlinkSupport() {
+        if (!Functions.isWindows()) {
+            // assume symlinks are always supported on non windows platforms
+            return;
+        }
+        try {
+            // TODO add a method in GitSampleRepoRule to run a git command and return the output
+            ProcessBuilder pb = new ProcessBuilder();
+            pb.command("git", "config", "get", "--type=bool", "core.symlinks");
+            pb.redirectErrorStream(true);
+            Process p = pb.start();
+            try (InputStream is = p.getInputStream()) {
+                byte[] data = is.readAllBytes();
+                String output = new String(data, Charset.defaultCharset()).trim();
+                // we have normalized git's output with the `--type` above to force a known response
+                // does not handle localization however this will fail to assuming false so will not cause breakage
+                assumeTrue("true".equals(output), "Git symlinks support (core.symlinks) is not configured");
+            }
+        } catch (Exception e) {
+            assumeTrue(false, "Could not determine if Git is not currently configured to support symlinks: " + e);
+        }
     }
 
     @Issue("JENKINS-43802")
@@ -507,6 +670,44 @@ class SCMSourceRetrieverTest {
         r.assertLogContains("Library path may not contain '..'", b);
     }
 
+    @Issue("SECURITY-3796")
+    @Test
+    void cloneModeLibraryAbsolutePathsAreRejected() throws Exception {
+        sampleRepo.init();
+        sampleRepo.write("sub/path/vars/myecho.groovy", "def call() {echo 'something special'}");
+        sampleRepo.git("add", "sub");
+        sampleRepo.git("commit", "--message=init");
+        SCMSourceRetriever scm = new SCMSourceRetriever(new GitSCMSource(sampleRepo.toString()));
+        LibraryConfiguration lc = new LibraryConfiguration("root_sub_path", scm);
+        lc.setIncludeInChangesets(false);
+        scm.setLibraryPath("/user/jenkins/foo/");
+        scm.setClone(true);
+        GlobalLibraries.get().setLibraries(Collections.singletonList(lc));
+        WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "p");
+        p.setDefinition(new CpsFlowDefinition("@Library('root_sub_path@master') import myecho; myecho()", true));
+        WorkflowRun b = r.assertBuildStatus(Result.FAILURE, p.scheduleBuild2(0));
+        r.assertLogContains("Library path must be a relative path", b);
+    }
+
+    @Issue("SECURITY-3796")
+    @WithoutJenkins
+    @Test
+    void relativePath() {
+        assertTrue(SCMBasedRetriever.isRelativePath("foo/bar"));
+        assertFalse(SCMBasedRetriever.isRelativePath("/foo/bar"));
+        if (Functions.isWindows()) {
+            assertFalse(SCMBasedRetriever.isRelativePath("\\foo\\bar"));
+            assertFalse(SCMBasedRetriever.isRelativePath("x:\\wibble\\bar"));
+            assertFalse(SCMBasedRetriever.isRelativePath("x:/foo/manchu"));
+            assertFalse(SCMBasedRetriever.isRelativePath("\\\\server\\share\\somepath\\"));
+            assertFalse(SCMBasedRetriever.isRelativePath("//server/share/somepath/"));
+            // drive relative paths
+            assertFalse(SCMBasedRetriever.isRelativePath("x:wibble"));
+            // drive relative with no path
+            assertFalse(SCMBasedRetriever.isRelativePath("z:"));
+        }
+    }
+
     @Test
     void cloneModeExcludeSrcTest() throws Exception {
         sampleRepo.init();
@@ -550,4 +751,68 @@ class SCMSourceRetrieverTest {
         r.assertLogContains("got something special", b);
         r.assertLogNotContains("Excluding src/test/ from checkout", b);
     }
+
+    // FIFOs cannot be committed to git, so we test rejectSpecialFiles directly against the working directory
+    @Test
+    void fifoInLibRejected() throws Exception {
+        assumeFalse(Functions.isWindows(), "FIFOs are not supported on windows");
+        sampleRepo.init();
+        sampleRepo.write("vars/hello.groovy", "def call() {}");
+        Runtime.getRuntime().exec(new String[]{"mkfifo", new File(sampleRepo.getRoot(), "vars/pipe.txt").toString()}).waitFor();
+        assertThat(assertThrows(AbortException.class,
+            () -> SCMBasedRetriever.rejectSpecialFiles(new FilePath(sampleRepo.getRoot())))
+            .getMessage(), containsString("non-regular file found"));
+    }
+
+    @Test
+    void symlinkInVarsRejected() throws Exception {
+        assumeFalse(Functions.isWindows(), "symlinks require special privileges on windows");
+        sampleRepo.init();
+        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something special'}");
+        sampleRepo.git("add", "vars");
+        sampleRepo.git("commit", "--message=init");
+        sampleRepo.git("checkout", "master");
+        java.nio.file.Files.createSymbolicLink(
+            new File(sampleRepo.getRoot(), "vars/leak.txt").toPath(),
+            new File("/etc/passwd").toPath());
+        sampleRepo.git("add", "vars/leak.txt");
+        sampleRepo.git("commit", "--message=add-symlink");
+        for (boolean clone : new boolean[] {false, true}) {
+            SCMSourceRetriever scm = new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true));
+            scm.setClone(clone);
+            GlobalLibraries.get().setLibraries(Collections.singletonList(
+                new LibraryConfiguration("symlink_lib", scm)));
+            WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "p" + clone);
+            p.setDefinition(new CpsFlowDefinition("@Library('symlink_lib@master') _", true));
+            WorkflowRun b = r.assertBuildStatus(Result.FAILURE, p.scheduleBuild2(0));
+            r.assertLogContains("Rejecting library: symlink found", b);
+        }
+    }
+
+    @Test
+    void symlinkedDirectoryInLibRejected() throws Exception {
+        assumeFalse(Functions.isWindows(), "symlinks require special privileges on windows");
+        sampleRepo.init();
+        sampleRepo.write("src/org/foo/Lib.groovy", "class Lib {}");
+        sampleRepo.git("add", "src");
+        sampleRepo.git("commit", "--message=init");
+        sampleRepo.git("checkout", "master");
+        // Replace vars/ with a symlink to an arbitrary directory
+        java.nio.file.Files.createSymbolicLink(
+            new File(sampleRepo.getRoot(), "vars").toPath(),
+            new File("/etc").toPath());
+        sampleRepo.git("add", "vars");
+        sampleRepo.git("commit", "--message=add-symlinked-dir");
+        for (boolean clone : new boolean[] {false, true}) {
+            SCMSourceRetriever scm = new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true));
+            scm.setClone(clone);
+            GlobalLibraries.get().setLibraries(Collections.singletonList(
+                new LibraryConfiguration("symdir_lib", scm)));
+            WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "pd" + clone);
+            p.setDefinition(new CpsFlowDefinition("@Library('symdir_lib@master') _", true));
+            WorkflowRun b = r.assertBuildStatus(Result.FAILURE, p.scheduleBuild2(0));
+            r.assertLogContains("Rejecting library: symlink found", b);
+        }
+    }
+
 }

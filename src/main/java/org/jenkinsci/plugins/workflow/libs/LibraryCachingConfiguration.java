@@ -16,6 +16,7 @@ import org.kohsuke.accmod.restrictions.NoExternalUse;
 import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.DataBoundSetter;
 import org.kohsuke.stapler.QueryParameter;
+import org.kohsuke.stapler.interceptor.RequirePOST;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -115,6 +116,7 @@ public final class LibraryCachingConfiguration extends AbstractDescribableImpl<L
     }
 
     @Extension public static class DescriptorImpl extends Descriptor<LibraryCachingConfiguration> {
+        @RequirePOST
         public FormValidation doClearCache(@QueryParameter String name, @QueryParameter boolean forceDelete) throws InterruptedException {
             Jenkins.get().checkPermission(Jenkins.ADMINISTER);
 

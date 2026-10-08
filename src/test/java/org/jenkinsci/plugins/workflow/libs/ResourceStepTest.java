@@ -37,7 +37,6 @@ import java.util.Arrays;
 import java.util.Base64;
 import java.util.Collections;
 import java.util.List;
-
 import jenkins.plugins.git.GitSCMSource;
 import jenkins.plugins.git.GitSampleRepoRule;
 import org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition;
@@ -234,7 +233,29 @@ class ResourceStepTest {
 
         WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "p");
         p.setDefinition(new CpsFlowDefinition("@Library('symlink-stuff@master') import Stuff; echo(Stuff.contents(this))", true));
-        r.assertLogContains("master.key references a file that is not contained within the library: symlink-stuff", r.buildAndAssertStatus(Result.FAILURE, p));
+        r.assertLogContains("Rejecting library: symlink found", r.buildAndAssertStatus(Result.FAILURE, p));
+    }
+
+    @Issue("SECURITY-3727")
+    @Test
+    void symlinkedLibraryResourcesDirectoryIsNotAllowedToEscapeWorkspaceContext() throws Exception {
+        assumeFalse(Functions.isWindows(), "Git symlink behavior is platform dependent on Windows");
+        sampleRepo1.init();
+        sampleRepo1.write("src/Stuff.groovy", "class Stuff {static def contents(script) {script.libraryResource 'master.key'}}");
+        Files.createSymbolicLink(Paths.get(sampleRepo1.getRoot().getPath(), "resources"), Paths.get("../../../../../../../secrets"));
+
+        sampleRepo1.git("add", "src", "resources");
+        sampleRepo1.git("commit", "--message=init");
+        for (boolean clone : new boolean[] {false, true}) {
+            SCMSourceRetriever scm = new SCMSourceRetriever(new GitSCMSource(sampleRepo1.toString()));
+            scm.setClone(clone);
+            GlobalLibraries.get().setLibraries(List.of(
+                new LibraryConfiguration("symlink-root-stuff", scm)));
+            WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "p" + clone);
+            p.setDefinition(new CpsFlowDefinition("@Library('symlink-root-stuff@master') import Stuff; echo(Stuff.contents(this))", true));
+            WorkflowRun b = r.buildAndAssertStatus(Result.FAILURE, p);
+            r.assertLogContains("Rejecting library: symlink found", b);
+        }
     }
 
     @Issue("SECURITY-2476")
