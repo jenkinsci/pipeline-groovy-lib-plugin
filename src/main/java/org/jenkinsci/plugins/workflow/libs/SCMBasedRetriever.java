@@ -202,7 +202,11 @@ public abstract class SCMBasedRetriever extends LibraryRetriever {
             FilePath dir;
             var root = SystemProperties.getString(SCMSourceRetriever.class.getName() + ".root");
             if (root != null) {
-                dir = node.createPath(root).child(target.getName());
+                var rootF = node.createPath(root);
+                if (rootF == null) {
+                    throw new IOException(node.getDisplayName() + " may be offline");
+                }
+                dir = rootF.child(target.getName());
             } else if (run.getParent() instanceof TopLevelItem) {
                 FilePath baseWorkspace = node.getWorkspaceFor((TopLevelItem) run.getParent());
                 if (baseWorkspace == null) {
