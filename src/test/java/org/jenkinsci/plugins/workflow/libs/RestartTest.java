@@ -31,27 +31,40 @@ import java.util.Collections;
 import java.util.concurrent.atomic.AtomicLong;
 import jenkins.plugins.git.GitSCMSource;
 import jenkins.plugins.git.GitSampleRepoRule;
+import jenkins.plugins.git.junit.jupiter.WithGitSampleRepo;
 import org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition;
 import org.jenkinsci.plugins.workflow.cps.replay.ReplayAction;
 import org.jenkinsci.plugins.workflow.job.WorkflowJob;
 import org.jenkinsci.plugins.workflow.job.WorkflowRun;
 import org.jenkinsci.plugins.workflow.test.steps.SemaphoreStep;
-import org.junit.Test;
-import static org.junit.Assert.*;
-import org.junit.ClassRule;
-import org.junit.Rule;
-import org.jvnet.hudson.test.BuildWatcher;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.jvnet.hudson.test.Issue;
-import org.jvnet.hudson.test.JenkinsSessionRule;
+import org.jvnet.hudson.test.junit.jupiter.BuildWatcherExtension;
+import org.jvnet.hudson.test.junit.jupiter.JenkinsSessionExtension;
 
-public class RestartTest {
+@WithGitSampleRepo
+class RestartTest {
 
-    @ClassRule public static BuildWatcher buildWatcher = new BuildWatcher();
-    @Rule public JenkinsSessionRule rr = new JenkinsSessionRule();
-    @Rule public GitSampleRepoRule sampleRepo = new GitSampleRepoRule();
+    @SuppressWarnings("unused")
+    @RegisterExtension
+    private static final BuildWatcherExtension BUILD_WATCHER = new BuildWatcherExtension();
+    @RegisterExtension
+    private final JenkinsSessionExtension extension = new JenkinsSessionExtension();
+    private GitSampleRepoRule sampleRepo;
 
-    @Test public void smokes() throws Throwable {
-        rr.then(j -> {
+    @BeforeEach
+    void beforeEach(GitSampleRepoRule repo) {
+        sampleRepo = repo;
+    }
+
+    @Test
+    void smokes() throws Throwable {
+        extension.then(j -> {
                 sampleRepo.init();
                 sampleRepo.write("src/pkg/Slow.groovy", "package pkg; class Slow {static void wait(script) {script.semaphore 'wait-class'}}");
                 sampleRepo.write("vars/slow.groovy", "def call() {semaphore 'wait-var'}");
@@ -63,13 +76,13 @@ public class RestartTest {
                 WorkflowRun b = p.scheduleBuild2(0).waitForStart();
                 SemaphoreStep.waitForStart("wait-class/1", b);
         });
-        rr.then(j -> {
+        extension.then(j -> {
                 WorkflowJob p = j.jenkins.getItemByFullName("p", WorkflowJob.class);
                 WorkflowRun b = p.getLastBuild();
                 SemaphoreStep.success("wait-class/1", null);
                 SemaphoreStep.waitForStart("wait-var/1", b);
         });
-        rr.then(j -> {
+        extension.then(j -> {
                 WorkflowJob p = j.jenkins.getItemByFullName("p", WorkflowJob.class);
                 WorkflowRun b = p.getLastBuild();
                 SemaphoreStep.success("wait-var/1", null);
@@ -78,9 +91,10 @@ public class RestartTest {
         });
     }
 
-    @Test public void replay() throws Throwable {
+    @Test
+    void replay() throws Throwable {
         final String initialScript = "def call() {semaphore 'wait'; echo 'initial content'}";
-        rr.then(j -> {
+        extension.then(j -> {
                 sampleRepo.init();
                 sampleRepo.write("vars/slow.groovy", initialScript);
                 sampleRepo.git("add", "vars");
@@ -93,7 +107,7 @@ public class RestartTest {
                 WorkflowRun b1 = p.scheduleBuild2(0).waitForStart();
                 SemaphoreStep.waitForStart("wait/1", b1);
         });
-        rr.then(j -> {
+        extension.then(j -> {
                 WorkflowJob p = j.jenkins.getItemByFullName("d/p", WorkflowJob.class);
                 WorkflowRun b1 = p.getLastBuild();
                 SemaphoreStep.success("wait/1", null);
@@ -103,7 +117,7 @@ public class RestartTest {
                 WorkflowRun b2 = (WorkflowRun) ra.run(ra.getOriginalScript(), Collections.singletonMap("slow", initialScript.replace("initial", "subsequent"))).waitForStart();
                 SemaphoreStep.waitForStart("wait/2", b2);
         });
-        rr.then(j -> {
+        extension.then(j -> {
                 WorkflowJob p = j.jenkins.getItemByFullName("d/p", WorkflowJob.class);
                 WorkflowRun b2 = p.getLastBuild();
                 SemaphoreStep.success("wait/2", null);
@@ -112,8 +126,9 @@ public class RestartTest {
     }
 
     @Issue("JENKINS-39719")
-    @Test public void syntheticMethodOverride() throws Throwable {
-        rr.then(j -> {
+    @Test
+    void syntheticMethodOverride() throws Throwable {
+        extension.then(j -> {
                 sampleRepo.init();
                 sampleRepo.write("src/p/MyTest.groovy", "package p; class MyTest {def mytest1() {}}");
                 sampleRepo.write("src/p/MyOtherTest.groovy", "package p; class MyOtherTest {def test1() {}; def test2() {}}");
@@ -131,7 +146,7 @@ public class RestartTest {
                 SemaphoreStep.waitForStart("wait/1", p.scheduleBuild2(0).waitForStart());
                 ((AtomicLong) f.get(null)).set(0);
         });
-        rr.then(j -> {
+        extension.then(j -> {
                 WorkflowJob p = j.jenkins.getItemByFullName("p", WorkflowJob.class);
                 WorkflowRun b2 = p.getLastBuild();
                 assertEquals(2, b2.getNumber());
@@ -140,8 +155,9 @@ public class RestartTest {
         });
     }
 
-    @Test public void step() throws Throwable {
-        rr.then(j -> {
+    @Test
+    void step() throws Throwable {
+        extension.then(j -> {
                 sampleRepo.init();
                 sampleRepo.write("src/pkg/Slow.groovy", "package pkg; class Slow {static void wait(script) {script.semaphore 'wait-class'}}");
                 sampleRepo.write("vars/slow.groovy", "def call() {semaphore 'wait-var'}");
@@ -153,19 +169,19 @@ public class RestartTest {
                 WorkflowRun b = p.scheduleBuild2(0).waitForStart();
                 SemaphoreStep.waitForStart("start/1", b);
         });
-        rr.then(j -> {
+        extension.then(j -> {
                 WorkflowJob p = j.jenkins.getItemByFullName("p", WorkflowJob.class);
                 WorkflowRun b = p.getLastBuild();
                 SemaphoreStep.success("start/1", null);
                 SemaphoreStep.waitForStart("wait-class/1", b);
         });
-        rr.then(j -> {
+        extension.then(j -> {
                 WorkflowJob p = j.jenkins.getItemByFullName("p", WorkflowJob.class);
                 WorkflowRun b = p.getLastBuild();
                 SemaphoreStep.success("wait-class/1", null);
                 SemaphoreStep.waitForStart("wait-var/1", b);
         });
-        rr.then(j -> {
+        extension.then(j -> {
                 WorkflowJob p = j.jenkins.getItemByFullName("p", WorkflowJob.class);
                 WorkflowRun b = p.getLastBuild();
                 SemaphoreStep.success("wait-var/1", null);
