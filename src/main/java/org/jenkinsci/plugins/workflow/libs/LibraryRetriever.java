@@ -41,29 +41,33 @@ import edu.umd.cs.findbugs.annotations.NonNull;
  */
 public abstract class LibraryRetriever extends AbstractDescribableImpl<LibraryRetriever> implements ExtensionPoint {
 
+    /** @deprecated Override {@link #retrieve3} instead. */
+    @Deprecated
+    public void retrieve(@NonNull String name, @NonNull String version, boolean changelog, @NonNull FilePath target, @NonNull Run<?,?> run, @NonNull TaskListener listener) throws Exception {
+        retrieve(name, version, target, run, listener);
+    }
+
+    /** @deprecated Override {@link #retrieve3} instead. */
+    @Deprecated
+    public void retrieve(@NonNull String name, @NonNull String version, @NonNull FilePath target, @NonNull Run<?,?> run, @NonNull TaskListener listener) throws Exception {
+        throw new AbstractMethodError("Override retrieve3 instead of retrieve");
+    }
+
     /**
      * Obtains library sources.
-     * @param name the {@link LibraryConfiguration#getName}
-     * @param version the version of the library, such as from {@link LibraryConfiguration#getDefaultVersion} or an override
+     * New implementations should override this method; the default delegates to
+     * {@link #retrieve(String, String, boolean, FilePath, Run, TaskListener)} for backward compatibility
+     * with third-party retrievers that have not yet been updated.
+     * @param record full record of this library's configuration for this build; use {@link LibraryRecord#getName} and {@link LibraryRecord#getVersion} in place of the former {@code name} and {@code version} parameters
      * @param changelog whether to include changesets in the library in jobs using it from {@link LibraryConfiguration#getIncludeInChangesets}
      * @param target a directory in which to check out sources; should create {@code src/**}{@code /*.groovy} and/or {@code vars/*.groovy}, and optionally also {@code resources/}
      * @param run a build which will use the library
      * @param listener a way to report progress
      * @throws Exception if there is any problem (use {@link AbortException} for user errors)
      */
-    public abstract void retrieve(@NonNull String name, @NonNull String version, boolean changelog, @NonNull FilePath target, @NonNull Run<?,?> run, @NonNull TaskListener listener) throws Exception;
-
-    /**
-     * Obtains library sources.
-     * @param name the {@link LibraryConfiguration#getName}
-     * @param version the version of the library, such as from {@link LibraryConfiguration#getDefaultVersion} or an override
-     * @param target a directory in which to check out sources; should create {@code src/**}{@code /*.groovy} and/or {@code vars/*.groovy}, and optionally also {@code resources/}
-     * @param run a build which will use the library
-     * @param listener a way to report progress
-     * @throws Exception if there is any problem (use {@link AbortException} for user errors)
-     */
-    // TODO this should have been made nonabstract and deprecated and delegated to the new version; may be able to use access-modifier to help
-    public abstract void retrieve(@NonNull String name, @NonNull String version, @NonNull FilePath target, @NonNull Run<?,?> run, @NonNull TaskListener listener) throws Exception;
+    protected void retrieve3(@NonNull LibraryRecord record, boolean changelog, @NonNull FilePath target, @NonNull Run<?,?> run, @NonNull TaskListener listener) throws Exception {
+        retrieve(record.getName(), record.getVersion(), changelog, target, run, listener);
+    }
 
     @Deprecated
     public FormValidation validateVersion(@NonNull String name, @NonNull String version) {

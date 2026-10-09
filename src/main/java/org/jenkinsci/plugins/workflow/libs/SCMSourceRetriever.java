@@ -71,16 +71,12 @@ public class SCMSourceRetriever extends SCMBasedRetriever {
         return scm;
     }
 
-    @Override public void retrieve(String name, String version, boolean changelog, FilePath target, Run<?, ?> run, TaskListener listener) throws Exception {
-        SCMRevision revision = retrySCMOperation(listener, () -> scm.fetch(version, listener, run.getParent()));
+    @Override protected void retrieve3(LibraryRecord record, boolean changelog, FilePath target, Run<?, ?> run, TaskListener listener) throws Exception {
+        SCMRevision revision = retrySCMOperation(listener, () -> scm.fetch(record.getVersion(), listener, run.getParent()));
         if (revision == null) {
-            throw new AbortException("No version " + version + " found for library " + name);
+            throw new AbortException("No version " + record.getVersion() + " found for library " + record.getName());
         }
-        doRetrieve(name, changelog, scm.build(revision.getHead(), revision), target, run, listener);
-    }
-
-    @Override public void retrieve(String name, String version, FilePath target, Run<?, ?> run, TaskListener listener) throws Exception {
-        retrieve(name, version, true, target, run, listener);
+        doRetrieve(record.getName(), changelog, scm.build(revision.getHead(), revision), target, run, listener, record);
     }
 
     @Override public FormValidation validateVersion(String name, String version, Item context) {

@@ -757,17 +757,38 @@ class SCMSourceRetrieverTest {
         sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something special'}");
         sampleRepo.git("add", ".");
         sampleRepo.git("commit", "--message=init");
-        var lc = new LibraryConfiguration("echoing", new SCMSourceRetriever(new GitSCMSource(sampleRepo.toString())));
+        var src = new GitSCMSource(sampleRepo.toString());
+        var lc = new LibraryConfiguration("echoing", new SCMSourceRetriever(src));
         lc.setDefaultVersion("master");
-        lc.setImplicit(true);
         GlobalUntrustedLibraries.get().setLibraries(List.of(lc));
+        var sharedDirName = new LibraryRecord("echoing", "master", false, true, null, GlobalUntrustedLibraries.ForJob.class.getName(), null).getDirectoryName();
+
+        // @Library annotation uses ROOT_PROP — two jobs share the same checkout dir
         var p1 = r.jenkins.createProject(WorkflowJob.class, "p1");
-        p1.setDefinition(new CpsFlowDefinition("myecho()", true));
+        p1.setDefinition(new CpsFlowDefinition("@Library('echoing@master') _; myecho()", true));
         var p2 = r.jenkins.createProject(WorkflowJob.class, "p2");
-        p2.setDefinition(new CpsFlowDefinition("myecho()", true));
+        p2.setDefinition(new CpsFlowDefinition("@Library('echoing@master') _; myecho()", true));
         r.buildAndAssertSuccess(p1);
         r.buildAndAssertSuccess(p2);
-        assertTrue(Files.isDirectory(libs.resolve(new LibraryRecord("echoing", "master", false, true, null, GlobalUntrustedLibraries.ForJob.class.getName(), null).getDirectoryName())));
+
+        // library() step without retriever resolves the same config → same ROOT_PROP dir, no new entry
+        var p3 = r.jenkins.createProject(WorkflowJob.class, "p3");
+        p3.setDefinition(new CpsFlowDefinition("library('echoing@master'); myecho()", true));
+        r.buildAndAssertSuccess(p3);
+        r.assertLogContains("something special", p3.getLastBuild());
+
+        // library() step with explicit retriever has a per-build source → ROOT_PROP must be ignored
+        var p4 = r.jenkins.createProject(WorkflowJob.class, "p4");
+        p4.setDefinition(new CpsFlowDefinition(
+            "library(identifier: 'echoing@master', retriever: modernSCM(gitSource('" + sampleRepo + "')))\nmyecho()", true));
+        r.buildAndAssertSuccess(p4);
+        r.assertLogContains("something special", p4.getLastBuild());
+
+        try (var s = Files.list(libs)) {
+            assertThat(s.filter(Files::isDirectory).map(p -> p.getFileName().toString()).toList(), contains(sharedDirName));
+        }
+        FilePath p4libs = r.jenkins.getWorkspaceFor(p4).withSuffix("@libs");
+        assertThat(p4libs.getParent().list(), contains(p4libs));
     }
 
     // FIFOs cannot be committed to git, so we test rejectSpecialFiles directly against the working directory

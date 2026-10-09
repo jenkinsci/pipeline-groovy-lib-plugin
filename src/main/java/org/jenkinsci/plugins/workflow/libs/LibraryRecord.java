@@ -50,6 +50,7 @@ public final class LibraryRecord {
     final boolean trusted;
     final boolean changelog;
     final LibraryCachingConfiguration cachingConfiguration;
+    final String source;
     private String logString;
     private String directoryName;
 
@@ -68,6 +69,7 @@ public final class LibraryRecord {
         this.trusted = trusted;
         this.changelog = changelog;
         this.cachingConfiguration = cachingConfiguration;
+        this.source = source;
         logString = this.name + "@" + this.version;
         if (onTheRoadToNowhere(libraryPath)) {
             this.directoryName = directoryNameFor(name, version, String.valueOf(trusted), source);
@@ -87,6 +89,7 @@ public final class LibraryRecord {
         return currentDir.equals(libraryDir);
     }
 
+    /** @return the {@link LibraryConfiguration#getName} */
     @Exported
     public String getName() {
         return name;
@@ -109,6 +112,7 @@ public final class LibraryRecord {
         return logString;
     }
 
+    /** @return the version of the library, such as from {@link LibraryConfiguration#getDefaultVersion} or an override */
     @Exported
     public String getVersion() {
         return version;

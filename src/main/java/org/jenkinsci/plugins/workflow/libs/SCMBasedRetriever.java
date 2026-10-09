@@ -127,7 +127,13 @@ public abstract class SCMBasedRetriever extends LibraryRetriever {
         this.libraryPath = libraryPath;
     }
 
+    /** @deprecated Use {@link #doRetrieve(String, boolean, SCM, FilePath, Run, TaskListener, LibraryRecord)} instead. */
+    @Deprecated
     protected final void doRetrieve(String name, boolean changelog, @NonNull SCM scm, FilePath target, Run<?, ?> run, TaskListener listener) throws Exception {
+        doRetrieve(name, changelog, scm, target, run, listener, null);
+    }
+
+    protected final void doRetrieve(String name, boolean changelog, @NonNull SCM scm, FilePath target, Run<?, ?> run, TaskListener listener, @CheckForNull LibraryRecord record) throws Exception {
         if (libraryPath != null) {
             if (PROHIBITED_DOUBLE_DOT.matcher(libraryPath).matches()) {
                 throw new AbortException("Library path may not contain '..'");
@@ -204,12 +210,12 @@ public abstract class SCMBasedRetriever extends LibraryRetriever {
         } else { // !clone
             FilePath dir;
             var root = SystemProperties.getString(ROOT_PROP);
-            if (root != null) {
+            if (root != null && record != null && !record.source.startsWith(LibraryStep.class.getName() + " ")) {
                 var rootF = node.createPath(root);
                 if (rootF == null) {
                     throw new IOException(node.getDisplayName() + " may be offline");
                 }
-                dir = rootF.child(target.getName());
+                dir = rootF.child(record.getDirectoryName());
             } else if (run.getParent() instanceof TopLevelItem) {
                 FilePath baseWorkspace = node.getWorkspaceFor((TopLevelItem) run.getParent());
                 if (baseWorkspace == null) {
