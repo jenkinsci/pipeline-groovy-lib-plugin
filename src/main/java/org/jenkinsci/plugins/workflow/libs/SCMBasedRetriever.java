@@ -215,7 +215,7 @@ public abstract class SCMBasedRetriever extends LibraryRetriever {
                 if (rootF == null) {
                     throw new IOException(node.getDisplayName() + " may be offline");
                 }
-                dir = rootF.child(record.getDirectoryName());
+                dir = rootF.child(record.getDirectoryName()).child(LibraryRecord.directoryNameFor(scm.getKey()));
             } else if (run.getParent() instanceof TopLevelItem) {
                 FilePath baseWorkspace = node.getWorkspaceFor((TopLevelItem) run.getParent());
                 if (baseWorkspace == null) {
