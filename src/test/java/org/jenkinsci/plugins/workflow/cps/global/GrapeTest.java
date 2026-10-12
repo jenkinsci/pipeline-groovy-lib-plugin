@@ -31,6 +31,7 @@ import hudson.model.TaskListener;
 import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import org.jenkinsci.plugins.workflow.libs.LibraryRecord;
 
 import jenkins.model.Jenkins;
 import org.apache.commons.io.FileUtils;
@@ -196,13 +197,8 @@ class GrapeTest {
         }
 
         @Override
-        public void retrieve(String name, String version, boolean changelog, FilePath target, Run<?, ?> run, TaskListener listener) throws Exception {
+        protected void retrieve3(LibraryRecord record, boolean changelog, FilePath target, Run<?, ?> run, TaskListener listener) throws Exception {
             new FilePath(lib).copyRecursiveTo(target);
-        }
-
-        @Override
-        public void retrieve(String name, String version, FilePath target, Run<?, ?> run, TaskListener listener) throws Exception {
-            retrieve(name, version, false, target, run, listener);
         }
     }
 

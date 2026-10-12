@@ -261,7 +261,7 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
                             versionCacheDir.mkdirs();
                             // try to retrieve the library and delete the versionCacheDir if it fails
                             try {
-                                retriever.retrieve(name, version, changelog, versionCacheDir, run, listener);
+                                retriever.retrieve3(record, changelog, versionCacheDir, run, listener);
                                 if (getUrlsForLibDir(versionCacheDir).isEmpty()) {
                                     // Get job name and build number from run
                                     String jobName = run.getParent().getFullName();
@@ -295,7 +295,7 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
               retrieveLock.readLock().unlock();
             }
         } else {
-            retriever.retrieve(name, version, changelog, libDir, run, listener);
+            retriever.retrieve3(record, changelog, libDir, run, listener);
         }
         SCMBasedRetriever.rejectSpecialFiles(libDir);
         // Write the user-provided name to a file as a debugging aid.
