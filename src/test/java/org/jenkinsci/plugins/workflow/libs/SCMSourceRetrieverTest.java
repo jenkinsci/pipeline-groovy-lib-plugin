@@ -59,6 +59,8 @@ import org.jenkinsci.plugins.workflow.job.WorkflowJob;
 import org.jenkinsci.plugins.workflow.job.WorkflowRun;
 
 import static hudson.ExtensionList.lookupSingleton;
+import hudson.model.ParametersDefinitionProperty;
+import hudson.model.StringParameterDefinition;
 import hudson.plugins.git.extensions.impl.CloneOption;
 import jenkins.plugins.git.traits.CloneOptionTrait;
 import jenkins.plugins.git.traits.RefSpecsSCMSourceTrait;
@@ -779,8 +781,9 @@ class SCMSourceRetrieverTest {
 
         // library() step with explicit retriever has a per-build source → ROOT_PROP must be ignored
         var p4 = r.jenkins.createProject(WorkflowJob.class, "p4");
+        p4.addProperty(new ParametersDefinitionProperty(new StringParameterDefinition("SAMPLE_REPO", sampleRepo.toString())));
         p4.setDefinition(new CpsFlowDefinition(
-            "library(identifier: 'echoing@master', retriever: modernSCM(gitSource('" + sampleRepo + "')))\nmyecho()", true));
+            "library(identifier: 'echoing@master', retriever: modernSCM(gitSource(SAMPLE_REPO)))\nmyecho()", true));
         r.buildAndAssertSuccess(p4);
         r.assertLogContains("something special", p4.getLastBuild());
 
