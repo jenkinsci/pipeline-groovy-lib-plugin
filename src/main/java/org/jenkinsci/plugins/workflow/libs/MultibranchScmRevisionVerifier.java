@@ -36,29 +36,23 @@ public class MultibranchScmRevisionVerifier implements LibraryStepRetrieverVerif
         // Adapted from ReadTrustedStep
         Job<?, ?> job = run.getParent();
         BranchJobProperty property = job.getProperty(BranchJobProperty.class);
-        if (property == null || !(job.getParent() instanceof SCMSourceOwner)) {
+        if (property == null || !(job.getParent() instanceof SCMSourceOwner owner)) {
             // Not a multibranch project, so we do not care.
             // It is possible to use legacySCM(scm) from a non-multibranch Pipeline that uses CpsScmFlowDefinition,
             // but in that case we implicitly trust the changes because only a user with Item/Configure permission can select which branches to build.
             return;
         }
         Branch pipelineBranch = property.getBranch();
-        SCMSource pipelineScmSource = ((SCMSourceOwner)job.getParent()).getSCMSource(pipelineBranch.getSourceId());
+        SCMSource pipelineScmSource = owner.getSCMSource(pipelineBranch.getSourceId());
         if (pipelineScmSource == null) {
             throw new IllegalStateException(pipelineBranch.getSourceId() + " not found");
         }
         SCMHead head = pipelineBranch.getHead();
-        SCMRevision headRevision;
         SCMRevisionAction action = run.getAction(SCMRevisionAction.class);
-        if (action != null) {
-            headRevision = action.getRevision();
-        } else {
-            headRevision = pipelineScmSource.fetch(head, listener);
-            if (headRevision == null) {
-                throw new AbortException("Could not determine exact tip revision of " + pipelineBranch.getName());
-            }
-            run.addAction(new SCMRevisionAction(pipelineScmSource, headRevision));
+        if (action == null) {
+            throw new AbortException("Could not determine exact tip revision of " + pipelineBranch.getName());
         }
+        SCMRevision headRevision = action.getRevision();
         SCMRevision trustedRevision = pipelineScmSource.getTrustedRevision(headRevision, listener);
         if (!headRevision.equals(trustedRevision) && libraryScm.getKey().equals(pipelineScmSource.build(head, headRevision).getKey())) {
             throw new AbortException("Library '" + name + "' has been modified in an untrusted revision");
