@@ -52,6 +52,10 @@ import java.io.File;
 import java.io.IOException;
 import java.lang.reflect.Field;
 import java.util.Arrays;
+import java.io.InputStream;
+import java.nio.charset.Charset;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
@@ -62,6 +66,7 @@ import jenkins.branch.BranchSource;
 import jenkins.branch.DefaultBranchPropertyStrategy;
 import jenkins.plugins.git.GitSCMSource;
 import jenkins.plugins.git.GitSampleRepoRule;
+import jenkins.plugins.git.junit.jupiter.WithGitSampleRepo;
 import jenkins.scm.api.SCMHead;
 import jenkins.scm.api.SCMHeadEvent;
 import jenkins.scm.api.SCMHeadObserver;
@@ -78,22 +83,28 @@ import org.jenkinsci.plugins.workflow.job.WorkflowRun;
 import org.jenkinsci.plugins.workflow.multibranch.*;
 
 import static hudson.ExtensionList.lookupSingleton;
+import hudson.model.ParametersDefinitionProperty;
+import hudson.model.StringParameterDefinition;
 import hudson.plugins.git.extensions.impl.CloneOption;
 import jenkins.plugins.git.traits.CloneOptionTrait;
 import jenkins.plugins.git.traits.RefSpecsSCMSourceTrait;
-import jenkins.scm.api.trait.SCMSourceTrait;
+
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.instanceOf;
 import static org.hamcrest.Matchers.not;
-import static org.junit.Assert.*;
-import org.junit.ClassRule;
-import org.junit.Rule;
-import org.junit.Test;
-import org.jvnet.hudson.test.BuildWatcher;
+import static org.junit.jupiter.api.Assertions.*;
+
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+import org.junit.jupiter.api.extension.RegisterExtension;
+import org.junit.jupiter.api.io.TempDir;
 import org.jvnet.hudson.test.Issue;
 import org.jvnet.hudson.test.JenkinsRule;
+import org.jvnet.hudson.test.LogRecorder;
 import org.jvnet.hudson.test.SingleFileSCM;
 import org.jvnet.hudson.test.TestExtension;
 import org.jvnet.hudson.test.WithoutJenkins;
@@ -104,19 +115,44 @@ import static org.hamcrest.Matchers.arrayWithSize;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.matchesPattern;
 import static org.jenkinsci.plugins.workflow.libs.SCMBasedRetriever.PROHIBITED_DOUBLE_DOT;
-import static org.junit.Assume.assumeFalse;
-import org.jvnet.hudson.test.FlagRule;
-import org.jvnet.hudson.test.LoggerRule;
-import static org.junit.Assume.assumeFalse;
+import static org.junit.jupiter.api.Assumptions.assumeFalse;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
+import org.junit.jupiter.api.AutoClose;
 
-public class SCMSourceRetrieverTest {
+import org.jvnet.hudson.test.junit.jupiter.BuildWatcherExtension;
+import org.jvnet.hudson.test.junit.jupiter.FlagExtension;
+import org.jvnet.hudson.test.junit.jupiter.WithJenkins;
 
-    @ClassRule public static BuildWatcher buildWatcher = new BuildWatcher();
-    @Rule public JenkinsRule r = new JenkinsRule();
-    @Rule public GitSampleRepoRule sampleRepo = new GitSampleRepoRule();
-    @Rule public GitSampleRepoRule sampleRepo2 = new GitSampleRepoRule();
-    @Rule public FlagRule<Boolean> includeSrcTest = new FlagRule<>(() -> SCMBasedRetriever.INCLUDE_SRC_TEST_IN_LIBRARIES, v -> SCMBasedRetriever.INCLUDE_SRC_TEST_IN_LIBRARIES = v);
-    @Rule public LoggerRule logging = new LoggerRule().record(SCMBasedRetriever.class, Level.FINE);
+@WithJenkins
+@WithGitSampleRepo
+class SCMSourceRetrieverTest {
+
+    @SuppressWarnings("unused")
+    @RegisterExtension
+    private static final BuildWatcherExtension BUILD_WATCHER = new BuildWatcherExtension();
+    private JenkinsRule r;
+    private GitSampleRepoRule sampleRepo;
+    private final GitSampleRepoRule sampleRepo2 = new GitSampleRepoRule();
+    @TempDir
+    public Path tempFolder;
+    @RegisterExtension
+    private final FlagExtension<Boolean> includeSrcTest = new FlagExtension<>(() -> SCMBasedRetriever.INCLUDE_SRC_TEST_IN_LIBRARIES, x -> SCMBasedRetriever.INCLUDE_SRC_TEST_IN_LIBRARIES = x);
+    @RegisterExtension
+    private final FlagExtension<String> rootProp = FlagExtension.systemProperty(SCMBasedRetriever.ROOT_PROP);
+    @AutoClose
+    private final LogRecorder logging = new LogRecorder().record(SCMBasedRetriever.class, Level.FINE);
+
+    @BeforeEach
+    void beforeEach(JenkinsRule rule, GitSampleRepoRule repo) throws Throwable {
+        r = rule;
+        sampleRepo = repo;
+        sampleRepo2.before();
+    }
+
+    @AfterEach
+    void afterEach() {
+        sampleRepo2.after();
+    }
 
     // Repetitive helpers for test cases dealing with @Issue("JENKINS-69731") and others
     private void sampleRepoNotifyCommit(GitSampleRepoRule sampleRepo) throws Exception {
@@ -287,8 +323,12 @@ public class SCMSourceRetrieverTest {
     }
 
     @Issue("JENKINS-40408")
-    @Test public void lease() throws Exception {
-        sampleRepo1ContentMaster();
+    @Test
+    void lease() throws Exception {
+        sampleRepo.init();
+        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something special'}");
+        sampleRepo.git("add", "vars");
+        sampleRepo.git("commit", "--message=init");
         GlobalLibraries.get().setLibraries(Collections.singletonList(
             new LibraryConfiguration("echoing",
                 new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true)))));
@@ -308,8 +348,12 @@ public class SCMSourceRetrieverTest {
     }
 
     @Issue("JENKINS-41497")
-    @Test public void includeChanges() throws Exception {
-        sampleRepo1ContentMaster();
+    @Test
+    void includeChanges() throws Exception {
+        sampleRepo.init();
+        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something special'}");
+        sampleRepo.git("add", "vars");
+        sampleRepo.git("commit", "--message=init");
         GlobalLibraries.get().setLibraries(Collections.singletonList(
             new LibraryConfiguration("include_changes",
                 new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true)))));
@@ -337,8 +381,12 @@ public class SCMSourceRetrieverTest {
     }
 
     @Issue("JENKINS-41497")
-    @Test public void dontIncludeChanges() throws Exception {
-        sampleRepo1ContentMaster();
+    @Test
+    void dontIncludeChanges() throws Exception {
+        sampleRepo.init();
+        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something special'}");
+        sampleRepo.git("add", "vars");
+        sampleRepo.git("commit", "--message=init");
         LibraryConfiguration lc = new LibraryConfiguration("dont_include_changes", new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true)));
         lc.setIncludeInChangesets(false);
         GlobalLibraries.get().setLibraries(Collections.singletonList(lc));
@@ -358,8 +406,12 @@ public class SCMSourceRetrieverTest {
     }
 
     @Issue("JENKINS-38609")
-    @Test public void libraryPath() throws Exception {
-        sampleRepo1ContentMaster("sub/path");
+    @Test
+    void libraryPath() throws Exception {
+        sampleRepo.init();
+        sampleRepo.write("sub/path/vars/myecho.groovy", "def call() {echo 'something special'}");
+        sampleRepo.git("add", "sub");
+        sampleRepo.git("commit", "--message=init");
         SCMSourceRetriever scm = new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true));
         LibraryConfiguration lc = new LibraryConfiguration("root_sub_path", scm);
         lc.setIncludeInChangesets(false);
@@ -372,8 +424,12 @@ public class SCMSourceRetrieverTest {
     }
 
     @Issue("JENKINS-38609")
-    @Test public void libraryPathSecurity() throws Exception {
-        sampleRepo1ContentMaster("sub/path");
+    @Test
+    void libraryPathSecurity() throws Exception {
+        sampleRepo.init();
+        sampleRepo.write("sub/path/vars/myecho.groovy", "def call() {echo 'something special'}");
+        sampleRepo.git("add", "sub");
+        sampleRepo.git("commit", "--message=init");
         SCMSourceRetriever scm = new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true));
         LibraryConfiguration lc = new LibraryConfiguration("root_sub_path", scm);
         lc.setIncludeInChangesets(false);
@@ -386,7 +442,8 @@ public class SCMSourceRetrieverTest {
     }
 
     @WithoutJenkins
-    @Test public void libraryPathMatcher() {
+    @Test
+    void libraryPathMatcher() {
         assertThat("..", matchesPattern(PROHIBITED_DOUBLE_DOT));
         assertThat("./..", matchesPattern(PROHIBITED_DOUBLE_DOT));
         assertThat("../foo", matchesPattern(PROHIBITED_DOUBLE_DOT));
@@ -394,10 +451,163 @@ public class SCMSourceRetrieverTest {
         assertThat(".\\..", matchesPattern(PROHIBITED_DOUBLE_DOT));
         assertThat("..\\foo", matchesPattern(PROHIBITED_DOUBLE_DOT));
         assertThat("foo\\..\\bar", matchesPattern(PROHIBITED_DOUBLE_DOT));
+        assertThat("x\u2028/../../../../../foo/", matchesPattern(PROHIBITED_DOUBLE_DOT));
+    }
+
+    @Issue("SECURITY-3796")
+    @Test
+    void libraryAbsolutePathsAreRejected() throws Exception {
+        sampleRepo.init();
+        sampleRepo.write("sub/path/vars/myecho.groovy", "def call() {echo 'something special'}");
+        sampleRepo.git("add", "sub");
+        sampleRepo.git("commit", "--message=init");
+        SCMSourceRetriever scm = new SCMSourceRetriever(new GitSCMSource(sampleRepo.toString()));
+        LibraryConfiguration lc = new LibraryConfiguration("root_sub_path", scm);
+        lc.setIncludeInChangesets(false);
+        scm.setLibraryPath("/user/jenkins/foo/");
+        GlobalLibraries.get().setLibraries(Collections.singletonList(lc));
+        WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "p");
+        p.setDefinition(new CpsFlowDefinition("@Library('root_sub_path@master') import myecho; myecho()", true));
+        WorkflowRun b = r.assertBuildStatus(Result.FAILURE, p.scheduleBuild2(0));
+        r.assertLogContains("Library path must be a relative path", b);
+    }
+
+    @Issue("SECURITY-3796")
+    @Test
+    void symlinksInLibraryPath() throws Exception {
+        symlinksInLibraryPath(false);
+    }
+
+    @Issue("SECURITY-3796")
+    @Test
+    void symlinksInLibraryPathWithClone() throws Exception {
+        symlinksInLibraryPath(true);
+    }
+
+    private void symlinksInLibraryPath(boolean clone) throws Exception {
+        assumeSymlinkSupport();
+        assumeGitSymlinkSupport();
+
+        // setup a folder that an attacker can link to
+        Path tempRoot = tempFolder;
+        Path victim = Files.createDirectory(tempRoot.resolve("victim"));
+        Path resources = Files.createDirectory(victim.resolve("resources"));
+        Path src = Files.createDirectory(victim.resolve("src"));
+
+        Files.writeString(resources.resolve("oops.txt"), "OOPS!");
+        Files.writeString(src.resolve("whatever.groovy"), "// blank file");
+
+        sampleRepo.init();
+        Path sub = sampleRepo.getRoot().toPath().resolve("sub");
+        Files.createDirectory(sub);
+        Files.createSymbolicLink(sub.resolve("path"), tempRoot);
+        sampleRepo.git("add", "sub");
+        sampleRepo.git("commit", "--message=symlink");
+        SCMSourceRetriever scm = new SCMSourceRetriever(new GitSCMSource(sampleRepo.toString()));
+        LibraryConfiguration lc = new LibraryConfiguration("symlink_sub_path", scm);
+        lc.setIncludeInChangesets(false);
+        scm.setLibraryPath("sub/path/victim/");
+        scm.setClone(clone);
+
+        GlobalLibraries.get().setLibraries(Collections.singletonList(lc));
+        WorkflowJob wf = r.jenkins.createProject(WorkflowJob.class, "p");
+        wf.setDefinition(new CpsFlowDefinition("""
+                @Library('symlink_sub_path@master')
+                def oops = libraryResource('oops.txt')
+                echo oops
+                """));
+        WorkflowRun b = r.assertBuildStatus(Result.FAILURE, wf.scheduleBuild2(0));
+        r.assertLogContains("Rejecting library: symlink found: sub" + File.separatorChar + "path", b);
+    }
+
+    @Issue("SECURITY-3796??")
+    @Test
+    void symlinksInVars() throws Exception {
+        symlinksInVars(false);
+    }
+
+    @Issue("SECURITY-3796??")
+    @Test
+    void symlinksInVarsWithClone() throws Exception {
+        symlinksInVars(true);
+    }
+
+    private void symlinksInVars(boolean clone) throws Exception {
+        assumeSymlinkSupport();
+        assumeGitSymlinkSupport();
+
+        // setup a folder that an attacker can link to
+        Path tempRoot = tempFolder;
+        Path victimDir = Files.createDirectory(tempRoot.resolve("victim"));
+        Path victim = Files.writeString(victimDir.resolve("oops.txt"), "OOPS!");
+
+        sampleRepo.init();
+        sampleRepo.write("src/whatever.groovy", "// blank file");
+
+        Path resources = Files.createDirectory(sampleRepo.getRoot().toPath().resolve("resources"));
+        Files.createSymbolicLink(resources.resolve("link"), victim);
+        sampleRepo.git("add", "src", "resources");
+        sampleRepo.git("commit", "--message=symlink-attack");
+
+        SCMSourceRetriever scm = new SCMSourceRetriever(new GitSCMSource(sampleRepo.toString()));
+        LibraryConfiguration lc = new LibraryConfiguration("symlink_sub_path", scm);
+        lc.setIncludeInChangesets(false);
+        scm.setLibraryPath("");
+        scm.setClone(clone);
+
+        GlobalLibraries.get().setLibraries(Collections.singletonList(lc));
+        WorkflowJob wf = r.jenkins.createProject(WorkflowJob.class, "p");
+        wf.setDefinition(new CpsFlowDefinition("""
+                @Library('symlink_sub_path@master')
+                def oops = libraryResource('oops.txt')
+                echo oops
+                """));
+        WorkflowRun b = r.assertBuildStatus(Result.FAILURE, wf.scheduleBuild2(0));
+        r.assertLogContains("Rejecting library: symlink found: resources" + File.separatorChar + "link", b);
+    }
+
+
+    /**
+     * Check that symlinks can be created, if not abort with an AssumptionError
+     */
+    private void assumeSymlinkSupport() {
+        try {
+            Path p = Files.createDirectory(tempFolder.resolve("symlink-test"));
+            Files.createSymbolicLink(p.resolve("link"), p.resolve("target"));
+        } catch (IOException e) {
+            assumeTrue(false, "Symlinks are not supported: " + e);
+        }
+    }
+
+    /**
+     * Check that Git supports symlinks (Unix like platforms do, Windows platforms need to be opted in).
+     */
+    private void assumeGitSymlinkSupport() {
+        if (!Functions.isWindows()) {
+            // assume symlinks are always supported on non windows platforms
+            return;
+        }
+        try {
+            // TODO add a method in GitSampleRepoRule to run a git command and return the output
+            ProcessBuilder pb = new ProcessBuilder();
+            pb.command("git", "config", "get", "--type=bool", "core.symlinks");
+            pb.redirectErrorStream(true);
+            Process p = pb.start();
+            try (InputStream is = p.getInputStream()) {
+                byte[] data = is.readAllBytes();
+                String output = new String(data, Charset.defaultCharset()).trim();
+                // we have normalized git's output with the `--type` above to force a known response
+                // does not handle localization however this will fail to assuming false so will not cause breakage
+                assumeTrue("true".equals(output), "Git symlinks support (core.symlinks) is not configured");
+            }
+        } catch (Exception e) {
+            assumeTrue(false, "Could not determine if Git is not currently configured to support symlinks: " + e);
+        }
     }
 
     @Issue("JENKINS-69731")
-    @Test public void checkDefaultVersion_inline_staticStrings() throws Exception {
+    @Test
+    void checkDefaultVersion_inline_staticStrings() throws Exception {
         sampleRepo1ContentMasterFeature();
         SCMSourceRetriever scm = new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true));
         LibraryConfiguration lc = new LibraryConfiguration("branchylib", scm);
@@ -438,16 +648,17 @@ public class SCMSourceRetrieverTest {
     }
 
     @Issue("JENKINS-69731")
-    @Test public void checkDefaultVersion_inline_BRANCH_NAME() throws Exception {
+    @Test
+    void checkDefaultVersion_inline_BRANCH_NAME() throws Exception {
         // Test that @Library('branchylib@${BRANCH_NAME}')
         // falls back to default for "Pipeline script" which
         // is not "from SCM", even when we try to confuse it
         // by having some checkouts (and so list of SCMs).
 
         // Do not let caller-provided BRANCH_NAME interfere here
-        assumeFalse("SKIP by pre-test assumption: " +
-                        "An externally provided BRANCH_NAME envvar interferes with tested logic",
-                System.getenv("BRANCH_NAME") != null);
+        assumeFalse(System.getenv("BRANCH_NAME") != null,
+                "SKIP by pre-test assumption: " +
+                        "An externally provided BRANCH_NAME envvar interferes with tested logic");
 
         sampleRepo1ContentMasterFeature();
         SCMSourceRetriever scm = new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true));
@@ -493,7 +704,8 @@ public class SCMSourceRetrieverTest {
     }
 
     @Issue("JENKINS-69731")
-    @Test public void checkDefaultVersion_MBP_BRANCH_NAME() throws Exception {
+    @Test
+    void checkDefaultVersion_MBP_BRANCH_NAME() throws Exception {
         // Create a MultiBranch Pipeline job instantiated from Git
         // and check behaviors with BRANCH_NAME="master",
         // BRANCH_NAME="feature", and BRANCH_NAME="bogus"
@@ -555,7 +767,8 @@ public class SCMSourceRetrieverTest {
     }
 
     @Issue("JENKINS-69731")
-    @Test public void checkDefaultVersion_MBP_staticStrings() throws Exception {
+    @Test
+    void checkDefaultVersion_MBP_staticStrings() throws Exception {
         // Test that lc.setAllowVersionBRANCH_NAME(false) does not
         // preclude fixed branch names (they should work),
         // like @Library('branchylib@master')
@@ -612,7 +825,8 @@ public class SCMSourceRetrieverTest {
     }
 
     @Issue("JENKINS-69731")
-    @Test public void checkDefaultVersion_MBP_BRANCH_NAME_notAllowed() throws Exception {
+    @Test
+    void checkDefaultVersion_MBP_BRANCH_NAME_notAllowed() throws Exception {
         // Test that lc.setAllowVersionBRANCH_NAME(false) causes
         // @Library('libname@${BRANCH_NAME}') to always fail
         // (not treated as a "version override" for funny
@@ -668,7 +882,8 @@ public class SCMSourceRetrieverTest {
     }
 
     @Issue("JENKINS-69731")
-    @Test public void checkDefaultVersion_MBPsingleBranch_staticStrings() throws Exception {
+    @Test
+    void checkDefaultVersion_MBPsingleBranch_staticStrings() throws Exception {
         // Test that lc.setAllowVersionBRANCH_NAME(false) does not
         // preclude fixed branch names (they should work),
         // like @Library('branchylib@feature') when used
@@ -718,8 +933,9 @@ public class SCMSourceRetrieverTest {
         System.out.println("MBP source 0: " + mbp.getSourcesList().get(0).getSource().toString());
         System.out.println("MBP source 1: " + mbp.getSourcesList().get(1).getSource().toString());
         System.out.println("Jobs generated by MBP: " + mbp.getItems().toString());
-        assumeFalse("SKIP by pre-test assumption: " +
-                "MBP should have generated 'feature' and 'featurette' pipeline job", mbp.getItems().size() != 2);
+        assumeFalse(mbp.getItems().size() != 2,
+                "SKIP by pre-test assumption: " +
+                "MBP should have generated 'feature' and 'featurette' pipeline job");
 
         // In case of MBP with "Single repository and branch"
         // it only defines one job (per single-branch source),
@@ -759,7 +975,8 @@ public class SCMSourceRetrieverTest {
     }
 
     @Issue("JENKINS-69731")
-    @Test public void checkDefaultVersion_MBPsingleBranch_BRANCH_NAME() throws Exception {
+    @Test
+    void checkDefaultVersion_MBPsingleBranch_BRANCH_NAME() throws Exception {
         // Test that @Library('branchylib@${BRANCH_NAME}') works
         // also for MBP with "Single repository and branch" as
         // the SCM source.
@@ -807,8 +1024,9 @@ public class SCMSourceRetrieverTest {
         System.out.println("MBP source 0: " + mbp.getSourcesList().get(0).getSource().toString());
         System.out.println("MBP source 1: " + mbp.getSourcesList().get(1).getSource().toString());
         System.out.println("Jobs generated by MBP: " + mbp.getItems().toString());
-        assumeFalse("SKIP by pre-test assumption: " +
-                "MBP should have generated 'feature' and 'featurette' pipeline job", mbp.getItems().size() != 2);
+        assumeFalse(mbp.getItems().size() != 2,
+                "SKIP by pre-test assumption: " +
+                "MBP should have generated 'feature' and 'featurette' pipeline job");
 
         // In case of MBP with "Single repository and branch"
         // it only defines one job (per single-branch source),
@@ -858,7 +1076,8 @@ public class SCMSourceRetrieverTest {
     }
 
     @Issue("JENKINS-69731")
-    @Test public void checkDefaultVersion_singleBranch_staticStrings() throws Exception {
+    @Test
+    void checkDefaultVersion_singleBranch_staticStrings() throws Exception {
         // Test that lc.setAllowVersionBRANCH_NAME(false) does not
         // preclude fixed branch names (they should work),
         // like @Library('branchylib@master') when used for
@@ -894,15 +1113,16 @@ public class SCMSourceRetrieverTest {
     }
 
     @Issue("JENKINS-69731")
-    @Test public void checkDefaultVersion_singleBranch_BRANCH_NAME() throws Exception {
+    @Test
+    void checkDefaultVersion_singleBranch_BRANCH_NAME() throws Exception {
         // Test that lc.setAllowVersionBRANCH_NAME(true) enables
         // @Library('branchylib@${BRANCH_NAME}') also for
         // a simple "Pipeline" job with static SCM source,
         // and that even lc.setAllowVersionOverride(false)
         // does not intervene here.
-        assumeFalse("SKIP by pre-test assumption: " +
-                        "An externally provided BRANCH_NAME envvar interferes with tested logic",
-            System.getenv("BRANCH_NAME") != null);
+        assumeFalse(System.getenv("BRANCH_NAME") != null,
+                "SKIP by pre-test assumption: " +
+                        "An externally provided BRANCH_NAME envvar interferes with tested logic");
 
         sampleRepo1ContentMasterFeature();
         SCMSourceRetriever scm = new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true));
@@ -935,13 +1155,14 @@ public class SCMSourceRetrieverTest {
     }
 
     @Issue("JENKINS-69731")
-    @Test public void checkDefaultVersion_singleBranch_BRANCH_NAME_dynamicVersionsPatternBlocks() throws Exception {
+    @Test
+    void checkDefaultVersion_singleBranch_BRANCH_NAME_dynamicVersionsPatternBlocks() throws Exception {
         // Test that dynamicVersionsPattern can reject a dynamically
         // resolved ${BRANCH_NAME} value ("feature" here), falling
         // back to the configured default version instead.
-        assumeFalse("SKIP by pre-test assumption: " +
-                        "An externally provided BRANCH_NAME envvar interferes with tested logic",
-            System.getenv("BRANCH_NAME") != null);
+        assumeFalse(System.getenv("BRANCH_NAME") != null,
+                "SKIP by pre-test assumption: " +
+                        "An externally provided BRANCH_NAME envvar interferes with tested logic");
 
         sampleRepo1ContentMasterFeature();
         SCMSourceRetriever scm = new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true));
@@ -975,13 +1196,14 @@ public class SCMSourceRetrieverTest {
     }
 
     @Issue("JENKINS-69731")
-    @Test public void checkDefaultVersion_singleBranch_BRANCH_NAME_dynamicVersionsPatternAllows() throws Exception {
+    @Test
+    void checkDefaultVersion_singleBranch_BRANCH_NAME_dynamicVersionsPatternAllows() throws Exception {
         // Test that dynamicVersionsPattern does not interfere with a
         // dynamically resolved ${BRANCH_NAME} value ("feature" here)
         // when explicitly configured to permit it.
-        assumeFalse("SKIP by pre-test assumption: " +
-                        "An externally provided BRANCH_NAME envvar interferes with tested logic",
-            System.getenv("BRANCH_NAME") != null);
+        assumeFalse(System.getenv("BRANCH_NAME") != null,
+                "SKIP by pre-test assumption: " +
+                        "An externally provided BRANCH_NAME envvar interferes with tested logic");
 
         sampleRepo1ContentMasterFeature();
         SCMSourceRetriever scm = new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true));
@@ -1014,7 +1236,8 @@ public class SCMSourceRetrieverTest {
     }
 
     @Issue("JENKINS-69731")
-    @Test public void checkDefaultVersion_singleBranch_BRANCH_NAME_after_staticStrings() throws Exception {
+    @Test
+    void checkDefaultVersion_singleBranch_BRANCH_NAME_after_staticStrings() throws Exception {
         // Test that using @Library('branchylib@static')
         // in one build of a job definition, and then a
         // @Library('branchylib@${BRANCH_NAME}') next,
@@ -1030,9 +1253,9 @@ public class SCMSourceRetrieverTest {
         // "unexpected" log message (so far expected due
         // to the bug being hunted), but counts the faults
         // and asserts in the end whether there were none.
-        assumeFalse("SKIP by pre-test assumption: " +
-                        "An externally provided BRANCH_NAME envvar interferes with tested logic",
-                System.getenv("BRANCH_NAME") != null);
+        assumeFalse(System.getenv("BRANCH_NAME") != null,
+                "SKIP by pre-test assumption: " +
+                        "An externally provided BRANCH_NAME envvar interferes with tested logic");
 
         sampleRepo1ContentMasterFeatureStable();
         SCMSourceRetriever scm = new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true));
@@ -1131,11 +1354,12 @@ public class SCMSourceRetrieverTest {
             r.assertLogContains("something reliable", b7);
         }
 
-        assertEquals("All BRANCH_NAME resolutions are expected to checkout feature",0, failCount);
+        assertEquals(0, failCount, "All BRANCH_NAME resolutions are expected to checkout feature");
     }
 
     @Issue("JENKINS-69731")
-    @Test public void checkDefaultVersion_singleBranch_BRANCH_NAME_doubleQuotes() throws Exception {
+    @Test
+    void checkDefaultVersion_singleBranch_BRANCH_NAME_doubleQuotes() throws Exception {
         // Similar to above, the goal of this test is to
         // verify that substitution of ${BRANCH_NAME} is
         // not impacted by content of Groovy variables.
@@ -1148,9 +1372,9 @@ public class SCMSourceRetrieverTest {
         // TODO: If this behavior does change, extend
         // the test to also try ${env.VARNAME} confusion.
 
-        assumeFalse("SKIP by pre-test assumption: " +
-                        "An externally provided BRANCH_NAME envvar interferes with tested logic",
-                System.getenv("BRANCH_NAME") != null);
+        assumeFalse(System.getenv("BRANCH_NAME") != null,
+                "SKIP by pre-test assumption: " +
+                        "An externally provided BRANCH_NAME envvar interferes with tested logic");
 
         sampleRepo1ContentMasterFeature();
         SCMSourceRetriever scm = new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true));
@@ -1195,8 +1419,9 @@ public class SCMSourceRetrieverTest {
             r.assertLogContains("step instead?", b1);
             // assertions survived, skip the test
             // not exactly "pre-test" but oh well
-            assumeFalse("SKIP by pre-test assumption: " +
-                    "LibraryDecorator forbids use of double-quotes for @Library annotation", true);
+            assumeFalse(true,
+                "SKIP by pre-test assumption: " +
+                    "LibraryDecorator forbids use of double-quotes for @Library annotation");
         } catch(AssertionError x) {
             // Chosen library version should not be "whatever"
             // causing fallback to "master", but "feature" per
@@ -1208,13 +1433,14 @@ public class SCMSourceRetrieverTest {
     }
 
     @Issue("JENKINS-69731")
-    @Test public void checkDefaultVersion_singleBranch_BRANCH_NAME_lightweight() throws Exception {
+    @Test
+    void checkDefaultVersion_singleBranch_BRANCH_NAME_lightweight() throws Exception {
         // Test that lightweight checkouts from SCM allow
         // @Library('branchylib@${BRANCH_NAME}') to see
         // sufficient SCM context to determine the branch.
-        assumeFalse("SKIP by pre-test assumption: " +
-                        "An externally provided BRANCH_NAME envvar interferes with tested logic",
-                System.getenv("BRANCH_NAME") != null);
+        assumeFalse(System.getenv("BRANCH_NAME") != null,
+                "SKIP by pre-test assumption: " +
+                        "An externally provided BRANCH_NAME envvar interferes with tested logic");
 
         sampleRepo1ContentMasterFeature();
         SCMSourceRetriever scm = new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true));
@@ -1249,14 +1475,15 @@ public class SCMSourceRetrieverTest {
     }
 
     @Issue("JENKINS-69731")
-    @Test public void checkDefaultVersion_inline_allowVersionEnvvar() throws Exception {
+    @Test
+    void checkDefaultVersion_inline_allowVersionEnvvar() throws Exception {
         // Test that @Library('branchylib@${env.TEST_VAR_NAME}')
         // is resolved with the TEST_VAR_NAME="feature" in environment.
 
         // Do not let caller-provided BRANCH_NAME interfere here
-        assumeFalse("SKIP by pre-test assumption: " +
-                        "An externally provided TEST_VAR_NAME envvar interferes with tested logic",
-                System.getenv("TEST_VAR_NAME") != null);
+        assumeFalse(System.getenv("TEST_VAR_NAME") != null,
+                "SKIP by pre-test assumption: " +
+                        "An externally provided TEST_VAR_NAME envvar interferes with tested logic");
 
         sampleRepo1ContentMasterFeatureStable();
         SCMSourceRetriever scm = new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true));
@@ -1478,7 +1705,8 @@ public class SCMSourceRetrieverTest {
     }
 
     @Issue("JENKINS-43802")
-    @Test public void owner() throws Exception {
+    @Test
+    void owner() throws Exception {
         GlobalLibraries.get().setLibraries(Collections.singletonList(
             new LibraryConfiguration("test", new SCMSourceRetriever(new NeedsOwnerSCMSource()))));
         WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "p");
@@ -1487,8 +1715,11 @@ public class SCMSourceRetrieverTest {
         r.assertLogContains("loaded lib #abc123", b);
         r.assertLogContains("Running in retrieve from p", b);
     }
+
     public static final class NeedsOwnerSCMSource extends SCMSource {
-        @Override protected SCMRevision retrieve(String version, TaskListener listener, Item context) throws IOException, InterruptedException {
+
+        @Override
+        protected SCMRevision retrieve(String version, TaskListener listener, Item context) throws IOException, InterruptedException {
             if (context == null) {
                 throw new AbortException("No context in retrieve!");
             } else {
@@ -1496,36 +1727,50 @@ public class SCMSourceRetrieverTest {
             }
             return new DummySCMRevision(version, new SCMHead("trunk"));
         }
-        @Override public SCM build(SCMHead head, SCMRevision revision) {
+
+        @Override
+        public SCM build(SCMHead head, SCMRevision revision) {
             String version = ((DummySCMRevision) revision).version;
             return new SingleFileSCM("vars/libVersion.groovy", ("def call() {'" + version + "'}").getBytes());
         }
+
         private static final class DummySCMRevision extends SCMRevision {
             private final String version;
+
             DummySCMRevision(String version, SCMHead head) {
                 super(head);
                 this.version = version;
             }
-            @Override public boolean equals(Object obj) {
+
+            @Override
+            public boolean equals(Object obj) {
                 return obj instanceof DummySCMRevision && version.equals(((DummySCMRevision) obj).version);
             }
-            @Override public int hashCode() {
+
+            @Override
+            public int hashCode() {
                 return version.hashCode();
             }
         }
-        @Override protected void retrieve(SCMSourceCriteria criteria, SCMHeadObserver observer, SCMHeadEvent<?> event, TaskListener listener) throws IOException, InterruptedException {
+
+        @Override
+        protected void retrieve(SCMSourceCriteria criteria, SCMHeadObserver observer, SCMHeadEvent<?> event, TaskListener listener) throws IOException, InterruptedException {
             throw new IOException("not implemented");
         }
-        @TestExtension("owner") public static final class DescriptorImpl extends SCMSourceDescriptor {}
+
+        @TestExtension("owner")
+        public static final class DescriptorImpl extends SCMSourceDescriptor {}
     }
 
-    @Test public void retry() throws Exception {
+    @Test
+    void retry() throws Exception {
         WorkflowRun b = prepareRetryTests(new FailingSCMSource());
         r.assertLogContains("Failing 'checkout' on purpose!", b);
         r.assertLogContains("Retrying after 10 seconds", b);
     }
 
-    @Test public void retryDuringFetch() throws Exception {
+    @Test
+    void retryDuringFetch() throws Exception {
         WorkflowRun b = prepareRetryTests(new FailingSCMSourceDuringFetch());
         r.assertLogContains("Failing 'fetch' on purpose!", b);
         r.assertLogContains("Retrying after 10 seconds", b);
@@ -1546,45 +1791,70 @@ public class SCMSourceRetrieverTest {
     }
 
     @Test
-    public void modernAndLegacyImpls() {
+    void modernAndLegacyImpls() {
         SCMSourceRetriever.DescriptorImpl modern = lookupSingleton(SCMSourceRetriever.DescriptorImpl.class);
 
         containsInAnyOrder(modern.getSCMDescriptors(), contains(instanceOf(FakeModernSCM.DescriptorImpl.class)));
         containsInAnyOrder(modern.getSCMDescriptors(), contains(instanceOf(FakeAlsoModernSCM.DescriptorImpl.class)));
         containsInAnyOrder(modern.getSCMDescriptors(), not(contains(instanceOf(BasicSCMSource.DescriptorImpl.class))));
     }
+
     // Implementation of latest and greatest API
     public static final class FakeModernSCM extends SCMSource {
-        @Override protected void retrieve(SCMSourceCriteria c, @NonNull SCMHeadObserver o, SCMHeadEvent<?> e, @NonNull TaskListener l) {}
-        @Override public @NonNull SCM build(@NonNull SCMHead head, SCMRevision revision) { return null; }
-        @TestExtension("modernAndLegacyImpls") public static final class DescriptorImpl extends SCMSourceDescriptor {}
+
+        @Override
+        protected void retrieve(SCMSourceCriteria c, @NonNull SCMHeadObserver o, SCMHeadEvent<?> e, @NonNull TaskListener l) {}
+
+        @Override
+        public @NonNull SCM build(@NonNull SCMHead head, SCMRevision revision) { return null; }
+
+        @TestExtension("modernAndLegacyImpls")
+        public static final class DescriptorImpl extends SCMSourceDescriptor {}
 
         @Override
         protected SCMRevision retrieve(@NonNull String thingName, @NonNull TaskListener listener, Item context) throws IOException, InterruptedException {
             return super.retrieve(thingName, listener, context);
         }
     }
+
     // Implementation of second latest and second greatest API
     public static final class FakeAlsoModernSCM extends SCMSource {
-        @Override protected void retrieve(SCMSourceCriteria c, @NonNull SCMHeadObserver o, SCMHeadEvent<?> e, @NonNull TaskListener l) {}
-        @Override public @NonNull SCM build(@NonNull SCMHead head, SCMRevision revision) { return null; }
-        @TestExtension("modernAndLegacyImpls") public static final class DescriptorImpl extends SCMSourceDescriptor {}
+
+        @Override
+        protected void retrieve(SCMSourceCriteria c, @NonNull SCMHeadObserver o, SCMHeadEvent<?> e, @NonNull TaskListener l) {}
+
+        @Override
+        public @NonNull SCM build(@NonNull SCMHead head, SCMRevision revision) { return null; }
+
+        @TestExtension("modernAndLegacyImpls")
+        public static final class DescriptorImpl extends SCMSourceDescriptor {}
 
         @Override
         protected SCMRevision retrieve(@NonNull String thingName, @NonNull TaskListener listener) throws IOException, InterruptedException {
             return super.retrieve(thingName, listener);
         }
     }
+
     // No modern stuff
     public static class BasicSCMSource extends SCMSource {
-        @Override protected void retrieve(SCMSourceCriteria c, @NonNull SCMHeadObserver o, SCMHeadEvent<?> e, @NonNull TaskListener l) {}
-        @Override public @NonNull SCM build(@NonNull SCMHead head, SCMRevision revision) { return null; }
-        @TestExtension("modernAndLegacyImpls") public static final class DescriptorImpl extends SCMSourceDescriptor {}
+
+        @Override
+        protected void retrieve(SCMSourceCriteria c, @NonNull SCMHeadObserver o, SCMHeadEvent<?> e, @NonNull TaskListener l) {}
+
+        @Override
+        public @NonNull SCM build(@NonNull SCMHead head, SCMRevision revision) { return null; }
+
+        @TestExtension("modernAndLegacyImpls")
+        public static final class DescriptorImpl extends SCMSourceDescriptor {}
     }
 
     @Issue("JENKINS-66629")
-    @Test public void renameDeletesOldLibsWorkspace() throws Exception {
-        sampleRepo1ContentMaster();
+    @Test
+    void renameDeletesOldLibsWorkspace() throws Exception {
+        sampleRepo.init();
+        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something special'}");
+        sampleRepo.git("add", "vars");
+        sampleRepo.git("commit", "--message=init");
         GlobalLibraries.get().setLibraries(Collections.singletonList(
                 new LibraryConfiguration("delete_removes_libs_workspace",
                         new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true)))));
@@ -1604,8 +1874,12 @@ public class SCMSourceRetrieverTest {
     }
 
     @Issue("JENKINS-66629")
-    @Test public void deleteRemovesLibsWorkspace() throws Exception {
-        sampleRepo1ContentMaster();
+    @Test
+    void deleteRemovesLibsWorkspace() throws Exception {
+        sampleRepo.init();
+        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something special'}");
+        sampleRepo.git("add", "vars");
+        sampleRepo.git("commit", "--message=init");
         GlobalLibraries.get().setLibraries(Collections.singletonList(
                 new LibraryConfiguration("delete_removes_libs_workspace",
                         new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true)))));
@@ -1619,7 +1893,8 @@ public class SCMSourceRetrieverTest {
         assertFalse(ws.exists());
     }
 
-    @Test public void cloneMode() throws Exception {
+    @Test
+    void cloneMode() throws Exception {
         sampleRepo.init();
         sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something special'}");
         sampleRepo.write("README.md", "Summary");
@@ -1629,7 +1904,7 @@ public class SCMSourceRetrieverTest {
         GitSCMSource src = new GitSCMSource(sampleRepo.toString());
         CloneOption cloneOption = new CloneOption(true, true, null, null);
         cloneOption.setHonorRefspec(true);
-        src.setTraits(List.<SCMSourceTrait>of(new CloneOptionTrait(cloneOption), new RefSpecsSCMSourceTrait("+refs/heads/master:refs/remotes/origin/master")));
+        src.setTraits(List.of(new CloneOptionTrait(cloneOption), new RefSpecsSCMSourceTrait("+refs/heads/master:refs/remotes/origin/master")));
         SCMSourceRetriever scm = new SCMSourceRetriever(src);
         LibraryConfiguration lc = new LibraryConfiguration("echoing", scm);
         lc.setIncludeInChangesets(false);
@@ -1649,8 +1924,12 @@ public class SCMSourceRetrieverTest {
         assertThat(entries, arrayContainingInAnyOrder("vars"));
     }
 
-    @Test public void cloneModeLibraryPath() throws Exception {
-        sampleRepo1ContentMaster("sub/path", "sub");
+    @Test
+    void cloneModeLibraryPath() throws Exception {
+        sampleRepo.init();
+        sampleRepo.write("sub/path/vars/myecho.groovy", "def call() {echo 'something special'}");
+        sampleRepo.git("add", "sub");
+        sampleRepo.git("commit", "--message=init");
         SCMSourceRetriever scm = new SCMSourceRetriever(new GitSCMSource(sampleRepo.toString()));
         LibraryConfiguration lc = new LibraryConfiguration("root_sub_path", scm);
         lc.setIncludeInChangesets(false);
@@ -1667,8 +1946,12 @@ public class SCMSourceRetrieverTest {
         assertThat(entries, arrayContainingInAnyOrder("vars"));
     }
 
-    @Test public void cloneModeLibraryPathSecurity() throws Exception {
-        sampleRepo1ContentMaster("sub/path", "sub");
+    @Test
+    void cloneModeLibraryPathSecurity() throws Exception {
+        sampleRepo.init();
+        sampleRepo.write("sub/path/vars/myecho.groovy", "def call() {echo 'something special'}");
+        sampleRepo.git("add", "sub");
+        sampleRepo.git("commit", "--message=init");
         SCMSourceRetriever scm = new SCMSourceRetriever(new GitSCMSource(sampleRepo.toString()));
         LibraryConfiguration lc = new LibraryConfiguration("root_sub_path", scm);
         lc.setIncludeInChangesets(false);
@@ -1681,7 +1964,46 @@ public class SCMSourceRetrieverTest {
         r.assertLogContains("Library path may not contain '..'", b);
     }
 
-    @Test public void cloneModeExcludeSrcTest() throws Exception {
+    @Issue("SECURITY-3796")
+    @Test
+    void cloneModeLibraryAbsolutePathsAreRejected() throws Exception {
+        sampleRepo.init();
+        sampleRepo.write("sub/path/vars/myecho.groovy", "def call() {echo 'something special'}");
+        sampleRepo.git("add", "sub");
+        sampleRepo.git("commit", "--message=init");
+        SCMSourceRetriever scm = new SCMSourceRetriever(new GitSCMSource(sampleRepo.toString()));
+        LibraryConfiguration lc = new LibraryConfiguration("root_sub_path", scm);
+        lc.setIncludeInChangesets(false);
+        scm.setLibraryPath("/user/jenkins/foo/");
+        scm.setClone(true);
+        GlobalLibraries.get().setLibraries(Collections.singletonList(lc));
+        WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "p");
+        p.setDefinition(new CpsFlowDefinition("@Library('root_sub_path@master') import myecho; myecho()", true));
+        WorkflowRun b = r.assertBuildStatus(Result.FAILURE, p.scheduleBuild2(0));
+        r.assertLogContains("Library path must be a relative path", b);
+    }
+
+    @Issue("SECURITY-3796")
+    @WithoutJenkins
+    @Test
+    void relativePath() {
+        assertTrue(SCMBasedRetriever.isRelativePath("foo/bar"));
+        assertFalse(SCMBasedRetriever.isRelativePath("/foo/bar"));
+        if (Functions.isWindows()) {
+            assertFalse(SCMBasedRetriever.isRelativePath("\\foo\\bar"));
+            assertFalse(SCMBasedRetriever.isRelativePath("x:\\wibble\\bar"));
+            assertFalse(SCMBasedRetriever.isRelativePath("x:/foo/manchu"));
+            assertFalse(SCMBasedRetriever.isRelativePath("\\\\server\\share\\somepath\\"));
+            assertFalse(SCMBasedRetriever.isRelativePath("//server/share/somepath/"));
+            // drive relative paths
+            assertFalse(SCMBasedRetriever.isRelativePath("x:wibble"));
+            // drive relative with no path
+            assertFalse(SCMBasedRetriever.isRelativePath("z:"));
+        }
+    }
+
+    @Test
+    void cloneModeExcludeSrcTest() throws Exception {
         sampleRepo.init();
         sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something special'}");
         sampleRepo.write("src/test/X.groovy", "// irrelevant");
@@ -1702,7 +2024,8 @@ public class SCMSourceRetrieverTest {
         r.assertLogContains("Excluding src/test/ from checkout", b);
     }
 
-    @Test public void cloneModeIncludeSrcTest() throws Exception {
+    @Test
+    void cloneModeIncludeSrcTest() throws Exception {
         sampleRepo.init();
         sampleRepo.write("vars/myecho.groovy", "def call() {echo(/got ${new test.X().m()}/)}");
         sampleRepo.write("src/test/X.groovy", "package test; class X {def m() {'something special'}}");
@@ -1723,10 +2046,53 @@ public class SCMSourceRetrieverTest {
         r.assertLogNotContains("Excluding src/test/ from checkout", b);
     }
 
+    @Test
+    void nonWorkspaceRoot() throws Exception {
+        var libs = tempFolder.resolve("libs");
+        System.setProperty(SCMBasedRetriever.ROOT_PROP, libs.toString());
+        sampleRepo.init();
+        sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something special'}");
+        sampleRepo.git("add", ".");
+        sampleRepo.git("commit", "--message=init");
+        var src = new GitSCMSource(sampleRepo.toString());
+        var lc = new LibraryConfiguration("echoing", new SCMSourceRetriever(src));
+        lc.setDefaultVersion("master");
+        GlobalUntrustedLibraries.get().setLibraries(List.of(lc));
+        var sharedDirName = new LibraryRecord("echoing", "master", false, true, null, GlobalUntrustedLibraries.ForJob.class.getName(), null).getDirectoryName();
+
+        // @Library annotation uses ROOT_PROP — two jobs share the same checkout dir
+        var p1 = r.jenkins.createProject(WorkflowJob.class, "p1");
+        p1.setDefinition(new CpsFlowDefinition("@Library('echoing@master') _; myecho()", true));
+        var p2 = r.jenkins.createProject(WorkflowJob.class, "p2");
+        p2.setDefinition(new CpsFlowDefinition("@Library('echoing@master') _; myecho()", true));
+        r.buildAndAssertSuccess(p1);
+        r.buildAndAssertSuccess(p2);
+
+        // library() step without retriever resolves the same config → same ROOT_PROP dir, no new entry
+        var p3 = r.jenkins.createProject(WorkflowJob.class, "p3");
+        p3.setDefinition(new CpsFlowDefinition("library('echoing@master'); myecho()", true));
+        r.buildAndAssertSuccess(p3);
+        r.assertLogContains("something special", p3.getLastBuild());
+
+        // library() step with explicit retriever has a per-build source → ROOT_PROP must be ignored
+        var p4 = r.jenkins.createProject(WorkflowJob.class, "p4");
+        p4.addProperty(new ParametersDefinitionProperty(new StringParameterDefinition("SAMPLE_REPO", sampleRepo.toString())));
+        p4.setDefinition(new CpsFlowDefinition(
+            "library(identifier: 'echoing@master', retriever: modernSCM(gitSource(SAMPLE_REPO)))\nmyecho()", true));
+        r.buildAndAssertSuccess(p4);
+        r.assertLogContains("something special", p4.getLastBuild());
+
+        try (var s = Files.list(libs)) {
+            assertThat(s.filter(Files::isDirectory).map(p -> p.getFileName().toString()).toList(), contains(sharedDirName));
+        }
+        FilePath p4libs = r.jenkins.getWorkspaceFor(p4).withSuffix("@libs");
+        assertThat(p4libs.getParent().list(), contains(p4libs));
+    }
+
     // FIFOs cannot be committed to git, so we test rejectSpecialFiles directly against the working directory
     @Test
-    public void fifoInLibRejected() throws Exception {
-        assumeFalse("FIFOs are not supported on windows", Functions.isWindows());
+    void fifoInLibRejected() throws Exception {
+        assumeFalse(Functions.isWindows(), "FIFOs are not supported on windows");
         sampleRepo.init();
         sampleRepo.write("vars/hello.groovy", "def call() {}");
         Runtime.getRuntime().exec(new String[]{"mkfifo", new File(sampleRepo.getRoot(), "vars/pipe.txt").toString()}).waitFor();
@@ -1736,8 +2102,8 @@ public class SCMSourceRetrieverTest {
     }
 
     @Test
-    public void symlinkInVarsRejected() throws Exception {
-        assumeFalse("symlinks require special privileges on windows", Functions.isWindows());
+    void symlinkInVarsRejected() throws Exception {
+        assumeFalse(Functions.isWindows(), "symlinks require special privileges on windows");
         sampleRepo.init();
         sampleRepo.write("vars/myecho.groovy", "def call() {echo 'something special'}");
         sampleRepo.git("add", "vars");
@@ -1761,8 +2127,8 @@ public class SCMSourceRetrieverTest {
     }
 
     @Test
-    public void symlinkedDirectoryInLibRejected() throws Exception {
-        assumeFalse("symlinks require special privileges on windows", Functions.isWindows());
+    void symlinkedDirectoryInLibRejected() throws Exception {
+        assumeFalse(Functions.isWindows(), "symlinks require special privileges on windows");
         sampleRepo.init();
         sampleRepo.write("src/org/foo/Lib.groovy", "class Lib {}");
         sampleRepo.git("add", "src");

@@ -61,12 +61,8 @@ public class SCMRetriever extends SCMBasedRetriever {
         return scm;
     }
 
-    @Override public void retrieve(String name, String version, boolean changelog, FilePath target, Run<?, ?> run, TaskListener listener) throws Exception {
-        doRetrieve(name, changelog, scm, target, run, listener);
-    }
-
-    @Override public void retrieve(String name, String version, FilePath target, Run<?, ?> run, TaskListener listener) throws Exception {
-        retrieve(name, version, true, target, run, listener);
+    @Override protected void retrieve3(LibraryRecord record, boolean changelog, FilePath target, Run<?, ?> run, TaskListener listener) throws Exception {
+        doRetrieve(record.getName(), changelog, scm, target, run, listener, record);
     }
     
     @Override public FormValidation validateVersion(String name, String version, Item context) {

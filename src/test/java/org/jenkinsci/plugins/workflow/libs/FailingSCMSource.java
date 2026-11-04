@@ -1,6 +1,5 @@
 package org.jenkinsci.plugins.workflow.libs;
 
-import edu.umd.cs.findbugs.annotations.NonNull;
 import hudson.AbortException;
 import hudson.FilePath;
 import hudson.Launcher;

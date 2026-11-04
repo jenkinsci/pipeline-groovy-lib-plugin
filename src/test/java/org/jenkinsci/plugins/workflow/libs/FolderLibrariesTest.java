@@ -48,28 +48,50 @@ import org.jenkinsci.plugins.scriptsecurity.scripts.ScriptApproval;
 import org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition;
 import org.jenkinsci.plugins.workflow.cps.GlobalVariable;
 import org.jenkinsci.plugins.workflow.cps.Snippetizer;
-import org.jenkinsci.plugins.workflow.cps.global.GrapeTest;
 import org.jenkinsci.plugins.workflow.cps.replay.ReplayAction;
 import org.jenkinsci.plugins.workflow.job.WorkflowJob;
 import org.jenkinsci.plugins.workflow.job.WorkflowRun;
-import org.junit.Test;
-import static org.junit.Assert.*;
-import static org.junit.Assume.assumeFalse;
-import org.junit.ClassRule;
-import org.junit.Rule;
-import org.jvnet.hudson.test.BuildWatcher;
+
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.junit.jupiter.api.Assumptions.assumeFalse;
+import static org.junit.jupiter.api.Assertions.*;
+
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.jvnet.hudson.test.Issue;
 import org.jvnet.hudson.test.JenkinsRule;
 import org.jvnet.hudson.test.MockAuthorizationStrategy;
+import org.jvnet.hudson.test.junit.jupiter.BuildWatcherExtension;
+import org.jvnet.hudson.test.junit.jupiter.WithJenkins;
 
-public class FolderLibrariesTest {
+@WithJenkins
+class FolderLibrariesTest {
 
-    @ClassRule public static BuildWatcher buildWatcher = new BuildWatcher();
-    @Rule public JenkinsRule r = new JenkinsRule();
-    @Rule public GitSampleRepoRule sampleRepo1 = new GitSampleRepoRule();
-    @Rule public GitSampleRepoRule sampleRepo2 = new GitSampleRepoRule();
+    @SuppressWarnings("unused")
+    @RegisterExtension
+    private static final BuildWatcherExtension BUILD_WATCHER = new BuildWatcherExtension();
+    private JenkinsRule r;
+    private final GitSampleRepoRule sampleRepo1 = new GitSampleRepoRule();
+    private final GitSampleRepoRule sampleRepo2 = new GitSampleRepoRule();
 
-    @Test public void configRoundtrip() throws Exception {
+    @BeforeEach
+    void beforeEach(JenkinsRule rule) throws Throwable {
+        r = rule;
+        sampleRepo1.before();
+        sampleRepo2.before();
+    }
+
+    @AfterEach
+    void afterEach() {
+        sampleRepo1.after();
+        sampleRepo2.after();
+    }
+
+    @Test
+    void configRoundtrip() throws Exception {
         Folder d = r.jenkins.createProject(Folder.class, "d");
         r.configRoundtrip(d);
         assertNull(d.getProperties().get(FolderLibraries.class));
@@ -77,15 +99,16 @@ public class FolderLibrariesTest {
         bar.setDefaultVersion("master");
         bar.setImplicit(true);
         bar.setAllowVersionOverride(false);
-        d.getProperties().add(new FolderLibraries(Arrays.asList(bar)));
+        d.getProperties().add(new FolderLibraries(List.of(bar)));
         r.configRoundtrip(d);
         FolderLibraries prop = d.getProperties().get(FolderLibraries.class);
         assertNotNull(prop);
         List<LibraryConfiguration> libs = prop.getLibraries();
-        r.assertEqualDataBoundBeans(Arrays.asList(bar), libs);
+        r.assertEqualDataBoundBeans(List.of(bar), libs);
     }
 
-    @Test public void registration() throws Exception {
+    @Test
+    void registration() throws Exception {
         sampleRepo1.init();
         sampleRepo1.write("src/generic/Lib.groovy", "package generic; class Lib {static String CONST = 'generic'}");
         sampleRepo1.git("add", "src");
@@ -108,7 +131,8 @@ public class FolderLibrariesTest {
     }
 
     @Issue("JENKINS-32400") // one approach
-    @Test public void loadVarForFolder() throws Exception {
+    @Test
+    void loadVarForFolder() throws Exception {
         sampleRepo1.init();
         sampleRepo1.write("src/stuff/Lib.groovy", "package stuff; class Lib {static String CONST = 'stuff'}");
         sampleRepo1.write("vars/p.groovy", "def call() {echo(/found some ${stuff.Lib.CONST}/)}");
@@ -130,7 +154,8 @@ public class FolderLibrariesTest {
         assertThat(html, not(containsString("Handling of &lt;p&gt;.")));
     }
 
-    @Test public void replay() throws Exception {
+    @Test
+    void replay() throws Exception {
         sampleRepo1.init();
         String somethingCode = "package pkg; class Something {@NonCPS String toString() {'the first version'}}";
         sampleRepo1.write("src/pkg/Something.groovy", somethingCode);
@@ -168,8 +193,8 @@ public class FolderLibrariesTest {
         r.assertLogContains("subsequently running the second version", r.assertBuildStatusSuccess(b3));
     }
 
-    /** @see GrapeTest#outsideLibrarySandbox */
-    @Test public void noGrape() throws Exception {
+    @Test
+    void noGrape() throws Exception {
         Folder d = r.jenkins.createProject(Folder.class, "d");
         d.getProperties().add(new FolderLibraries(List.of(LibraryTestUtils.defineLibraryUsingGrab("grape", sampleRepo1))));
         WorkflowJob p = d.createProject(WorkflowJob.class, "p");
@@ -178,8 +203,9 @@ public class FolderLibrariesTest {
     }
 
     @Issue("JENKINS-43019")
-    @Test public void classCastException() throws Exception {
-        assumeFalse("Too slow, prone to timing out before getting to build #51", Functions.isWindows());
+    @Test
+    void classCastException() throws Exception {
+        assumeFalse(Functions.isWindows(), "Too slow, prone to timing out before getting to build #51");
         sampleRepo1.init();
         sampleRepo1.write("src/pkg/Obj.groovy", "package pkg; public class Obj implements Serializable {public Obj() {}}");
         sampleRepo1.write("vars/objs.groovy", "@groovy.transform.Field final pkg.Obj OBJ = new pkg.Obj()");
@@ -192,10 +218,11 @@ public class FolderLibrariesTest {
         ScriptApproval.get().approveSignature("method java.security.ProtectionDomain getCodeSource");
         ScriptApproval.get().approveSignature("method java.security.CodeSource getLocation");
         String script =
-            "def descr(c) {/${c.classLoader} < ${c.classLoader.parent} @ ${c.protectionDomain.codeSource?.location}/}\n" +
-            "echo(/this: ${descr(this.getClass())} Obj: ${descr(pkg.Obj)} objs: ${descr(objs.getClass())} objs.OBJ: ${descr(objs.OBJ.getClass())}/)\n" +
-            "pkg.Obj obj = objs.OBJ\n" +
-            "echo(/loaded $obj/)";
+                """
+                        def descr(c) {/${c.classLoader} < ${c.classLoader.parent} @ ${c.protectionDomain.codeSource?.location}/}
+                        echo(/this: ${descr(this.getClass())} Obj: ${descr(pkg.Obj)} objs: ${descr(objs.getClass())} objs.OBJ: ${descr(objs.OBJ.getClass())}/)
+                        pkg.Obj obj = objs.OBJ
+                        echo(/loaded $obj/)""";
         { // Trusted lib (control):
             GlobalLibraries.get().setLibraries(Collections.singletonList(new LibraryConfiguration("global-objs", new SCMSourceRetriever(new GitSCMSource(null, sampleRepo1.toString(), "", "*", "", true)))));
             WorkflowJob p = r.createProject(WorkflowJob.class, "p");
@@ -214,7 +241,8 @@ public class FolderLibrariesTest {
     }
 
     @Issue("SECURITY-1422")
-    @Test public void checkDefaultVersionRestricted() throws Exception {
+    @Test
+    void checkDefaultVersionRestricted() throws Exception {
         sampleRepo1.init();
         sampleRepo1.write("vars/myecho.groovy", "def call() {echo 'something special'}");
         sampleRepo1.git("add", "vars");
@@ -227,7 +255,7 @@ public class FolderLibrariesTest {
         r.jenkins.setAuthorizationStrategy(s);
         LibraryConfiguration foo = new LibraryConfiguration("foo", new SCMSourceRetriever(new GitSCMSource(sampleRepo1.toString())));
         Folder f = r.jenkins.createProject(Folder.class, "f");
-        f.getProperties().add(new FolderLibraries(Arrays.asList(foo)));
+        f.getProperties().add(new FolderLibraries(List.of(foo)));
         JenkinsRule.WebClient wc = r.createWebClient();
         wc.setThrowExceptionOnFailingStatusCode(false);
         WebRequest req = new WebRequest(new URL(wc.getContextPath() + f.getUrl() + "/descriptorByName/" +

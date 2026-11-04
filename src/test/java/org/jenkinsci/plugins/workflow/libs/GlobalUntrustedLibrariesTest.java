@@ -28,36 +28,51 @@ import hudson.model.Result;
 import java.util.List;
 import jenkins.model.Jenkins;
 import jenkins.plugins.git.GitSampleRepoRule;
+import jenkins.plugins.git.junit.jupiter.WithGitSampleRepo;
 import org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition;
 import org.jenkinsci.plugins.workflow.job.WorkflowJob;
-import org.junit.ClassRule;
-import org.junit.Rule;
-import org.junit.Test;
-import org.jvnet.hudson.test.BuildWatcher;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+import org.junit.jupiter.api.extension.RegisterExtension;
 import org.jvnet.hudson.test.Issue;
 import org.jvnet.hudson.test.JenkinsRule;
+import org.jvnet.hudson.test.junit.jupiter.BuildWatcherExtension;
+import org.jvnet.hudson.test.junit.jupiter.WithJenkins;
 
-public class GlobalUntrustedLibrariesTest {
+@WithJenkins
+@WithGitSampleRepo
+class GlobalUntrustedLibrariesTest {
 
-    @Rule public JenkinsRule r = new JenkinsRule();
-    @Rule public GitSampleRepoRule sampleRepo = new GitSampleRepoRule();
-    @ClassRule public static BuildWatcher buildWatcher = new BuildWatcher();
+    private JenkinsRule r;
+    private GitSampleRepoRule sampleRepo;
+    @SuppressWarnings("unused")
+    @RegisterExtension
+    private static final BuildWatcherExtension BUILD_WATCHER = new BuildWatcherExtension();
 
-    @Test public void configRoundtrip() throws Exception {
+    @BeforeEach
+    void beforeEach(JenkinsRule rule, GitSampleRepoRule repo) {
+        r = rule;
+        sampleRepo = repo;
+    }
+
+    @Test
+    void configRoundtrip() throws Exception {
         r.configRoundtrip();
         GlobalLibrariesTest.configRoundtrip(r, GlobalUntrustedLibraries.get(), Jenkins.READ, Jenkins.MANAGE);
     }
 
     @Issue("SECURITY-1422")
-    @Test public void checkDefaultVersionRestricted() throws Exception {
+    @Test
+    void checkDefaultVersionRestricted() throws Exception {
         GlobalLibrariesTest.checkDefaultVersionRestricted(r, sampleRepo, GlobalUntrustedLibraries.get());
     }
 
-    @Test public void noGrape() throws Exception {
+    @Test
+    void noGrape() throws Exception {
         GlobalUntrustedLibraries.get().setLibraries(List.of(LibraryTestUtils.defineLibraryUsingGrab("grape", sampleRepo)));
         WorkflowJob p = r.jenkins.createProject(WorkflowJob.class, "p");
         p.setDefinition(new CpsFlowDefinition("@Library('grape@master') import pkg.Wrapper; echo(/should not have been able to run ${pkg.Wrapper.list()}/)", true));
         r.assertLogContains("Annotation Grab cannot be used in the sandbox", r.assertBuildStatus(Result.FAILURE, p.scheduleBuild2(0)));
     }
-
 }

@@ -28,25 +28,40 @@ import hudson.AbortException;
 import hudson.plugins.git.GitSCM;
 import hudson.util.FormValidation;
 import org.hamcrest.Matchers;
-import org.junit.Test;
-import org.junit.Assert;
-import static org.junit.Assert.*;
-import org.junit.Rule;
+
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.fail;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
 import org.jvnet.hudson.test.Issue;
 import org.jvnet.hudson.test.JenkinsRule;
+import org.jvnet.hudson.test.junit.jupiter.WithJenkins;
 
-public class LibraryConfigurationTest {
+@WithJenkins
+class LibraryConfigurationTest {
 
-    @Rule public JenkinsRule r = new JenkinsRule();
+    private JenkinsRule r;
+
+    @BeforeEach
+    void beforeEach(JenkinsRule rule) {
+        r = rule;
+    }
 
     @Issue("JENKINS-38550")
-    @Test public void visibleRetrievers() throws Exception {
+    @Test
+    void visibleRetrievers() {
         assertThat(r.jenkins.getDescriptorByType(LibraryConfiguration.DescriptorImpl.class).getRetrieverDescriptors(),
-            Matchers.<LibraryRetrieverDescriptor>containsInAnyOrder(r.jenkins.getDescriptorByType(SCMSourceRetriever.DescriptorImpl.class), r.jenkins.getDescriptorByType(SCMRetriever.DescriptorImpl.class)));
+            Matchers.containsInAnyOrder(r.jenkins.getDescriptorByType(SCMSourceRetriever.DescriptorImpl.class), r.jenkins.getDescriptorByType(SCMRetriever.DescriptorImpl.class)));
     }
 
     @Issue("JENKINS-59527")
-    @Test public void validDefaultVersionAndName() {
+    @Test
+    void validDefaultVersionAndName() {
         String libraryName = "valid-name";
         String defaultVersion = "master";
 
@@ -58,7 +73,8 @@ public class LibraryConfigurationTest {
     }
 
     @Issue("JENKINS-59527")
-    @Test public void spacesDefaultVersionAndName() {
+    @Test
+    void spacesDefaultVersionAndName() {
         String libraryName = "     valid-name   ";
         String defaultVersion = "   master    ";
 
@@ -70,7 +86,8 @@ public class LibraryConfigurationTest {
     }
 
     @Issue("JENKINS-59527")
-    @Test public void emptyStringDefaultVersionAndName() {
+    @Test
+    void emptyStringDefaultVersionAndName() {
         String libraryName = "";
         String defaultVersion = "";
 
@@ -82,7 +99,8 @@ public class LibraryConfigurationTest {
     }
 
     @Issue("JENKINS-59527")
-    @Test public void nullDefaultVersionAndName() {
+    @Test
+    void nullDefaultVersionAndName() {
         String libraryName = null;
         String defaultVersion = null;
 
@@ -94,7 +112,8 @@ public class LibraryConfigurationTest {
     }
 
     @Issue("JENKINS-69731")
-    @Test public void nullPresentDefaultedVersion() {
+    @Test
+    void nullPresentDefaultedVersion() {
         String libraryName = "valid-name";
         String defaultVersion = "master";
 
@@ -105,12 +124,13 @@ public class LibraryConfigurationTest {
         try {
             assertEquals("master", cfg.defaultedVersion(null));
         } catch(AbortException ae) {
-            Assert.fail("LibraryConfiguration.defaultedVersion() threw an AbortException when it was not expected: " + ae.getMessage());
+            fail("LibraryConfiguration.defaultedVersion() threw an AbortException when it was not expected: " + ae.getMessage());
         }
     }
 
     @Issue("JENKINS-69731")
-    @Test public void nullAbsentDefaultedVersion() {
+    @Test
+    void nullAbsentDefaultedVersion() {
         String libraryName = "valid-name";
 
         LibraryConfiguration cfg = new LibraryConfiguration(libraryName, new SCMRetriever(new GitSCM("https://phony.jenkins.io/bar.git")));
@@ -120,7 +140,8 @@ public class LibraryConfigurationTest {
     }
 
     @Issue("JENKINS-69731")
-    @Test public void forbiddenOverrideDefaultedVersion() {
+    @Test
+    void forbiddenOverrideDefaultedVersion() {
         String libraryName = "valid-name";
 
         LibraryConfiguration cfg = new LibraryConfiguration(libraryName, new SCMRetriever(new GitSCM("https://phony.jenkins.io/bar.git")));
@@ -131,7 +152,8 @@ public class LibraryConfigurationTest {
     }
 
     @Issue("JENKINS-69731")
-    @Test public void allowedOverrideDefaultedVersion() {
+    @Test
+    void allowedOverrideDefaultedVersion() {
         String libraryName = "valid-name";
 
         LibraryConfiguration cfg = new LibraryConfiguration(libraryName, new SCMRetriever(new GitSCM("https://phony.jenkins.io/bar.git")));
@@ -141,12 +163,13 @@ public class LibraryConfigurationTest {
         try {
             assertEquals("branchname", cfg.defaultedVersion("branchname"));
         } catch(AbortException ae) {
-            Assert.fail("LibraryConfiguration.defaultedVersion() threw an AbortException when it was not expected: " + ae.getMessage());
+            fail("LibraryConfiguration.defaultedVersion() threw an AbortException when it was not expected: " + ae.getMessage());
         }
     }
 
     @Issue("JENKINS-69731")
-    @Test public void notAllowedOverrideDefaultedVersionWhenBRANCH_NAME() {
+    @Test
+    void notAllowedOverrideDefaultedVersionWhenBRANCH_NAME() {
         String libraryName = "valid-name";
 
         LibraryConfiguration cfg = new LibraryConfiguration(libraryName, new SCMRetriever(new GitSCM("https://phony.jenkins.io/bar.git")));
@@ -162,7 +185,8 @@ public class LibraryConfigurationTest {
     }
 
     @Issue("JENKINS-69731")
-    @Test public void allowedVersionBRANCH_NAME__noRunPresentDefaultedVersion() {
+    @Test
+    void allowedVersionBRANCH_NAME__noRunPresentDefaultedVersion() {
         String libraryName = "valid-name";
         String defaultVersion = "master";
 
@@ -175,12 +199,13 @@ public class LibraryConfigurationTest {
         try {
             assertEquals("master", cfg.defaultedVersion("${BRANCH_NAME}", null, null));
         } catch(AbortException ae) {
-            Assert.fail("LibraryConfiguration.defaultedVersion() threw an AbortException when it was not expected: " + ae.getMessage());
+            fail("LibraryConfiguration.defaultedVersion() threw an AbortException when it was not expected: " + ae.getMessage());
         }
     }
 
     @Issue("JENKINS-69731")
-    @Test public void allowedVersionBRANCH_NAME__noRunAbsentDefaultedVersion() {
+    @Test
+    void allowedVersionBRANCH_NAME__noRunAbsentDefaultedVersion() {
         String libraryName = "valid-name";
 
         LibraryConfiguration cfg = new LibraryConfiguration(libraryName, new SCMRetriever(new GitSCM("https://phony.jenkins.io/bar.git")));
@@ -199,14 +224,16 @@ public class LibraryConfigurationTest {
      */
 
     @Issue("JENKINS-69731")
-    @Test public void dynamicVersionsPatternDefaultsToAllowEverything() {
+    @Test
+    void dynamicVersionsPatternDefaultsToAllowEverything() {
         LibraryConfiguration cfg = new LibraryConfiguration("valid-name", new SCMRetriever(new GitSCM("https://phony.jenkins.io/bar.git")));
 
         assertEquals("^.*$", cfg.getDynamicVersionsPattern());
     }
 
     @Issue("JENKINS-69731")
-    @Test public void dynamicVersionsPatternRoundTrip() {
+    @Test
+    void dynamicVersionsPatternRoundTrip() {
         LibraryConfiguration cfg = new LibraryConfiguration("valid-name", new SCMRetriever(new GitSCM("https://phony.jenkins.io/bar.git")));
 
         cfg.setDynamicVersionsPattern("^(main|release/.*)$");
@@ -221,7 +248,8 @@ public class LibraryConfigurationTest {
     }
 
     @Issue("JENKINS-69731")
-    @Test public void dynamicVersionsPatternFormValidation() {
+    @Test
+    void dynamicVersionsPatternFormValidation() {
         LibraryConfiguration.DescriptorImpl descriptor = r.jenkins.getDescriptorByType(LibraryConfiguration.DescriptorImpl.class);
 
         // context=null simulates the global (Manage Jenkins) configuration scope.
