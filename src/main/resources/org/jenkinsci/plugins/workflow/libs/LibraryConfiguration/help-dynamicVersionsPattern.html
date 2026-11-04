@@ -1,0 +1,14 @@
+<div>
+  A regular expression (matched against the whole string) that a
+  <b>dynamically resolved</b> revision must satisfy to be used, when
+  it was discovered via <code>${BRANCH_NAME}</code>, <code>${env.VARNAME}</code>,
+  or their <code>CHANGE_BRANCH</code>/<code>CHANGE_TARGET</code> pull request
+  fallbacks. A revision rejected by this pattern falls back to the
+  configured default version, exactly as if it had not resolved at all.<br/>
+  This does not apply to a fixed, literal version string written by the
+  pipeline author (e.g. <code>@Library('libname@somebranch')</code>).<br/>
+  Defaults to <code>^.*$</code> (allow anything). Consider narrowing this
+  down if dynamically resolved revisions could otherwise be steered by
+  someone who can influence a branch name or environment variable but
+  should not be able to pick arbitrary library versions.
+</div>

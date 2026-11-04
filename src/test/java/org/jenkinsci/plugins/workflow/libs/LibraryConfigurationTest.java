@@ -24,12 +24,16 @@
 
 package org.jenkinsci.plugins.workflow.libs;
 
+import hudson.AbortException;
 import hudson.plugins.git.GitSCM;
+import hudson.util.FormValidation;
 import org.hamcrest.Matchers;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.fail;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -106,4 +110,153 @@ class LibraryConfigurationTest {
         assertNull(cfg.getName());
         assertNull(cfg.getDefaultVersion());
     }
+
+    @Issue("JENKINS-69731")
+    @Test
+    void nullPresentDefaultedVersion() {
+        String libraryName = "valid-name";
+        String defaultVersion = "master";
+
+        LibraryConfiguration cfg = new LibraryConfiguration(libraryName, new SCMRetriever(new GitSCM("https://phony.jenkins.io/bar.git")));
+        cfg.setDefaultVersion(defaultVersion);
+
+        assertEquals("master", cfg.getDefaultVersion());
+        try {
+            assertEquals("master", cfg.defaultedVersion(null));
+        } catch(AbortException ae) {
+            fail("LibraryConfiguration.defaultedVersion() threw an AbortException when it was not expected: " + ae.getMessage());
+        }
+    }
+
+    @Issue("JENKINS-69731")
+    @Test
+    void nullAbsentDefaultedVersion() {
+        String libraryName = "valid-name";
+
+        LibraryConfiguration cfg = new LibraryConfiguration(libraryName, new SCMRetriever(new GitSCM("https://phony.jenkins.io/bar.git")));
+
+        assertEquals(null, cfg.getDefaultVersion());
+        assertThrows(AbortException.class, () -> cfg.defaultedVersion(null));
+    }
+
+    @Issue("JENKINS-69731")
+    @Test
+    void forbiddenOverrideDefaultedVersion() {
+        String libraryName = "valid-name";
+
+        LibraryConfiguration cfg = new LibraryConfiguration(libraryName, new SCMRetriever(new GitSCM("https://phony.jenkins.io/bar.git")));
+        cfg.setAllowVersionOverride(false);
+
+        assertEquals(false, cfg.isAllowVersionOverride());
+        assertThrows(AbortException.class, () -> cfg.defaultedVersion("branchname"));
+    }
+
+    @Issue("JENKINS-69731")
+    @Test
+    void allowedOverrideDefaultedVersion() {
+        String libraryName = "valid-name";
+
+        LibraryConfiguration cfg = new LibraryConfiguration(libraryName, new SCMRetriever(new GitSCM("https://phony.jenkins.io/bar.git")));
+        cfg.setAllowVersionOverride(true);
+
+        assertEquals(true, cfg.isAllowVersionOverride());
+        try {
+            assertEquals("branchname", cfg.defaultedVersion("branchname"));
+        } catch(AbortException ae) {
+            fail("LibraryConfiguration.defaultedVersion() threw an AbortException when it was not expected: " + ae.getMessage());
+        }
+    }
+
+    @Issue("JENKINS-69731")
+    @Test
+    void notAllowedOverrideDefaultedVersionWhenBRANCH_NAME() {
+        String libraryName = "valid-name";
+
+        LibraryConfiguration cfg = new LibraryConfiguration(libraryName, new SCMRetriever(new GitSCM("https://phony.jenkins.io/bar.git")));
+        cfg.setAllowVersionOverride(true);
+        cfg.setAllowVersionBRANCH_NAME(false);
+        cfg.setTraceDefaultedVersion(true);
+
+        assertEquals(true, cfg.isAllowVersionOverride());
+        assertEquals(false, cfg.isAllowVersionBRANCH_NAME());
+        assertEquals(true, cfg.isTraceDefaultedVersion());
+        assertThrows(AbortException.class, () -> cfg.defaultedVersion("${BRANCH_NAME}"));
+        /* This SHOULD NOT return a version string that literally remains '${BRANCH_NAME}'! */
+    }
+
+    @Issue("JENKINS-69731")
+    @Test
+    void allowedVersionBRANCH_NAME__noRunPresentDefaultedVersion() {
+        String libraryName = "valid-name";
+        String defaultVersion = "master";
+
+        LibraryConfiguration cfg = new LibraryConfiguration(libraryName, new SCMRetriever(new GitSCM("https://phony.jenkins.io/bar.git")));
+        cfg.setDefaultVersion(defaultVersion);
+        cfg.setAllowVersionBRANCH_NAME(true);
+        cfg.setTraceDefaultedVersion(true);
+
+        assertEquals(true, cfg.isAllowVersionBRANCH_NAME());
+        try {
+            assertEquals("master", cfg.defaultedVersion("${BRANCH_NAME}", null, null));
+        } catch(AbortException ae) {
+            fail("LibraryConfiguration.defaultedVersion() threw an AbortException when it was not expected: " + ae.getMessage());
+        }
+    }
+
+    @Issue("JENKINS-69731")
+    @Test
+    void allowedVersionBRANCH_NAME__noRunAbsentDefaultedVersion() {
+        String libraryName = "valid-name";
+
+        LibraryConfiguration cfg = new LibraryConfiguration(libraryName, new SCMRetriever(new GitSCM("https://phony.jenkins.io/bar.git")));
+        cfg.setAllowVersionBRANCH_NAME(true);
+        cfg.setTraceDefaultedVersion(true);
+
+        assertEquals(true, cfg.isAllowVersionBRANCH_NAME());
+        assertThrows(AbortException.class, () -> cfg.defaultedVersion("${BRANCH_NAME}", null, null));
+    }
+
+    /* Note: further tests for JENKINS-69731 behaviors with allowVersionBRANCH_NAME
+     * toggle would rely on having a Run with or without a BRANCH_NAME envvar, and
+     * a TaskListener, and a (mock?) LibraryRetriever that would confirm or
+     * deny existence of a requested "version" (e.g. Git branch) of the lib.
+     * For examples, see e.g. SCMSourceRetrieverTest codebase.
+     */
+
+    @Issue("JENKINS-69731")
+    @Test
+    void dynamicVersionsPatternDefaultsToAllowEverything() {
+        LibraryConfiguration cfg = new LibraryConfiguration("valid-name", new SCMRetriever(new GitSCM("https://phony.jenkins.io/bar.git")));
+
+        assertEquals("^.*$", cfg.getDynamicVersionsPattern());
+    }
+
+    @Issue("JENKINS-69731")
+    @Test
+    void dynamicVersionsPatternRoundTrip() {
+        LibraryConfiguration cfg = new LibraryConfiguration("valid-name", new SCMRetriever(new GitSCM("https://phony.jenkins.io/bar.git")));
+
+        cfg.setDynamicVersionsPattern("^(main|release/.*)$");
+        assertEquals("^(main|release/.*)$", cfg.getDynamicVersionsPattern());
+
+        // Clearing the field reverts to the allow-everything default, not null/empty:
+        cfg.setDynamicVersionsPattern("");
+        assertEquals("^.*$", cfg.getDynamicVersionsPattern());
+
+        cfg.setDynamicVersionsPattern(null);
+        assertEquals("^.*$", cfg.getDynamicVersionsPattern());
+    }
+
+    @Issue("JENKINS-69731")
+    @Test
+    void dynamicVersionsPatternFormValidation() {
+        LibraryConfiguration.DescriptorImpl descriptor = r.jenkins.getDescriptorByType(LibraryConfiguration.DescriptorImpl.class);
+
+        // context=null simulates the global (Manage Jenkins) configuration scope.
+        assertEquals(FormValidation.Kind.OK, descriptor.doCheckDynamicVersionsPattern(null, "^.*$").kind);
+        assertEquals(FormValidation.Kind.OK, descriptor.doCheckDynamicVersionsPattern(null, "").kind);
+        assertEquals(FormValidation.Kind.OK, descriptor.doCheckDynamicVersionsPattern(null, null).kind);
+        assertEquals(FormValidation.Kind.ERROR, descriptor.doCheckDynamicVersionsPattern(null, "[unterminated").kind);
+    }
+
 }
