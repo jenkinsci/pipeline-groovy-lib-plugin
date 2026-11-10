@@ -206,8 +206,51 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
         }
     }
     
-    /** Retrieve library files. */
+    /**
+     * Retrieve library files.
+     * Reports the start and the end of the retrieval to each {@link LibraryRetrievalListener}, on the calling thread.
+     */
     static List<URL> retrieve(@NonNull LibraryRecord record, @NonNull LibraryRetriever retriever, @NonNull TaskListener listener, @NonNull Run<?,?> run, @NonNull CpsFlowExecution execution) throws Exception {
+        // A listener must never break the retrieval, so both loops catch Throwable, as Jenkins core does when it
+        // notifies listeners. A build abort is not lost: it reaches the retriever as an InterruptedException,
+        // which the catch below rethrows unchanged.
+        List<LibraryRetrievalListener> started = new ArrayList<>();
+        for (LibraryRetrievalListener l : LibraryRetrievalListener.all()) {
+            try {
+                l.onStart(record, retriever, run);
+                started.add(l);
+            } catch (Throwable x) {
+                LOGGER.log(Level.WARNING,
+                        "LibraryRetrievalListener " + l.getClass().getName() + " failed in onStart", x);
+            }
+        }
+        CacheResult cache = new CacheResult();
+        Throwable error = null;
+        try {
+            return retrieveInternal(record, retriever, listener, run, execution, cache);
+        } catch (Throwable t) {
+            error = t;
+            throw t;
+        } finally {
+            for (LibraryRetrievalListener l : started) {
+                try {
+                    l.onEnd(record, retriever, run, cache.outcome, error);
+                } catch (Throwable x) {
+                    LOGGER.log(Level.WARNING,
+                            "LibraryRetrievalListener " + l.getClass().getName() + " failed in onEnd", x);
+                }
+            }
+        }
+    }
+
+    /** Carries the cache outcome out of {@link #retrieveInternal}. Stays null until the cache has been consulted. */
+    private static final class CacheResult {
+        LibraryRetrievalListener.CacheOutcome outcome;
+    }
+
+    private static List<URL> retrieveInternal(LibraryRecord record, LibraryRetriever retriever, TaskListener listener,
+                                              Run<?,?> run, CpsFlowExecution execution, CacheResult cache)
+            throws Exception {
         String name = record.name;
         String version = record.version;
         boolean changelog = record.changelog;
@@ -222,6 +265,7 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
         if(shouldCache && cachingConfiguration.isExcluded(version)) {
             listener.getLogger().println("Library " + libraryLogString + " is excluded from caching.");
             shouldCache = false;
+            cache.outcome = LibraryRetrievalListener.CacheOutcome.EXCLUDED;
         }
 
         //If the included versions is blank/null, cache irrespective
@@ -238,17 +282,21 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
                       boolean retrieve = false;
                       switch (getCacheStatus(cachingConfiguration, versionCacheDir)) {
                           case VALID:
+                              cache.outcome = LibraryRetrievalListener.CacheOutcome.HIT;
                               listener.getLogger().println("Library " + libraryLogString + " is cached. Copying from cache.");
                               break;
                           case EMPTY:
+                              cache.outcome = LibraryRetrievalListener.CacheOutcome.EMPTY_RECACHED;
                               listener.getLogger().println("Library " + libraryLogString + " should have been cached but is empty, re-caching.");
                               deleteCacheDirIfExists(versionCacheDir);
                               retrieve = true;
                               break;
                           case DOES_NOT_EXIST:
+                              cache.outcome = LibraryRetrievalListener.CacheOutcome.MISS;
                               retrieve = true;
                               break;
                           case EXPIRED:
+                              cache.outcome = LibraryRetrievalListener.CacheOutcome.EXPIRED;
                               long cachingMinutes = cachingConfiguration.getRefreshTimeMinutes();
                               listener.getLogger().println("Library " + libraryLogString + " is due for a refresh after " + cachingMinutes + " minutes, clearing.");
                               deleteCacheDirIfExists(versionCacheDir);
@@ -284,6 +332,7 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
                         retrieveLock.writeLock().unlock();
                     }
                 } else {
+                    cache.outcome = LibraryRetrievalListener.CacheOutcome.HIT;
                     listener.getLogger().println("Library " + libraryLogString + " is cached. Copying from cache.");
                 }
 
@@ -295,6 +344,12 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
               retrieveLock.readLock().unlock();
             }
         } else {
+            if (cache.outcome == null) {
+                // Not excluded above: caching is not configured, or this version is not among the included ones.
+                cache.outcome = cachingConfiguration == null
+                        ? LibraryRetrievalListener.CacheOutcome.DISABLED
+                        : LibraryRetrievalListener.CacheOutcome.EXCLUDED;
+            }
             retriever.retrieve3(record, changelog, libDir, run, listener);
         }
         SCMBasedRetriever.rejectSpecialFiles(libDir);
