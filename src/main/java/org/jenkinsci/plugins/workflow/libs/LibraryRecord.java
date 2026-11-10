@@ -34,6 +34,7 @@ import org.kohsuke.stapler.export.Exported;
 import org.kohsuke.stapler.export.ExportedBean;
 
 import edu.umd.cs.findbugs.annotations.CheckForNull;
+import edu.umd.cs.findbugs.annotations.NonNull;
 
 /**
  * Record of a library being used in a particular build.
@@ -138,11 +139,15 @@ public final class LibraryRecord {
      * sometimes followed by a folder name, but see also {@link LibraryStep}. It is not an SCM URL.
      * Not part of the remote API.
      */
+    @NonNull
     public String getSource() {
         return source;
     }
 
-    /** @return the caching configuration of this library, or null if caching is not configured. Not part of the remote API. */
+    /**
+     * @return the caching configuration of this library, or null if caching is not configured.
+     *         Not part of the remote API.
+     */
     @CheckForNull
     public LibraryCachingConfiguration getCachingConfiguration() {
         return cachingConfiguration;

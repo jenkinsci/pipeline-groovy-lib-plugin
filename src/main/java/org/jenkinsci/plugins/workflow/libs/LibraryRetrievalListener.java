@@ -1,7 +1,7 @@
 /*
  * The MIT License
  *
- * Copyright 2025 Noam Goren
+ * Copyright 2026 Noam Goren
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -29,6 +29,8 @@ import edu.umd.cs.findbugs.annotations.NonNull;
 import hudson.ExtensionList;
 import hudson.ExtensionPoint;
 import hudson.model.Run;
+import org.kohsuke.accmod.Restricted;
+import org.kohsuke.accmod.restrictions.Beta;
 
 /**
  * Observes the retrieval of each library of a build, for tracing, metrics or logging.
@@ -45,9 +47,11 @@ import hudson.model.Run;
  * changelog, source, caching configuration), the retriever, the run, the cache outcome and the error. An
  * implementation that reads the retriever should take care not to record the SCM URL, which may carry user information.
  */
+@Restricted(Beta.class)
 public abstract class LibraryRetrievalListener implements ExtensionPoint {
 
     /** How a retrieval used the library cache. */
+    @Restricted(Beta.class)
     public enum CacheOutcome {
         /** The library has no caching configuration. It was fetched. */
         DISABLED,
@@ -82,6 +86,7 @@ public abstract class LibraryRetrievalListener implements ExtensionPoint {
     public void onEnd(@NonNull LibraryRecord record, @NonNull LibraryRetriever retriever, @NonNull Run<?, ?> run,
                       @CheckForNull CacheOutcome outcome, @CheckForNull Throwable error) {}
 
+    /** All registered listeners. */
     public static @NonNull ExtensionList<LibraryRetrievalListener> all() {
         return ExtensionList.lookup(LibraryRetrievalListener.class);
     }

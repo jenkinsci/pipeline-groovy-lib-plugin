@@ -1,7 +1,7 @@
 /*
  * The MIT License
  *
- * Copyright 2025 Noam Goren
+ * Copyright 2026 Noam Goren
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -35,6 +35,8 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.logging.Level;
 import jenkins.plugins.git.GitSCMSource;
 import jenkins.plugins.git.GitSampleRepoRule;
 import jenkins.plugins.git.junit.jupiter.WithGitSampleRepo;
@@ -45,13 +47,14 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.jvnet.hudson.test.JenkinsRule;
+import org.jvnet.hudson.test.LogRecorder;
 import org.jvnet.hudson.test.TestExtension;
 import org.jvnet.hudson.test.junit.jupiter.WithJenkins;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.contains;
 import static org.hamcrest.Matchers.containsString;
-import static org.hamcrest.Matchers.empty;
+import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.hasSize;
 import static org.hamcrest.Matchers.instanceOf;
 import static org.hamcrest.Matchers.is;
@@ -66,6 +69,7 @@ class LibraryRetrievalListenerTest {
 
     private static final String SECRET = "s3cr3t-token";
 
+    private final LogRecorder logging = new LogRecorder().record(LibraryAdder.class, Level.WARNING).capture(50);
     private JenkinsRule r;
     private GitSampleRepoRule sampleRepo;
 
@@ -79,7 +83,11 @@ class LibraryRetrievalListenerTest {
         sampleRepo.git("commit", "--message=init");
         sampleRepo.git("tag", "1.0");
         Recorder.EVENTS.clear();
-        Recorder.failOnRetrieve = false;
+        Recorder.failInStart = false;
+        Recorder.failInEnd = false;
+        Recorder.interrupt = false;
+        Recorder.startThrowerEnds.set(0);
+        Recorder.endThrowerEnds.set(0);
     }
 
     @AfterEach
@@ -88,7 +96,8 @@ class LibraryRetrievalListenerTest {
     }
 
     private LibraryConfiguration configure(String name, LibraryCachingConfiguration caching) {
-        LibraryConfiguration cfg = new LibraryConfiguration(name, new SCMSourceRetriever(new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true)));
+        GitSCMSource source = new GitSCMSource(null, sampleRepo.toString(), "", "*", "", true);
+        LibraryConfiguration cfg = new LibraryConfiguration(name, new SCMSourceRetriever(source));
         cfg.setDefaultVersion("master");
         cfg.setCachingConfiguration(caching);
         GlobalLibraries.get().setLibraries(Collections.singletonList(cfg));
@@ -126,6 +135,13 @@ class LibraryRetrievalListenerTest {
         assertThat(outcomes(), contains(LibraryRetrievalListener.CacheOutcome.HIT));
         Recorder.EVENTS.clear();
         build(job("@Library('lib@1.0') _\ngreet()"), Result.SUCCESS);
+        assertThat(outcomes(), contains(LibraryRetrievalListener.CacheOutcome.EXCLUDED));
+    }
+
+    @Test
+    void versionNotIncludedInCachingIsExcluded() throws Exception {
+        configure("lib", new LibraryCachingConfiguration(60, "", "1.0"));
+        build(job("@Library('lib@master') _\ngreet()"), Result.SUCCESS);
         assertThat(outcomes(), contains(LibraryRetrievalListener.CacheOutcome.EXCLUDED));
     }
 
@@ -207,14 +223,45 @@ class LibraryRetrievalListenerTest {
     }
 
     @Test
-    void listenerThatThrowsDoesNotChangeTheResult() throws Exception {
+    void listenerThatThrowsInStartDoesNotChangeTheResult() throws Exception {
         configure("lib", new LibraryCachingConfiguration(60, ""));
-        Recorder.failOnRetrieve = true;
+        Recorder.failInStart = true;
         WorkflowRun b = build(job("@Library('lib@master') _\ngreet()"), Result.SUCCESS);
+        r.assertLogContains("Library lib@master successfully cached.", b);
         r.assertLogContains("hello from lib", b);
-        // The well behaved listener still got both callbacks.
-        assertThat(Recorder.EVENTS.stream().filter(e -> e.listener == Recorder.class).count(), is(2L));
-        assertThat(outcomes(), not(empty()));
+        // The other listener still got both callbacks, the failing one got no onEnd because its onStart failed.
+        assertThat(Recorder.EVENTS, hasSize(2));
+        assertThat(Recorder.startThrowerEnds.get(), is(0));
+        assertThat(logging.getMessages(), hasItem(containsString(StartThrower.class.getName() + " failed in onStart")));
+    }
+
+    @Test
+    void listenerThatThrowsInEndDoesNotChangeTheResult() throws Exception {
+        configure("lib", new LibraryCachingConfiguration(60, ""));
+        Recorder.failInEnd = true;
+        WorkflowRun b = build(job("@Library('lib@master') _\ngreet()"), Result.SUCCESS);
+        r.assertLogContains("Library lib@master successfully cached.", b);
+        r.assertLogContains("hello from lib", b);
+        assertThat(Recorder.endThrowerEnds.get(), is(1));
+        // Every listener gets onEnd even if another one threw in its own onEnd.
+        assertThat(outcomes(), contains(LibraryRetrievalListener.CacheOutcome.MISS));
+        assertThat(logging.getMessages(), hasItem(containsString(EndThrower.class.getName() + " failed in onEnd")));
+        // The library really loaded for the next build too.
+        build(job("@Library('lib@master') _\ngreet()"), Result.SUCCESS);
+    }
+
+    @Test
+    void outcomeIsNullWhenRetrievalFailsBeforeTheCacheIsConsulted() throws Exception {
+        configure("lib", new LibraryCachingConfiguration(60, ""));
+        // The interrupted thread fails in the lock wait that comes before the cache status check.
+        Recorder.interrupt = true;
+        WorkflowJob p = job("@Library('lib@master') _\ngreet()");
+        p.scheduleBuild2(0).get();
+        assertThat(Recorder.EVENTS, hasSize(2));
+        Event end = Recorder.EVENTS.get(1);
+        assertEquals("end", end.kind);
+        assertThat(end.outcome, nullValue());
+        assertThat(end.error, instanceOf(InterruptedException.class));
     }
 
     @Test
@@ -229,33 +276,23 @@ class LibraryRetrievalListenerTest {
 
     @Test
     void noCredentialMaterialInCallbackArguments() throws Exception {
-        GitSCMSource source = new GitSCMSource(null, "https://user:" + SECRET + "@example.invalid/lib.git", "", "*", "", true);
+        String url = "https://user:" + SECRET + "@example.invalid/lib.git";
+        GitSCMSource source = new GitSCMSource(null, url, "", "*", "", true);
         LibraryConfiguration cfg = new LibraryConfiguration("lib", new SCMSourceRetriever(source));
         cfg.setDefaultVersion("master");
         GlobalLibraries.get().setLibraries(Collections.singletonList(cfg));
         build(job("@Library('lib@master') _\n"), Result.FAILURE);
         assertThat(Recorder.EVENTS, hasSize(2));
         Event end = Recorder.EVENTS.get(1);
-        // The record and the arguments the listener sees carry no URL. The retriever is passed as is, as the issue asks.
+        // The record carries no URL. The retriever is passed as is, so a listener must not record its SCM URL.
         assertThat(end.record.toString(), not(containsString(SECRET)));
         assertThat(end.record.getSource(), not(containsString(SECRET)));
         assertThat(end.record.getLogString(), not(containsString(SECRET)));
         assertThat(end.record.getDirectoryName(), not(containsString(SECRET)));
     }
 
-    @Test
-    void noListenerBehavesAsBefore() throws Exception {
-        configure("lib", new LibraryCachingConfiguration(60, ""));
-        Recorder.EVENTS.clear();
-        // Registered listeners are the only observers; with nothing recorded the build is unchanged.
-        WorkflowRun b = build(job("@Library('lib@master') _\ngreet()"), Result.SUCCESS);
-        r.assertLogContains("Library lib@master successfully cached.", b);
-        r.assertLogContains("hello from lib", b);
-    }
-
     private static final class Event {
         final String kind;
-        final Class<?> listener;
         final LibraryRecord record;
         final LibraryRetriever retriever;
         final Run<?, ?> run;
@@ -263,10 +300,9 @@ class LibraryRetrievalListenerTest {
         final Throwable error;
         final String thread = Thread.currentThread().getName();
 
-        Event(String kind, Class<?> listener, LibraryRecord record, LibraryRetriever retriever, Run<?, ?> run,
+        Event(String kind, LibraryRecord record, LibraryRetriever retriever, Run<?, ?> run,
               LibraryRetrievalListener.CacheOutcome outcome, Throwable error) {
             this.kind = kind;
-            this.listener = listener;
             this.record = record;
             this.retriever = retriever;
             this.run = run;
@@ -278,30 +314,58 @@ class LibraryRetrievalListenerTest {
     @TestExtension
     public static final class Recorder extends LibraryRetrievalListener {
         static final List<Event> EVENTS = new CopyOnWriteArrayList<>();
-        static volatile boolean failOnRetrieve;
+        static final AtomicInteger startThrowerEnds = new AtomicInteger();
+        static final AtomicInteger endThrowerEnds = new AtomicInteger();
+        static volatile boolean failInStart;
+        static volatile boolean failInEnd;
+        static volatile boolean interrupt;
 
-        @Override public void onStart(@NonNull LibraryRecord record, @NonNull LibraryRetriever retriever, @NonNull Run<?, ?> run) {
-            EVENTS.add(new Event("start", Recorder.class, record, retriever, run, null, null));
+        @Override public void onStart(@NonNull LibraryRecord record, @NonNull LibraryRetriever retriever,
+                                      @NonNull Run<?, ?> run) {
+            EVENTS.add(new Event("start", record, retriever, run, null, null));
         }
 
-        @Override public void onEnd(@NonNull LibraryRecord record, @NonNull LibraryRetriever retriever, @NonNull Run<?, ?> run,
-                                    @CheckForNull CacheOutcome outcome, @CheckForNull Throwable error) {
-            EVENTS.add(new Event("end", Recorder.class, record, retriever, run, outcome, error));
+        @Override public void onEnd(@NonNull LibraryRecord record, @NonNull LibraryRetriever retriever,
+                                    @NonNull Run<?, ?> run, @CheckForNull CacheOutcome outcome,
+                                    @CheckForNull Throwable error) {
+            EVENTS.add(new Event("end", record, retriever, run, outcome, error));
         }
     }
 
     @TestExtension
-    public static final class Thrower extends LibraryRetrievalListener {
-        @Override public void onStart(@NonNull LibraryRecord record, @NonNull LibraryRetriever retriever, @NonNull Run<?, ?> run) {
-            if (Recorder.failOnRetrieve) {
+    public static final class StartThrower extends LibraryRetrievalListener {
+        @Override public void onStart(@NonNull LibraryRecord record, @NonNull LibraryRetriever retriever,
+                                      @NonNull Run<?, ?> run) {
+            if (Recorder.failInStart) {
                 throw new IllegalStateException("listener failure in start");
             }
         }
 
-        @Override public void onEnd(@NonNull LibraryRecord record, @NonNull LibraryRetriever retriever, @NonNull Run<?, ?> run,
-                                    @CheckForNull CacheOutcome outcome, @CheckForNull Throwable error) {
-            if (Recorder.failOnRetrieve) {
+        @Override public void onEnd(@NonNull LibraryRecord record, @NonNull LibraryRetriever retriever,
+                                    @NonNull Run<?, ?> run, @CheckForNull CacheOutcome outcome,
+                                    @CheckForNull Throwable error) {
+            Recorder.startThrowerEnds.incrementAndGet();
+        }
+    }
+
+    @TestExtension
+    public static final class EndThrower extends LibraryRetrievalListener {
+        @Override public void onEnd(@NonNull LibraryRecord record, @NonNull LibraryRetriever retriever,
+                                    @NonNull Run<?, ?> run, @CheckForNull CacheOutcome outcome,
+                                    @CheckForNull Throwable error) {
+            Recorder.endThrowerEnds.incrementAndGet();
+            if (Recorder.failInEnd) {
                 throw new IllegalStateException("listener failure in end");
+            }
+        }
+    }
+
+    @TestExtension
+    public static final class Interrupter extends LibraryRetrievalListener {
+        @Override public void onStart(@NonNull LibraryRecord record, @NonNull LibraryRetriever retriever,
+                                      @NonNull Run<?, ?> run) {
+            if (Recorder.interrupt) {
+                Thread.currentThread().interrupt();
             }
         }
     }
