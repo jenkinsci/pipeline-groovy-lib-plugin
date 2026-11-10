@@ -206,8 +206,39 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
         }
     }
     
-    /** Retrieve library files. */
+    /**
+     * Retrieve library files.
+     * Reports the start and the end of the retrieval to each {@link LibraryRetrievalListener}, on the calling thread.
+     */
     static List<URL> retrieve(@NonNull LibraryRecord record, @NonNull LibraryRetriever retriever, @NonNull TaskListener listener, @NonNull Run<?,?> run, @NonNull CpsFlowExecution execution) throws Exception {
+        List<LibraryRetrievalListener> started = new ArrayList<>();
+        for (LibraryRetrievalListener l : LibraryRetrievalListener.all()) {
+            try {
+                l.onStart(record, retriever, run);
+                started.add(l);
+            } catch (RuntimeException | LinkageError x) {
+                LOGGER.log(Level.WARNING, "LibraryRetrievalListener " + l.getClass().getName() + " failed in onStart", x);
+            }
+        }
+        LibraryRetrievalListener.CacheOutcome[] outcome = new LibraryRetrievalListener.CacheOutcome[1];
+        Throwable error = null;
+        try {
+            return retrieve(record, retriever, listener, run, execution, outcome);
+        } catch (Throwable t) {
+            error = t;
+            throw t;
+        } finally {
+            for (LibraryRetrievalListener l : started) {
+                try {
+                    l.onEnd(record, retriever, run, outcome[0], error);
+                } catch (RuntimeException | LinkageError x) {
+                    LOGGER.log(Level.WARNING, "LibraryRetrievalListener " + l.getClass().getName() + " failed in onEnd", x);
+                }
+            }
+        }
+    }
+
+    private static List<URL> retrieve(LibraryRecord record, LibraryRetriever retriever, TaskListener listener, Run<?,?> run, CpsFlowExecution execution, LibraryRetrievalListener.CacheOutcome[] outcome) throws Exception {
         String name = record.name;
         String version = record.version;
         boolean changelog = record.changelog;
@@ -222,12 +253,14 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
         if(shouldCache && cachingConfiguration.isExcluded(version)) {
             listener.getLogger().println("Library " + libraryLogString + " is excluded from caching.");
             shouldCache = false;
+            outcome[0] = LibraryRetrievalListener.CacheOutcome.EXCLUDED;
         }
 
         //If the included versions is blank/null, cache irrespective
         //else check if that version is included and then cache only that version
 
         if((shouldCache && cachingConfiguration.isIncluded(version)) || (shouldCache && cachingConfiguration.getIncludedVersionsStr() == null)) {
+            outcome[0] = LibraryRetrievalListener.CacheOutcome.HIT; // until a retrieval below says otherwise
             retrieveLock.readLock().lockInterruptibly();
             try {
                 CacheStatus cacheStatus = getCacheStatus(cachingConfiguration, versionCacheDir);
@@ -241,14 +274,17 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
                               listener.getLogger().println("Library " + libraryLogString + " is cached. Copying from cache.");
                               break;
                           case EMPTY:
+                              outcome[0] = LibraryRetrievalListener.CacheOutcome.EMPTY_RECACHED;
                               listener.getLogger().println("Library " + libraryLogString + " should have been cached but is empty, re-caching.");
                               deleteCacheDirIfExists(versionCacheDir);
                               retrieve = true;
                               break;
                           case DOES_NOT_EXIST:
+                              outcome[0] = LibraryRetrievalListener.CacheOutcome.MISS;
                               retrieve = true;
                               break;
                           case EXPIRED:
+                              outcome[0] = LibraryRetrievalListener.CacheOutcome.EXPIRED;
                               long cachingMinutes = cachingConfiguration.getRefreshTimeMinutes();
                               listener.getLogger().println("Library " + libraryLogString + " is due for a refresh after " + cachingMinutes + " minutes, clearing.");
                               deleteCacheDirIfExists(versionCacheDir);
@@ -295,6 +331,10 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
               retrieveLock.readLock().unlock();
             }
         } else {
+            if (outcome[0] == null) {
+                // Not excluded above: either caching is not configured, or this version is not among the included ones.
+                outcome[0] = cachingConfiguration == null ? LibraryRetrievalListener.CacheOutcome.DISABLED : LibraryRetrievalListener.CacheOutcome.EXCLUDED;
+            }
             retriever.retrieve3(record, changelog, libDir, run, listener);
         }
         SCMBasedRetriever.rejectSpecialFiles(libDir);

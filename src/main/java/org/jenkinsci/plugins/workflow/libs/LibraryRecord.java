@@ -133,6 +133,21 @@ public final class LibraryRecord {
         return changelog;
     }
 
+    /**
+     * The source of the configuration of this library: typically the class name of a {@link LibraryResolver},
+     * sometimes followed by a folder name, but see also {@link LibraryStep}. It is not an SCM URL.
+     * Not part of the remote API.
+     */
+    public String getSource() {
+        return source;
+    }
+
+    /** @return the caching configuration of this library, or null if caching is not configured. Not part of the remote API. */
+    @CheckForNull
+    public LibraryCachingConfiguration getCachingConfiguration() {
+        return cachingConfiguration;
+    }
+
     @Override public String toString() {
         String cachingConfigurationStr = cachingConfiguration != null ? cachingConfiguration.toString() : "null";
         return "LibraryRecord{name=" + name + ", version=" + version + ", variables=" + variables + ", trusted=" + trusted + ", changelog=" + changelog + ", cachingConfiguration=" + cachingConfigurationStr + ", directoryName=" + directoryName + '}';
