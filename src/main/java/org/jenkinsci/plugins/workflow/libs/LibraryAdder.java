@@ -211,12 +211,15 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
      * Reports the start and the end of the retrieval to each {@link LibraryRetrievalListener}, on the calling thread.
      */
     static List<URL> retrieve(@NonNull LibraryRecord record, @NonNull LibraryRetriever retriever, @NonNull TaskListener listener, @NonNull Run<?,?> run, @NonNull CpsFlowExecution execution) throws Exception {
+        // A listener must never break the retrieval, so both loops catch Throwable, as Jenkins core does when it
+        // notifies listeners. A build abort is not lost: it reaches the retriever as an InterruptedException,
+        // which the catch below rethrows unchanged.
         List<LibraryRetrievalListener> started = new ArrayList<>();
         for (LibraryRetrievalListener l : LibraryRetrievalListener.all()) {
             try {
                 l.onStart(record, retriever, run);
                 started.add(l);
-            } catch (RuntimeException | LinkageError x) {
+            } catch (Throwable x) {
                 LOGGER.log(Level.WARNING,
                         "LibraryRetrievalListener " + l.getClass().getName() + " failed in onStart", x);
             }
@@ -232,7 +235,7 @@ import org.jenkinsci.plugins.workflow.flow.FlowCopier;
             for (LibraryRetrievalListener l : started) {
                 try {
                     l.onEnd(record, retriever, run, cache.outcome, error);
-                } catch (RuntimeException | LinkageError x) {
+                } catch (Throwable x) {
                     LOGGER.log(Level.WARNING,
                             "LibraryRetrievalListener " + l.getClass().getName() + " failed in onEnd", x);
                 }

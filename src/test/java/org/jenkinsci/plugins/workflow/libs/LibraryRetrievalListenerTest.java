@@ -34,6 +34,7 @@ import java.net.URL;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.ServiceConfigurationError;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.logging.Level;
@@ -88,6 +89,9 @@ class LibraryRetrievalListenerTest {
         Recorder.interrupt = false;
         Recorder.startThrowerEnds.set(0);
         Recorder.endThrowerEnds.set(0);
+        Recorder.failure = null;
+        Recorder.tailStarts.set(0);
+        Recorder.tailEnds.set(0);
     }
 
     @AfterEach
@@ -265,6 +269,51 @@ class LibraryRetrievalListenerTest {
     }
 
     @Test
+    void errorThatIsNotALinkageErrorInStartDoesNotChangeTheResult() throws Exception {
+        configure("lib", new LibraryCachingConfiguration(60, ""));
+        Recorder.failInStart = true;
+        Recorder.failure = new ServiceConfigurationError("listener error in start");
+        WorkflowRun b = build(job("@Library('lib@master') _\ngreet()"), Result.SUCCESS);
+        r.assertLogContains("hello from lib", b);
+        // Both other listeners got both callbacks, the failing one got no onEnd because its onStart failed.
+        assertThat(Recorder.EVENTS, hasSize(2));
+        assertThat(Recorder.tailStarts.get(), is(1));
+        assertThat(Recorder.tailEnds.get(), is(1));
+        assertThat(Recorder.startThrowerEnds.get(), is(0));
+        assertThat(logging.getMessages(), hasItem(containsString(StartThrower.class.getName() + " failed in onStart")));
+    }
+
+    @Test
+    void errorThatIsNotALinkageErrorInEndDoesNotChangeTheResult() throws Exception {
+        configure("lib", new LibraryCachingConfiguration(60, ""));
+        Recorder.failInEnd = true;
+        Recorder.failure = new ServiceConfigurationError("listener error in end");
+        WorkflowRun b = build(job("@Library('lib@master') _\ngreet()"), Result.SUCCESS);
+        r.assertLogContains("hello from lib", b);
+        assertThat(Recorder.EVENTS, hasSize(2));
+        assertThat(Recorder.tailStarts.get(), is(1));
+        assertThat(Recorder.tailEnds.get(), is(1));
+        assertThat(Recorder.endThrowerEnds.get(), is(1));
+        assertThat(logging.getMessages(), hasItem(containsString(EndThrower.class.getName() + " failed in onEnd")));
+    }
+
+    @Test
+    void errorThatIsNotALinkageErrorInEndKeepsTheRealException() throws Exception {
+        configure("lib", null);
+        ((SCMBasedRetriever) GlobalLibraries.get().getLibraries().get(0).getRetriever()).setLibraryPath("nowhere");
+        Recorder.failInEnd = true;
+        Recorder.failure = new ServiceConfigurationError("listener error in end");
+        WorkflowRun b = build(job("@Library('lib@master') _\ngreet()"), Result.FAILURE);
+        // The build fails with the retriever's own error, not with the listener's.
+        r.assertLogNotContains("listener error in end", b);
+        r.assertLogContains("nowhere", b);
+        assertThat(Recorder.EVENTS, hasSize(2));
+        assertThat(Recorder.EVENTS.get(1).error, notNullValue());
+        assertThat(Recorder.tailEnds.get(), is(1));
+        assertThat(Recorder.endThrowerEnds.get(), is(1));
+    }
+
+    @Test
     void sourceAndCachingConfigurationAreExposed() throws Exception {
         LibraryCachingConfiguration caching = new LibraryCachingConfiguration(60, "");
         configure("lib", caching);
@@ -319,6 +368,18 @@ class LibraryRetrievalListenerTest {
         static volatile boolean failInStart;
         static volatile boolean failInEnd;
         static volatile boolean interrupt;
+        /** What a failing listener throws; null means an {@link IllegalStateException}. */
+        static volatile Throwable failure;
+        static final AtomicInteger tailStarts = new AtomicInteger();
+        static final AtomicInteger tailEnds = new AtomicInteger();
+
+        static void fail(String message) {
+            Throwable t = failure;
+            if (t instanceof Error) {
+                throw (Error) t;
+            }
+            throw new IllegalStateException(message);
+        }
 
         @Override public void onStart(@NonNull LibraryRecord record, @NonNull LibraryRetriever retriever,
                                       @NonNull Run<?, ?> run) {
@@ -337,7 +398,7 @@ class LibraryRetrievalListenerTest {
         @Override public void onStart(@NonNull LibraryRecord record, @NonNull LibraryRetriever retriever,
                                       @NonNull Run<?, ?> run) {
             if (Recorder.failInStart) {
-                throw new IllegalStateException("listener failure in start");
+                Recorder.fail("listener failure in start");
             }
         }
 
@@ -355,8 +416,23 @@ class LibraryRetrievalListenerTest {
                                     @CheckForNull Throwable error) {
             Recorder.endThrowerEnds.incrementAndGet();
             if (Recorder.failInEnd) {
-                throw new IllegalStateException("listener failure in end");
+                Recorder.fail("listener failure in end");
             }
+        }
+    }
+
+    /** Counts its callbacks. With the failing listener, at least one of the two other listeners runs after it. */
+    @TestExtension
+    public static final class Tail extends LibraryRetrievalListener {
+        @Override public void onStart(@NonNull LibraryRecord record, @NonNull LibraryRetriever retriever,
+                                      @NonNull Run<?, ?> run) {
+            Recorder.tailStarts.incrementAndGet();
+        }
+
+        @Override public void onEnd(@NonNull LibraryRecord record, @NonNull LibraryRetriever retriever,
+                                    @NonNull Run<?, ?> run, @CheckForNull CacheOutcome outcome,
+                                    @CheckForNull Throwable error) {
+            Recorder.tailEnds.incrementAndGet();
         }
     }
 
